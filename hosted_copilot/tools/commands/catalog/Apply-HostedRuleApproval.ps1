@@ -262,9 +262,9 @@ $resolvedCatalogPath = [IO.Path]::GetFullPath($CatalogPath)
 $resolvedProtectedRulesPath = [IO.Path]::GetFullPath($ProtectedRulesPath)
 $resolvedProtectedRulesSourceRoot = [IO.Path]::GetFullPath($ProtectedRulesSourceRoot)
 $resolvedHostedRoot = [IO.Path]::GetFullPath($HostedRoot)
-$approvalSchemaPath = Join-Path $resolvedHostedRoot 'copilot-rule-catalog/assessment-reconciliation/approved-rules-v4.schema.json'
-$catalogSchemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
-$protectedRulesSchemaPath = Join-Path (Split-Path -Parent $resolvedProtectedRulesPath) 'protected-rules.schema.json'
+$approvalSchemaPath = Join-Path $resolvedHostedRoot 'contracts/workbench/approved-rules-v4.schema.json'
+$catalogSchemaPath = Join-Path $resolvedHostedRoot 'contracts/catalog/instruction-catalog.schema.json'
+$protectedRulesSchemaPath = Join-Path $resolvedHostedRoot 'contracts/catalog/protected-rules.schema.json'
 $generatorPath = Join-Path $PSScriptRoot 'Generate-Instructions.ps1'
 $protectedGeneratorPath = Join-Path $PSScriptRoot 'Generate-ProtectedRules.ps1'
 
@@ -401,11 +401,12 @@ $stageRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-catalog-apply-' + [gu
 $stageHostedRoot = Join-Path $stageRoot 'hosted_copilot'
 try {
     $stageCatalogDirectory = Join-Path $stageHostedRoot 'copilot-rule-catalog'
-    New-Item -ItemType Directory -Path $stageCatalogDirectory -Force | Out-Null
+    $stageCatalogContractDirectory = Join-Path $stageHostedRoot 'contracts/catalog'
+    New-Item -ItemType Directory -Path $stageCatalogDirectory, $stageCatalogContractDirectory -Force | Out-Null
     [IO.File]::WriteAllBytes((Join-Path $stageCatalogDirectory 'instruction-catalog.json'), $candidateCatalogBytes)
-    Copy-Item -LiteralPath $catalogSchemaPath -Destination (Join-Path $stageCatalogDirectory 'instruction-catalog.schema.json')
+    Copy-Item -LiteralPath $catalogSchemaPath -Destination (Join-Path $stageCatalogContractDirectory 'instruction-catalog.schema.json')
     Copy-Item -LiteralPath $resolvedProtectedRulesPath -Destination (Join-Path $stageCatalogDirectory 'protected-rules.json')
-    Copy-Item -LiteralPath $protectedRulesSchemaPath -Destination (Join-Path $stageCatalogDirectory 'protected-rules.schema.json')
+    Copy-Item -LiteralPath $protectedRulesSchemaPath -Destination (Join-Path $stageCatalogContractDirectory 'protected-rules.schema.json')
     $stageProtectedRulesSourceRoot = Join-Path $stageHostedRoot 'authored-rules/protected'
     New-Item -ItemType Directory -Path $stageProtectedRulesSourceRoot -Force | Out-Null
     Copy-Item -Path (Join-Path $resolvedProtectedRulesSourceRoot '*.rules.md') -Destination $stageProtectedRulesSourceRoot

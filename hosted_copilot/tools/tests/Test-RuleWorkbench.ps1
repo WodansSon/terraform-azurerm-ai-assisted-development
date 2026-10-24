@@ -49,7 +49,7 @@ $manualRelationshipEvaluatorPath = Join-Path $PSScriptRoot 'fixtures/manual-rela
 $adjudicationEvaluatorPath = Join-Path $PSScriptRoot 'fixtures/rule-issue-adjudication-evaluator.ps1'
 $workbenchRegressionRoot = Join-Path $PSScriptRoot '../../regression/workbench'
 $behaviorManifestPath = Join-Path $workbenchRegressionRoot 'behavior-manifest.json'
-$behaviorManifestSchemaPath = Join-Path $workbenchRegressionRoot 'behavior-manifest.schema.json'
+$behaviorManifestSchemaPath = Join-Path $workbenchRegressionRoot '../../contracts/workbench/behavior-manifest.schema.json'
 $playwrightRunnerPath = Join-Path $workbenchRegressionRoot 'playwright/run.cjs'
 $layoutTestPath = Join-Path $workbenchRegressionRoot 'puppeteer/Test-RuleWorkbenchLayout.cjs'
 $implementationContractPath = Join-Path $PSScriptRoot '../../docs/HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md'
@@ -60,8 +60,8 @@ $nodePackageLockRelativePath = 'hosted_copilot/tools/package-lock.json'
 $npmSecurityScriptPath = Join-Path $repositoryRoot 'tools/Test-NpmSecurity.ps1'
 $puppeteerCliRelativePath = if ($IsWindows) { 'node_modules/.bin/puppeteer.cmd' } else { 'node_modules/.bin/puppeteer' }
 $puppeteerCliPath = Join-Path $toolsRoot $puppeteerCliRelativePath
-$displaySchemaPath = Join-Path $PSScriptRoot '../../copilot-rule-catalog/assessment-reconciliation/workbench-display-v4.schema.json'
-$ruleIssuesSchemaPath = Join-Path $PSScriptRoot '../../copilot-rule-catalog/assessment-reconciliation/workbench-rule-issues-v4.schema.json'
+$displaySchemaPath = Join-Path $PSScriptRoot '../../contracts/workbench/workbench-display-v4.schema.json'
+$ruleIssuesSchemaPath = Join-Path $PSScriptRoot '../../contracts/workbench/workbench-rule-issues-v4.schema.json'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $testStartTimes = @{}
@@ -196,7 +196,7 @@ function Add-TestResult {
     }
     $durationSeconds = 0
     if ($testStartTimes.ContainsKey($Name)) {
-        $durationSeconds = [Math]::Round(((Get-Date) - $testStartTimes[$Name]).TotalSeconds, 2)
+        $durationSeconds = ((Get-Date) - $testStartTimes[$Name]).TotalSeconds
         $testStartTimes.Remove($Name)
     }
     $status = if ($Passed) { 'passed' } else { 'failed' }
@@ -206,7 +206,7 @@ function Add-TestResult {
         detail = $Detail
     })
     if ($OutputFormat -eq 'Text') {
-        $statusDetail = if ($Passed -and -not [string]::IsNullOrWhiteSpace($SuccessDetail)) { $SuccessDetail } else { "{0}s" -f $durationSeconds }
+        $statusDetail = if ($Passed -and -not [string]::IsNullOrWhiteSpace($SuccessDetail)) { $SuccessDetail } else { Format-ValidationDuration -DurationSeconds $durationSeconds }
         Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail $statusDetail)
     }
     if (-not $Passed) {
@@ -552,25 +552,12 @@ try {
     }
     $displayPath = Join-Path $tempRoot 'workbench-display.json'
     $ruleIssuesPath = Join-Path $tempRoot 'workbench-rule-issues.json'
-    $capacityReports = @(
-        New-CapacityReport -Name 'repository' -Kind 'file'
-        New-CapacityReport -Name 'go' -Kind 'file'
-        New-CapacityReport -Name 'test' -Kind 'file'
-        New-CapacityReport -Name 'documentation' -Kind 'file'
-        New-CapacityReport -Name 'skill' -Kind 'file'
-        New-CapacityReport -Name 'go-combined' -Kind 'combined'
-        New-CapacityReport -Name 'test-combined' -Kind 'combined'
-        New-CapacityReport -Name 'documentation-combined' -Kind 'combined'
-    )
+    $capacityOutput = @(& pwsh -NoProfile -File (Join-Path $toolsRoot 'internal/workbench/Get-GuidanceCapacity.ps1') -OutputFormat Json)
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot construct the policy-bound Workbench capacity fixture' }
+    $capacityFixture = ($capacityOutput | Out-String) | ConvertFrom-Json -Depth 50
     $fixture = [ordered]@{
         generatedAt = '2026-09-03T00:00:00Z'
-        guidanceCapacity = [ordered]@{
-            status = 'passed'
-            estimator = 'character-quarter-estimate-25pct-v1'
-            safetyMarginPercent = 25
-            reportCount = 8
-            reports = $capacityReports
-        }
+        guidanceCapacity = $capacityFixture
         hostedRules = @(
             [ordered]@{ id = 'IMPL-PATCH-001'; status = 'active'; text = 'If PATCH preserves omitted properties, removal must send an explicit clearing value.'; placements = @([ordered]@{ surfaceId = 'implementation'; sectionHeading = 'Azure API Semantics' }) },
             [ordered]@{ id = 'DOCS-IMP-002'; status = 'active'; text = 'Resource documentation must include a shell-fenced Terraform import command.'; placements = @([ordered]@{ surfaceId = 'documentation'; sectionHeading = 'Examples And Imports' }) }
@@ -926,6 +913,23 @@ try {
             $contextIconSource.svg.viewBox -ceq $expectedViewBox -and
             $generatedSpriteContent.Contains("<symbol id=`"codicon-$contextIconName`" viewBox=`"$expectedViewBox`">") -and
             $iconGeneratorContent.Contains("'$contextIconName'")
+    }
+    $layoutIconNames = @(
+        'layout', 'layout-activitybar-left', 'layout-activitybar-right', 'layout-centered',
+        'layout-density-compact', 'layout-density-default', 'layout-menubar', 'layout-panel',
+        'layout-panel-center', 'layout-panel-dock', 'layout-panel-justify', 'layout-panel-left',
+        'layout-panel-off', 'layout-panel-right', 'layout-sidebar-left', 'layout-sidebar-left-dock',
+        'layout-sidebar-left-off', 'layout-sidebar-right', 'layout-sidebar-right-dock',
+        'layout-sidebar-right-off', 'layout-statusbar'
+    )
+    foreach ($layoutIconName in $layoutIconNames) {
+        $layoutIconSource = (Get-Content -LiteralPath (Join-Path $codiconRoot "$layoutIconName.svg") -Raw).Trim()
+        $layoutIconDocument = [xml]$layoutIconSource
+        $layoutIconContent = [regex]::Match($layoutIconSource, '^<svg[^>]*>(?<content>[\s\S]*)</svg>$').Groups['content'].Value.Trim()
+        $codiconContractValid = $codiconContractValid -and
+            $layoutIconDocument.svg.viewBox -ceq '0 0 16 16' -and
+            $generatedSpriteContent.Contains("<symbol id=`"codicon-$layoutIconName`" viewBox=`"0 0 16 16`">$layoutIconContent</symbol>") -and
+            $iconGeneratorContent.Contains("'$layoutIconName'")
     }
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-discard"' -and $spriteContent -match 'id="codicon-git-commit"' -and $spriteContent -match 'id="codicon-git-branch-compact"' -and $spriteContent -match 'id="codicon-git-branch-conflicts"' -and $spriteContent -match 'id="codicon-git-pull-request-error"' -and $spriteContent -match 'id="codicon-json"' -and $spriteContent -match 'id="codicon-collection"' -and $spriteContent -match 'id="codicon-collection-small"' -and $spriteContent -match 'id="codicon-new-session"' -and $spriteContent -match 'id="codicon-open-preview"'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match 'id="codicon-check-compact"' -and $spriteContent -match 'id="codicon-circle-slash-compact"' -and $spriteContent -match 'id="codicon-debug-disconnect-compact"' -and $spriteContent -match 'id="codicon-checklist-compact"' -and $spriteContent -match 'id="codicon-shield-compact"' -and $spriteContent -match 'id="codicon-warning-compact"' -and $spriteContent -match 'id="codicon-chevron-right-compact"' -and $spriteContent -match 'id="codicon-chevron-down-compact"' -and $spriteContent -match 'id="codicon-fold-up"' -and $spriteContent -match 'id="codicon-diff-modified"' -and $spriteContent -match 'id="codicon-arrow-circle-down"' -and $spriteContent -match 'id="codicon-arrow-circle-left"' -and $spriteContent -match 'id="codicon-arrow-circle-right"' -and $spriteContent -match 'id="codicon-arrow-circle-up"' -and $spriteContent -match 'id="codicon-arrow-circle-up-sparkle"' -and $spriteContent -match 'id="codicon-close"' -and $spriteContent -match 'id="codicon-close-small"' -and $spriteContent -match 'id="codicon-close-compact"' -and $spriteContent -match 'id="codicon-pass"' -and $spriteContent -match 'id="codicon-pass-compact"' -and $spriteContent -match 'id="codicon-git-stash-apply"' -and $spriteContent -match 'id="codicon-kebab-vertical"' -and $spriteContent -match 'id="codicon-layers"'
@@ -1859,14 +1863,14 @@ try {
     }
     if (Test-ShouldRun -Name 'relationship-check-responsiveness') {
         Start-TestResult -Name 'relationship-check-responsiveness' -RunningDetail 'Checking assets, authorization, evaluator serialization, cancellation, and shutdown during real HTTP validation'
-        & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Test-WorkbenchServerResponsiveness.ps1') -DisplayPath $displayPath -RuleIssuesPath $ruleIssuesPath -TemporaryDirectory (Join-Path $tempRoot 'responsive-server')
+        & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Test-WorkbenchServerResponsiveness.ps1') -DisplayPath $displayPath -RuleIssuesPath $ruleIssuesPath -TemporaryDirectory (Join-Path $tempRoot 'responsive-server') -Quiet:($OutputFormat -eq 'Json') -IndentLevel 1
         Add-TestResult -Name 'relationship-check-responsiveness' -Passed ($LASTEXITCODE -eq 0) -Detail 'Production and internal launchers serve GET/HEAD during held, production-shaped saved-rule requests while preserving serialized evaluators, validated responses, error reporting, disconnect cancellation, and shutdown cleanup.'
     }
     if (Test-ShouldRun -Name 'saved-rule-wording-review') {
         Start-TestResult -Name 'saved-rule-wording-review' -RunningDetail 'Checking independent wording acceptance, strict output, phase preservation, and registered prompt boundaries'
         Import-Module (Join-Path $toolsRoot 'modules/shared/HostedToolkit.Helpers.psm1')
         Import-Module (Join-Path $toolsRoot 'modules/reconciliation/RuleIssueAdjudication.psm1')
-        $schemaRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation'
+        $schemaRoot = Join-Path $repositoryRoot 'hosted_copilot/contracts/reconciliation'
         $baseline = 'Examples must use the documented arguments.'
         $text = $baseline + ' An unrelated non-rule sentence.'
         $key = 'maintainer:SOURCE-001:A1'
@@ -1935,7 +1939,7 @@ try {
             }
         }
         $authority = Get-Content -LiteralPath (Join-Path $schemaRoot 'rule-issue-adjudication-v4.json') -Raw | ConvertFrom-Json
-        $prompts = @($authority.behaviorFiles | Where-Object { $_ -like '*/assessment-reconciliation-prompts/*.md' })
+        $prompts = @($authority.behaviorFiles | Where-Object { $_ -like '*/prompts/reconciliation/*.md' })
         $wordingContractPassed = $wordingContractPassed -and $prompts.Count -eq 2
         foreach ($relativePath in $prompts) {
             $content = Get-Content -LiteralPath (Join-Path $repositoryRoot $relativePath) -Raw
@@ -1944,7 +1948,7 @@ try {
                 $wordingContractPassed = $wordingContractPassed -and $content -match '(?m)^## Boundaries\s*$' -and $boundary.Contains($required, [StringComparison]::OrdinalIgnoreCase)
             }
         }
-        $prompt = Get-Content -LiteralPath (Join-Path $toolsRoot 'assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md') -Raw
+        $prompt = Get-Content -LiteralPath (Join-Path $toolsRoot 'prompts/reconciliation/RuleIssueAdjudication-v4.md') -Raw
         $wordingContractPassed = $wordingContractPassed -and $prompt.Contains('scopeReview.wordingStatus', [StringComparison]::Ordinal) -and
             $prompt.Contains('wordingRationale', [StringComparison]::Ordinal) -and $rejections -eq 7
         Add-TestResult -Name 'saved-rule-wording-review' -Passed $wordingContractPassed -Detail 'Within-scope wording may independently need correction; missing or invalid decisions and issue-phase rewrites are rejected. All registered evaluator prompts retain quoted-data injection boundaries.'
@@ -2032,7 +2036,7 @@ try {
                 }
             })
         } | ConvertTo-Json -Depth 100 | ConvertFrom-Json -Depth 100
-        $schemaRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation'
+        $schemaRoot = Join-Path $repositoryRoot 'hosted_copilot/contracts/reconciliation'
         if (-not (($component | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile (Join-Path $schemaRoot 'rule-issue-adjudication-input-v4.schema.json') -ErrorAction Stop) -or
             -not (($draft | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile (Join-Path $schemaRoot 'rule-issue-adjudication-draft-v4.schema.json') -ErrorAction Stop)) { throw 'Consolidation fixtures must satisfy the production schemas' }
         Test-RuleIssueAdjudicationDraft -Component $component -Draft $draft

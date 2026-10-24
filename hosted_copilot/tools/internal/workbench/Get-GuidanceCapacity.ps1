@@ -2,6 +2,8 @@
 param(
     [string]$HostedRoot = (Join-Path $PSScriptRoot '../../..'),
 
+    [string]$DescriptorPath = 'adoption.json',
+
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'
 )
@@ -11,22 +13,15 @@ $ErrorActionPreference = 'Stop'
 
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
+Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedAdoption.psm1') -Force
 
 $resolvedHostedRoot = [IO.Path]::GetFullPath($HostedRoot)
-$estimator = 'character-quarter-estimate-25pct-v1'
-$safetyMarginPercent = 25
-$fileSpecs = @(
-    [pscustomobject]@{ name = 'repository'; path = '.github/copilot-instructions.md'; budgetTokens = 2000 },
-    [pscustomobject]@{ name = 'go'; path = '.github/instructions/azurerm-go.instructions.md'; budgetTokens = 8000 },
-    [pscustomobject]@{ name = 'test'; path = '.github/instructions/azurerm-tests.instructions.md'; budgetTokens = 4000 },
-    [pscustomobject]@{ name = 'documentation'; path = '.github/instructions/azurerm-docs.instructions.md'; budgetTokens = 8000 },
-    [pscustomobject]@{ name = 'skill'; path = '.github/skills/code-review/SKILL.md'; budgetTokens = 3000 }
-)
-$combinedSpecs = @(
-    [pscustomobject]@{ name = 'go-combined'; members = @('repository', 'go', 'skill'); budgetTokens = 25000 },
-    [pscustomobject]@{ name = 'test-combined'; members = @('repository', 'go', 'test', 'skill'); budgetTokens = 25000 },
-    [pscustomobject]@{ name = 'documentation-combined'; members = @('repository', 'documentation', 'skill'); budgetTokens = 25000 }
-)
+$configuration = Get-HostedAdoptionConfiguration -HostedRoot $resolvedHostedRoot -DescriptorPath $DescriptorPath
+$tokenPolicy = Get-HostedTokenPolicy -Configuration $configuration
+$estimator = $tokenPolicy.policy.estimator
+$safetyMarginPercent = $tokenPolicy.policy.safetyMarginPercent
+$fileSpecs = @($tokenPolicy.policy.areas)
+$combinedSpecs = @($tokenPolicy.policy.combinations)
 
 function New-CapacityReport {
     param(
@@ -67,7 +62,7 @@ foreach ($spec in $fileSpecs) {
 
     $characterCount = [IO.File]::ReadAllText($path).Length
     $estimatedTokens = [long][Math]::Ceiling($characterCount / 4)
-    $guardedTokens = [long][Math]::Ceiling($estimatedTokens * 1.25)
+    $guardedTokens = [long][Math]::Ceiling($estimatedTokens * (1 + $safetyMarginPercent / 100.0))
     $report = New-CapacityReport -Name $spec.name -Kind file -Paths @([string]$spec.path) -CharacterCount $characterCount -EstimatedTokens $estimatedTokens -GuardedTokens $guardedTokens -BudgetTokens $spec.budgetTokens
     $reports.Add($report)
     $reportsByName[[string]$spec.name] = $report
@@ -80,13 +75,18 @@ foreach ($spec in $combinedSpecs) {
     $reportsByName[[string]$spec.name] = $report
 }
 
+$totalGuardedTokens = [long](@($reports | Where-Object kind -CEQ 'file') | Measure-Object guardedTokens -Sum).Sum
 $result = [ordered]@{
-    status = if (@($reports | Where-Object { -not $_.withinBudget }).Count -eq 0) { 'passed' } else { 'failed' }
+    status = if ($totalGuardedTokens -le $tokenPolicy.policy.maximumGuidanceTokens -and @($reports | Where-Object { -not $_.withinBudget }).Count -eq 0) { 'passed' } else { 'failed' }
+    tokenPolicySha256 = $tokenPolicy.sha256
+    maximumGuidanceTokens = $tokenPolicy.policy.maximumGuidanceTokens
+    totalGuardedTokens = $totalGuardedTokens
     estimator = $estimator
     safetyMarginPercent = $safetyMarginPercent
     reportCount = $reports.Count
     reports = $reports.ToArray()
 }
+Assert-HostedGuidanceCapacity -Capacity ([pscustomobject]$result) -TokenPolicy $tokenPolicy
 
 if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 8

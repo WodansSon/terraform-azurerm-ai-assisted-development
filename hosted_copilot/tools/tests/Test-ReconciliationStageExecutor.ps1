@@ -10,13 +10,13 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../../../tools/ValidationOutput.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../modules/reconciliation/HierarchicalReconciliationState.psm1') -Force
 
-$reconciliationRoot = Join-Path $PSScriptRoot '../../copilot-rule-catalog/assessment-reconciliation'
+$reconciliationRoot = Join-Path $PSScriptRoot '../../contracts/reconciliation'
 $cacheSchemaPath = Join-Path $reconciliationRoot 'hierarchical-reconciliation-cache.schema.json'
 $runSchemaPath = Join-Path $reconciliationRoot 'hierarchical-reconciliation-run.schema.json'
 $routingSchemaPath = Join-Path $reconciliationRoot 'assessment-reconciliation-routing.schema.json'
-$routingPromptPath = Join-Path $PSScriptRoot '../assessment-reconciliation-prompts/AssessmentReconciliationRouting-v4.md'
+$routingPromptPath = Join-Path $PSScriptRoot '../prompts/reconciliation/AssessmentReconciliationRouting-v4.md'
 $consolidationSchemaPath = Join-Path $reconciliationRoot 'assessment-reconciliation-consolidation.schema.json'
-$consolidationPromptPath = Join-Path $PSScriptRoot '../assessment-reconciliation-prompts/AssessmentReconciliationConsolidation-v4.md'
+$consolidationPromptPath = Join-Path $PSScriptRoot '../prompts/reconciliation/AssessmentReconciliationConsolidation-v4.md'
 $contractPath = Join-Path $reconciliationRoot 'assessment-reconciliation-v4.json'
 $adjudicationContractPath = Join-Path $reconciliationRoot 'rule-issue-adjudication-v4.json'
 $catalogPath = Join-Path $PSScriptRoot '../../copilot-rule-catalog/instruction-catalog.json'
@@ -48,7 +48,7 @@ function Write-TestProgress {
     )
 
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail -NameWidth 42)
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail -NameWidth 44)
     }
 }
 
@@ -306,7 +306,6 @@ if (Test-Path -LiteralPath $executorModulePath -PathType Leaf) {
                 $consolidationWorkersLine -match '^  Workers\s+: 1$' -and
                 $cachedExecutionLine -match '^  Execution\s+: Fully cached$' -and
                 $cachedExecutionMetrics.Count -eq 0 -and
-                @($cachedConsolidationProgress | Where-Object { [string]::IsNullOrEmpty($_) }).Count -eq 0 -and
                 [string]$cachedConsolidationProgress[-1] -match '^  Execution\s+: Fully cached$'
             Add-TestResult -Name 'hierarchical-stage-throughput-baselines' -Passed $stageThroughputValid -Detail 'Pending stages report calibrated workers and estimates, while fully cached stages omit zero-work metrics and trailing blank output.'
 

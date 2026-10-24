@@ -119,7 +119,7 @@ function Test-RuleIssueAdjudicationDraft {
             $catalogRules[$id] = $catalogRule
         }
         $assessmentKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-        $assessmentSchema = Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/saved-rule-assessment.schema.json'
+        $assessmentSchema = Join-Path $PSScriptRoot '../../../contracts/reconciliation/saved-rule-assessment.schema.json'
         if ($null -eq $Draft.PSObject.Properties['assessments']) { throw 'Saved-edit adjudication must return complete assessments' }
         foreach ($assessment in @($Draft.assessments)) {
             if (-not (($assessment | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile $assessmentSchema -ErrorAction Stop)) { throw 'Saved-edit assessment does not satisfy its contract' }

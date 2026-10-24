@@ -46,7 +46,7 @@ $schemaName = [string]$catalog.'$schema'
 if ($schemaName -notin @('instruction-catalog.schema.json', 'instruction-catalog-v4.schema.json')) {
     throw "Instruction catalog declares an unsupported schema: $schemaName"
 }
-$schemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) $schemaName
+$schemaPath = Join-Path (Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/catalog') $schemaName
 if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
     throw "Instruction catalog schema was not found: $schemaPath"
 }
@@ -62,7 +62,7 @@ if ($protectedRulesContent -cne $expectedProtectedRulesContent) {
     throw 'Generated protected rules are stale; rerun Generate-ProtectedRules.ps1 -Write after reviewing the Markdown sources'
 }
 $protectedSchemaName = [string]$protectedRules.'$schema'
-$protectedSchemaPath = Join-Path (Split-Path -Parent $resolvedProtectedRulesPath) $protectedSchemaName
+$protectedSchemaPath = Join-Path (Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/catalog') $protectedSchemaName
 if (-not (Test-Path -LiteralPath $protectedSchemaPath -PathType Leaf)) {
     throw "Protected rules schema was not found: $protectedSchemaPath"
 }

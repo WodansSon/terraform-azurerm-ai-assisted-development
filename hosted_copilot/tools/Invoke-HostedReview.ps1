@@ -101,7 +101,7 @@ $publishPath = Join-Path $PSScriptRoot 'internal/review/Publish-TestCase.ps1'
 $capturePath = Join-Path $PSScriptRoot 'internal/review/Capture-ReviewPair.ps1'
 $closePath = Join-Path $PSScriptRoot 'internal/review/Close-ReviewPair.ps1'
 $validatorPath = Join-Path $PSScriptRoot 'tests/Test-ReviewResults.ps1'
-$schemaPath = Join-Path $regressionDirectory 'schema/paired-review-result.schema.json'
+$schemaPath = Join-Path $regressionDirectory '../contracts/review/paired-review-result.schema.json'
 
 Import-Module $workflowModulePath -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/shared/HostedToolkit.Helpers.psm1') -Force

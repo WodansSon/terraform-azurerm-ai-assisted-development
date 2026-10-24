@@ -137,7 +137,8 @@ foreach ($pathName in $pathNames) {
 $workingDirectory = Split-Path -Parent $resolvedInputs.InputPath
 $launch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
 
-$prompt = "Read stage-input.json, instruction-catalog.json, protected-rules.json, stage-contract.json, stage-result.schema.json, and stage-prompt.md in the current directory. Evaluate the complete bounded $Stage shard and return only the JSON object required by stage-result.schema.json."
+$promptDirectory = Join-Path $PSScriptRoot '../../prompts/shared'
+$prompt = (Get-Content -LiteralPath (Join-Path $promptDirectory 'FileEvaluation.md') -Raw).Replace('{{STAGE}}', $Stage)
 $inputData = Get-Content -LiteralPath $resolvedInputs.InputPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
 $inline = $Stage -ceq 'manual-relationship' -or ($Stage -ceq 'adjudication' -and $null -ne $inputData.payload.PSObject.Properties['editContext'])
 if ($inline) {
@@ -146,7 +147,9 @@ if ($inline) {
 		$path = $resolvedInputs[$pathName]
 		$files[[IO.Path]::GetFileName($path)] = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -Depth 100 -DateKind String
 	}
-	$prompt = "All required files are supplied in full below. Evaluate their contents without tool calls.`n`n" + (Get-Content -LiteralPath $resolvedInputs.PromptPath -Raw) + "`n`n## Supplied Files`n" + ($files | ConvertTo-Json -Depth 100 -Compress)
+	$prompt = (Get-Content -LiteralPath (Join-Path $promptDirectory 'InlineEvaluation.md') -Raw).
+		Replace('{{TASK_PROMPT}}', (Get-Content -LiteralPath $resolvedInputs.PromptPath -Raw)).
+		Replace('{{SUPPLIED_FILES}}', ($files | ConvertTo-Json -Depth 100 -Compress))
 }
 $promptArguments = @(if (-not $inline) { '-p'; $prompt })
 $processInfo = New-HostedCliStartInfo -Launch $launch -WorkingDirectory $workingDirectory -RedirectStandardInput:$inline -Arguments (@('-C', $workingDirectory) + $promptArguments + @(

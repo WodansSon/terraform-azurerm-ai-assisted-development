@@ -7,7 +7,7 @@ param(
     [Parameter(Mandatory = $true)][string]$OutputPath,
     [string]$HostedCatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
     [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
-    [string]$ReconciliationContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-v4.json'),
+    [string]$ReconciliationContractPath = (Join-Path $PSScriptRoot '../../../contracts/reconciliation/assessment-reconciliation-v4.json'),
     [string]$BuilderPath = (Join-Path $PSScriptRoot 'New-WorkbenchDisplay.ps1'),
     [string]$EvaluatorCommand = 'copilot',
     [string]$EvaluatorScriptPath,
@@ -102,7 +102,7 @@ foreach ($relativePath in @($contract.presentationFiles | Sort-Object -CaseSensi
     $destinationPath = [IO.Path]::GetFullPath((Join-Path $runRepositoryRoot ([string]$relativePath)))
     $null = Copy-InputSnapshot -SourcePath $sourcePath -DestinationPath $destinationPath
 }
-$snapshotContractPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-v4.json'
+$snapshotContractPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/reconciliation/assessment-reconciliation-v4.json'
 $null = Copy-InputSnapshot -SourcePath $resolvedContractPath -DestinationPath $snapshotContractPath
 $snapshotBaselinePath = Join-Path $runDirectory 'source-assessment-baseline.json'
 $baselineSnapshot = Copy-InputSnapshot -SourcePath $resolvedBaselinePath -DestinationPath $snapshotBaselinePath
@@ -110,8 +110,8 @@ $snapshotCatalogPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule
 $catalogSnapshot = Copy-InputSnapshot -SourcePath $resolvedCatalogPath -DestinationPath $snapshotCatalogPath
 $snapshotProtectedRulesPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.json'
 $protectedRulesSnapshot = Copy-InputSnapshot -SourcePath $resolvedProtectedRulesPath -DestinationPath $snapshotProtectedRulesPath
-$snapshotProtectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
-$null = Copy-InputSnapshot -SourcePath (Join-Path (Split-Path -Parent $resolvedProtectedRulesPath) 'protected-rules.schema.json') -DestinationPath $snapshotProtectedRulesSchemaPath
+$snapshotProtectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/catalog/protected-rules.schema.json'
+$null = Copy-InputSnapshot -SourcePath (Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/catalog/protected-rules.schema.json') -DestinationPath $snapshotProtectedRulesSchemaPath
 $protectedRules = $protectedRulesSnapshot.Content | ConvertFrom-Json -DateKind String
 foreach ($relativePath in @($protectedRules.rules | ForEach-Object { [string]$_.sourcePath } | Sort-Object -Unique)) {
     $sourcePath = [IO.Path]::GetFullPath((Join-Path $resolvedRepositoryRoot $relativePath))
@@ -130,13 +130,13 @@ foreach ($inventoryPath in $InventoryPaths) {
 $snapshotGuidanceCapacityPath = Join-Path $runDirectory 'guidance-capacity.json'
 $null = Copy-InputSnapshot -SourcePath ([IO.Path]::GetFullPath($GuidanceCapacityPath)) -DestinationPath $snapshotGuidanceCapacityPath
 
-$baselineSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-baseline-v4.schema.json'
-$catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
-$protectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
-$contractSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-contract.schema.json'
-$draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-draft.schema.json'
-$cacheSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/hierarchical-reconciliation-cache.schema.json'
-$runSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/hierarchical-reconciliation-run.schema.json'
+$baselineSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/assessment/source-assessment-baseline-v4.schema.json'
+$catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/catalog/instruction-catalog.schema.json'
+$protectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/catalog/protected-rules.schema.json'
+$contractSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/reconciliation/assessment-reconciliation-contract.schema.json'
+$draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/reconciliation/assessment-reconciliation-draft.schema.json'
+$cacheSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/reconciliation/hierarchical-reconciliation-cache.schema.json'
+$runSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/reconciliation/hierarchical-reconciliation-run.schema.json'
 foreach ($validation in @(
     @{ Json = $baselineSnapshot.Content; Schema = $baselineSchemaPath; Label = 'Source assessment baseline' },
     @{ Json = $catalogSnapshot.Content; Schema = $catalogSchemaPath; Label = 'Hosted instruction catalog' },
@@ -219,7 +219,7 @@ try {
         Write-ValidationSectionHeader -Title 'Hierarchical Reconciliation' | Write-Host
     }
     $hierarchyStopwatch = [Diagnostics.Stopwatch]::StartNew()
-    $pipelineResult = Invoke-HierarchicalReconciliationPipeline -AssessmentBaseline $baseline -Catalog $catalog -ProtectedCatalog $protectedRules -RunDirectory $runDirectory -CachePath $runCachePath -PersistentCachePath $persistentCachePath -CacheSchemaPath $cacheSchemaPath -CatalogPath $snapshotCatalogPath -ProtectedRulesPath $snapshotProtectedRulesPath -ContractPath $snapshotContractPath -ContractAuthorityPath $contractAuthorityPath -RoutingSchemaPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-routing.schema.json') -RoutingPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliationRouting-v4.md') -ConsolidationSchemaPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-consolidation.schema.json') -ConsolidationPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliationConsolidation-v4.md') -SynthesisSchemaPath $draftSchemaPath -SynthesisPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/AssessmentReconciliation-v4.md') -EvaluatorScriptPath $resolvedEvaluatorScriptPath -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $ReasoningEffort -MaxRetries $MaxRetries -RetryDelayMilliseconds $RetryDelayMilliseconds -MaxParallelShards $MaxParallelBatches -StagePayloadBudgetBytes $StagePayloadBudgetBytes -EvaluatorPayloadBudgetBytes $EvaluatorPayloadBudgetBytes -ShowProgress:(-not $Quiet)
+    $pipelineResult = Invoke-HierarchicalReconciliationPipeline -AssessmentBaseline $baseline -Catalog $catalog -ProtectedCatalog $protectedRules -RunDirectory $runDirectory -CachePath $runCachePath -PersistentCachePath $persistentCachePath -CacheSchemaPath $cacheSchemaPath -CatalogPath $snapshotCatalogPath -ProtectedRulesPath $snapshotProtectedRulesPath -ContractPath $snapshotContractPath -ContractAuthorityPath $contractAuthorityPath -RoutingSchemaPath (Join-Path $runRepositoryRoot 'hosted_copilot/contracts/reconciliation/assessment-reconciliation-routing.schema.json') -RoutingPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/prompts/reconciliation/AssessmentReconciliationRouting-v4.md') -ConsolidationSchemaPath (Join-Path $runRepositoryRoot 'hosted_copilot/contracts/reconciliation/assessment-reconciliation-consolidation.schema.json') -ConsolidationPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/prompts/reconciliation/AssessmentReconciliationConsolidation-v4.md') -SynthesisSchemaPath $draftSchemaPath -SynthesisPromptPath (Join-Path $runRepositoryRoot 'hosted_copilot/tools/prompts/reconciliation/AssessmentReconciliation-v4.md') -EvaluatorScriptPath $resolvedEvaluatorScriptPath -EvaluatorCommand $EvaluatorCommand -Model $Model -ReasoningEffort $ReasoningEffort -MaxRetries $MaxRetries -RetryDelayMilliseconds $RetryDelayMilliseconds -MaxParallelShards $MaxParallelBatches -StagePayloadBudgetBytes $StagePayloadBudgetBytes -EvaluatorPayloadBudgetBytes $EvaluatorPayloadBudgetBytes -ShowProgress:(-not $Quiet)
     $hierarchyStopwatch.Stop()
     if (-not $Quiet) {
         Write-ValidationSectionHeader -Title 'Hierarchical Reconciliation Summary' | Write-Host

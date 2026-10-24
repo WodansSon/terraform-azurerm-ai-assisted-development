@@ -16,7 +16,7 @@ Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpe
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1')
 $diagnosticId = [Guid]::NewGuid().ToString('N')
 $diagnostic = [ordered]@{
-    schemaVersion = 1; diagnosticId = $diagnosticId; recordedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    schemaVersion = 1; diagnosticId = $diagnosticId; recordedAt = ConvertTo-UtcTimestamp ([DateTimeOffset]::UtcNow)
     phase = 'input-validation'; cliExitCode = $null; stdoutBytes = 0; stderrBytes = 0; answerCount = 0
     events = [ordered]@{
         'session.start' = 0; 'session.error' = 0; 'session.idle' = 0; 'session.shutdown' = 0
@@ -64,7 +64,7 @@ for ($index = 0; $index -lt $messages.Count; $index++) {
     }
 }
 $displayJson = Get-Content -LiteralPath $DisplayPath -Raw
-$schemaPath = Join-Path $RepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/workbench-display-v4.schema.json'
+$schemaPath = Join-Path $RepositoryRoot 'hosted_copilot/contracts/workbench/workbench-display-v4.schema.json'
 if (-not ($displayJson | Test-Json -SchemaFile $schemaPath -ErrorAction Stop)) { throw (New-RuleAssistanceException -Message 'Rule assistance display snapshot is invalid') }
 $display = $displayJson | ConvertFrom-Json -Depth 100 -DateKind String
 $candidates = @($display.candidates | Where-Object { "$($_.source.lane):$($_.source.id):$($_.assessment.id)" -ceq $request.candidateKey })
@@ -81,9 +81,10 @@ $context = [ordered]@{
     currentRule = [ordered]@{ id = $ruleId; baselineText = $candidate.recommendation.ruleText; proposedText = $request.proposedText }
     sources = @($candidate.members | ForEach-Object { [ordered]@{ id = $_.source.id; text = $_.source.text; provenance = $_.source.provenance } })
     catalog = $catalog
+    guidanceCapacity = $display.guidanceCapacity
     messages = $messages
 }
-$promptRoot = Join-Path $RepositoryRoot 'hosted_copilot/tools/workbench-prompts'
+$promptRoot = Join-Path $RepositoryRoot 'hosted_copilot/tools/prompts/chat'
 $prompt = (Get-Content -LiteralPath (Join-Path $promptRoot 'RuleAssistance.md') -Raw) + "`n## Supplied Context`n" + ($context | ConvertTo-Json -Depth 100 -Compress)
 $promptBytes = [Text.Encoding]::UTF8.GetByteCount($prompt)
 if ($promptBytes -gt $runtime.maximumPromptBytes) {
@@ -127,7 +128,7 @@ $stopwatch.Stop()
 $diagnostic.phase = 'cli-output'
 $answerJson = Get-RuleAssistanceCliAnswer -Output $output -Model $Model -Diagnostic $diagnostic
 $diagnostic.phase = 'answer-validation'
-try { $valid = $answerJson | Test-Json -SchemaFile (Join-Path $promptRoot 'rule-assistance-result.schema.json') -ErrorAction Stop }
+try { $valid = $answerJson | Test-Json -SchemaFile (Join-Path $promptRoot '../../../contracts/workbench/rule-assistance-result.schema.json') -ErrorAction Stop }
 catch { throw (New-RuleAssistanceException -Message 'Rule assistance answer did not satisfy its response contract' -Code 'invalid-response') }
 if (-not $valid) { throw (New-RuleAssistanceException -Message 'Rule assistance answer did not satisfy its response contract' -Code 'invalid-response') }
 $answer = $answerJson | ConvertFrom-Json -Depth 100

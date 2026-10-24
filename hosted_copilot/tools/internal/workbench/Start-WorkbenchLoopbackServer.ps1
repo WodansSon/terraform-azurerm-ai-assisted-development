@@ -191,6 +191,11 @@ try {
                 Write-HttpResponse -Stream $stream -StatusCode 421 -StatusText 'Misdirected Request' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Misdirected Request')) -IncludeBody $true
                 continue
             }
+            if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/shutdown-config') {
+                $shutdownConfigBytes = [Text.Encoding]::UTF8.GetBytes((@{ shutdownToken = $ShutdownToken } | ConvertTo-Json -Compress))
+                Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $shutdownConfigBytes -IncludeBody ($method -eq 'GET')
+                continue
+            }
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
                 $runtimeConfig | Add-Member -NotePropertyName savedRuleAuthoritySha256 -NotePropertyValue (Get-SavedRuleAuthoritySha256 @savedAuthorityParameters) -Force
                 $runtimeConfig | Add-Member -NotePropertyName ruleAssistance -NotePropertyValue (Get-RuleAssistanceRuntime @assistanceParameters) -Force
@@ -221,7 +226,7 @@ try {
                 }
                 catch {
                     $failure = ConvertTo-RuleAssistanceError -ErrorRecord $_ -Diagnostic ([ordered]@{
-                        schemaVersion = 1; diagnosticId = [Guid]::NewGuid().ToString('N'); recordedAt = [DateTimeOffset]::UtcNow.ToString('o'); phase = 'request-start'
+                        schemaVersion = 1; diagnosticId = [Guid]::NewGuid().ToString('N'); recordedAt = ConvertTo-UtcTimestamp ([DateTimeOffset]::UtcNow); phase = 'request-start'
                     })
                     Write-Warning "Rule assistance could not start: $($failure.code). Diagnostic reference: $($failure.diagnosticId)"
                     $failureBody = @{ error = $failure } | ConvertTo-Json -Depth 5 -Compress

@@ -19,6 +19,17 @@ const behaviorIds = [
 
 async function run({ page, baseUrl, assert }) {
   await openWorkbench(page, baseUrl);
+  const pairedLines = await page.evaluate(() => {
+    const file = createPreviewFile("paired-lines.txt", "Paired line changes", ["Before", "", "Old tail"], ["After", "", "New tail"]);
+    const unchanged = createPreviewFile("unchanged.txt", "Unchanged", ["Same", ""], ["Same", ""]);
+    return {
+      additions: file.additions, deletions: file.deletions,
+      blankContext: !file.rows[1].changed && file.rows[1].oldLine === 2 && file.rows[1].newLine === 2,
+      unchanged: unchanged.additions === 0 && unchanged.deletions === 0
+    };
+  });
+  assert(pairedLines.additions === 2 && pairedLines.deletions === 2 && pairedLines.blankContext && pairedLines.unchanged,
+    "Shared diff counted paired blank context or unchanged wording as added and removed lines");
   const fixture = await page.evaluate(async () => {
     globalThis.__previewReviewSessionSnapshot = structuredClone(state.session);
     const selected = state.candidates.filter((candidate) => {
@@ -62,8 +73,8 @@ async function run({ page, baseUrl, assert }) {
   assert(retireMutation?.status === "retired" && retireMutation.retirementReason && retireMutation.lastPlacement && retireMutation.placementCount === 0, "Approved Retire mutation does not preserve retirement history while clearing active placement");
 
   const approvalStatus = await page.evaluate(() => {
-    const owner = document.querySelector("#preview-status").closest(".status-item");
-    const originalRuleIssues = state.ruleIssues;
+    let owner = document.querySelector("#preview-status").closest(".status-item");
+    const originalRuleIssueBundle = state.ruleIssueBundle;
     const blockedColor = getComputedStyle(owner).color;
     const blockedWidth = owner.getBoundingClientRect().width;
     const expectedBlockedColor = getComputedStyle(document.documentElement).getPropertyValue("--red").trim();
@@ -74,29 +85,40 @@ async function run({ page, baseUrl, assert }) {
       && document.querySelector("#preview-status").textContent === "Blocked"
       && document.querySelector("#approve-export-button").disabled
       && document.querySelector("#approval-badge").textContent === "Blocked by Rule Issues"
-      && owner.dataset.workbenchTooltip === "Promotion approval status"
+      && owner.dataset.workbenchTooltip === "Promotion Approval Status"
       && blockedRequirement?.querySelector("strong")?.textContent === `${getOpenRuleIssues().length} pending`
       && blockedRequirement?.querySelector("use")?.getAttribute("href").endsWith("#codicon-warning");
-    state.ruleIssues = [];
+    const blockedDetails = {
+      className: owner.className, badge: document.querySelector("#approval-badge").textContent,
+      tooltip: owner.dataset.workbenchTooltip, requirement: blockedRequirement?.querySelector("strong")?.textContent,
+      icon: blockedRequirement?.querySelector("use")?.getAttribute("href")
+    };
+    state.ruleIssueBundle = { ...originalRuleIssueBundle, issues: [] };
+    validateRuleIssueBundle(state.ruleIssueBundle);
     renderPreview();
+    owner = document.querySelector("#preview-status").closest(".status-item");
     const readyColor = getComputedStyle(owner).color;
     const readyWidth = owner.getBoundingClientRect().width;
     const expectedReadyColor = getComputedStyle(document.documentElement).getPropertyValue("--success").trim();
     const readyValid = owner.classList.contains("success-kind")
       && document.querySelector("#preview-status").textContent === "Ready"
       && !document.querySelector("#approve-export-button").disabled;
+    const readyDetails = getPreviewReadiness();
     const approverName = state.session.approverName;
     state.session.approverName = "";
     renderPreview();
+    owner = document.querySelector("#preview-status").closest(".status-item");
     const draftColor = getComputedStyle(owner).color;
     const draftWidth = owner.getBoundingClientRect().width;
     const expectedDraftColor = getComputedStyle(document.documentElement).getPropertyValue("--warning-foreground").trim();
     const draftValid = owner.classList.contains("warning-kind") && document.querySelector("#preview-status").textContent === "Draft";
     state.session.approverName = approverName;
-    state.ruleIssues = originalRuleIssues;
+    state.ruleIssueBundle = originalRuleIssueBundle;
     renderPreview();
     return {
       blockedValid,
+      blockedDetails,
+      readyDetails: Object.fromEntries(Object.entries(readyDetails).filter(([key]) => key !== "planCandidates")),
       blockedColor,
       blockedWidth,
       expectedBlockedColor,

@@ -85,13 +85,20 @@
         </div>
 
         <div class="workspace-tab-panel active" id="candidate-sources-panel" role="tabpanel" aria-labelledby="candidate-sources-tab">
-          <div class="candidate-pane-switch" role="tablist" aria-label="Candidate workspace">
-            <button class="candidate-pane-tab active clickable" id="candidate-pane-candidates" type="button" role="tab" aria-selected="true" aria-controls="candidate-panel" data-candidate-pane="candidates">
-              <span>Candidates</span>
-            </button>
-            <button class="candidate-pane-tab clickable" id="candidate-pane-details" type="button" role="tab" aria-selected="false" aria-controls="assessment-panel" data-candidate-pane="details">
-              <span>Details</span>
-            </button>
+          <div class="candidate-pane-toolbar">
+            <div class="candidate-pane-switch" role="tablist" aria-label="Candidate workspace">
+              <button class="candidate-pane-tab active clickable" id="candidate-pane-candidates" type="button" role="tab" aria-selected="true" aria-controls="candidate-panel" data-candidate-pane="candidates">
+                <span>Candidates</span>
+              </button>
+              <button class="candidate-pane-tab clickable" id="candidate-pane-details" type="button" role="tab" aria-selected="false" aria-controls="assessment-panel" data-candidate-pane="details">
+                <span>Details</span>
+              </button>
+            </div>
+            <div class="candidate-pane-controls" id="candidate-assistance-controls">
+              <button class="titlebar-icon clickable" id="assist-panel-toggle" type="button" data-workbench-tooltip="Show AI assistance" aria-label="Show AI assistance" aria-controls="rule-assistance-panel" aria-expanded="false" aria-pressed="false" disabled>
+                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-layout-sidebar-right-off"></use></svg>
+              </button>
+            </div>
           </div>
           <div class="catalog-layout">
             <section class="candidate-panel" id="candidate-panel" role="tabpanel" aria-labelledby="candidate-pane-candidates candidate-heading">
@@ -126,13 +133,16 @@
         </div>
 
         <div class="workspace-tab-panel" id="assessment-results-panel" role="tabpanel" aria-labelledby="assessment-results-tab" hidden>
-          <div class="candidate-pane-switch assessment-pane-switch" role="tablist" aria-label="Assessment workspace">
-            <button class="candidate-pane-tab active clickable" id="assessment-pane-assessments" type="button" role="tab" aria-selected="true" aria-controls="assessment-results-list-panel" data-assessment-pane="assessments">
-              <span>Assessments</span>
-            </button>
-            <button class="candidate-pane-tab clickable" id="assessment-pane-details" type="button" role="tab" aria-selected="false" aria-controls="assessment-results-detail" data-assessment-pane="details">
-              <span>Details</span>
-            </button>
+          <div class="candidate-pane-toolbar">
+            <div class="candidate-pane-switch assessment-pane-switch" role="tablist" aria-label="Assessment workspace">
+              <button class="candidate-pane-tab active clickable" id="assessment-pane-assessments" type="button" role="tab" aria-selected="true" aria-controls="assessment-results-list-panel" data-assessment-pane="assessments">
+                <span>Assessments</span>
+              </button>
+              <button class="candidate-pane-tab clickable" id="assessment-pane-details" type="button" role="tab" aria-selected="false" aria-controls="assessment-results-detail" data-assessment-pane="details">
+                <span>Details</span>
+              </button>
+            </div>
+            <div class="candidate-pane-controls" id="assessment-assistance-controls"></div>
           </div>
           <div class="catalog-layout">
             <section class="candidate-panel" id="assessment-results-list-panel" role="tabpanel" aria-labelledby="assessment-pane-assessments assessment-results-heading">
@@ -279,6 +289,11 @@
         </div>
       </section>
     </main>
+
+    <aside class="rule-assistance-panel" id="rule-assistance-panel" aria-label="AI assistance" hidden>
+      <div class="assist-sidebar-resizer" id="assist-sidebar-resizer" role="separator" aria-label="Resize AI assistance panel" aria-orientation="vertical" aria-controls="rule-assistance-panel" aria-valuemin="320" aria-valuemax="680" aria-valuenow="420" tabindex="0"></div>
+      <div class="assist-sidebar-content" id="assist-sidebar-content"></div>
+    </aside>
 
     <footer class="ide-statusbar type-compact" aria-label="Workbench status">
       <div class="status-cluster status-left"></div>

@@ -73,11 +73,12 @@ function New-TestHostedRoot {
     $repositoryRoot = Join-Path $tempRoot $Name
     $root = Join-Path $repositoryRoot 'hosted_copilot'
     $catalogRoot = Join-Path $root 'copilot-rule-catalog'
-    $approvalRoot = Join-Path $catalogRoot 'assessment-reconciliation'
-    New-Item -ItemType Directory -Path $approvalRoot -Force | Out-Null
+    $catalogContractRoot = Join-Path $root 'contracts/catalog'
+    $approvalRoot = Join-Path $root 'contracts/workbench'
+    New-Item -ItemType Directory -Path $catalogRoot, $catalogContractRoot, $approvalRoot -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $sourceCatalogRoot 'instruction-catalog.json') -Destination (Join-Path $catalogRoot 'instruction-catalog.json')
-    Copy-Item -LiteralPath (Join-Path $sourceCatalogRoot 'instruction-catalog.schema.json') -Destination (Join-Path $catalogRoot 'instruction-catalog.schema.json')
-    Copy-Item -LiteralPath (Join-Path $sourceCatalogRoot 'protected-rules.schema.json') -Destination (Join-Path $catalogRoot 'protected-rules.schema.json')
+    Copy-Item -LiteralPath (Join-Path $sourceCatalogRoot '../contracts/catalog/instruction-catalog.schema.json') -Destination (Join-Path $catalogContractRoot 'instruction-catalog.schema.json')
+    Copy-Item -LiteralPath (Join-Path $sourceCatalogRoot '../contracts/catalog/protected-rules.schema.json') -Destination (Join-Path $catalogContractRoot 'protected-rules.schema.json')
     $protectedRulesRoot = Join-Path $root 'authored-rules/protected'
     New-Item -ItemType Directory -Path $protectedRulesRoot -Force | Out-Null
     Copy-Item -Path (Join-Path $sourceProtectedRulesRoot '*.rules.md') -Destination $protectedRulesRoot
@@ -85,7 +86,7 @@ function New-TestHostedRoot {
     if ($LASTEXITCODE -ne 0) {
         throw (($protectedGenerationOutput | Out-String).Trim())
     }
-    Copy-Item -LiteralPath (Join-Path $sourceCatalogRoot 'assessment-reconciliation/approved-rules-v4.schema.json') -Destination (Join-Path $approvalRoot 'approved-rules-v4.schema.json')
+    Copy-Item -LiteralPath (Join-Path $sourceCatalogRoot '../contracts/workbench/approved-rules-v4.schema.json') -Destination (Join-Path $approvalRoot 'approved-rules-v4.schema.json')
     $catalog = Get-Content -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.json') -Raw | ConvertFrom-Json -DateKind String
     foreach ($surface in @($catalog.surfaces)) {
         $sourcePath = Join-Path $hostedRoot ([string]$surface.outputPath)

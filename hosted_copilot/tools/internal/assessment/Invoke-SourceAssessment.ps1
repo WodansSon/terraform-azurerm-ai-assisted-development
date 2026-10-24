@@ -14,7 +14,7 @@ param(
 
     [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
 
-    [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/rule-assessments/source-assessment-v4.json'),
+    [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../contracts/assessment/source-assessment-v4.json'),
 
     [string]$BaselineBuilderPath = (Join-Path $PSScriptRoot 'New-SourceAssessmentBaseline.ps1'),
 
@@ -327,18 +327,7 @@ function New-AssessmentBatchPacket {
 function New-EvaluatorAttemptPrompt {
     param([Parameter(Mandatory = $true)][int]$SourceCount)
 
-    return @"
-Read the source assessment contract, source record batch, Hosted instruction catalog, protected rules catalog, and output schema from the current batch directory before evaluating the batch.
-
-Source assessment contract: SourceAssessment-v4.md
-Source record batch: source-records.json
-Hosted instruction catalog: hosted-instruction-catalog.json
-Protected rules catalog: protected-rules.json
-Output schema: source-assessment-draft.schema.json
-
-This batch contains exactly $SourceCount source records. Write only the requested JSON object in your final response.
-When a source record contains `requiredAssessmentIds`, include every listed ID exactly once in that entry's assessments.
-"@
+    return $assessmentAttemptTemplate.Replace('{{SOURCE_COUNT}}', $SourceCount.ToString([Globalization.CultureInfo]::InvariantCulture))
 }
 
 function Get-AssessmentBatchPayloadSizeBytes {
@@ -474,10 +463,10 @@ $resolvedBuilderPath = [IO.Path]::GetFullPath($BaselineBuilderPath)
 $resolvedCatalogPath = [IO.Path]::GetFullPath($HostedCatalogPath)
 $resolvedProtectedRulesPath = [IO.Path]::GetFullPath($ProtectedRulesPath)
 $resolvedContractPath = [IO.Path]::GetFullPath($AssessmentContractPath)
-$inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
-$definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
-$draftSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
-$promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md'
+$inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/sources/source-inventory.schema.json'
+$definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/sources/source-definition.schema.json'
+$draftSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/assessment/source-assessment-draft.schema.json'
+$promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/prompts/assessment/SourceAssessment-v4.md'
 $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-source-assessment/' + [guid]::NewGuid().ToString('N'))
 $runRepositoryRoot = Join-Path $runDirectory 'repository'
 foreach ($requiredPath in @($resolvedBuilderPath, $resolvedCatalogPath, $resolvedProtectedRulesPath, $resolvedContractPath, $inventorySchemaPath, $definitionSchemaPath, $draftSchemaPath, $promptPath)) {
@@ -491,17 +480,17 @@ if ($resolvedBuilderPath -cne $canonicalBuilderPath) {
 }
 $null = New-Item -ItemType Directory -Path $runRepositoryRoot -Force
 $assessmentContract = Get-Content -LiteralPath $resolvedContractPath -Raw | ConvertFrom-Json
-$assessmentContractSnapshotPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-v4.json'
+$assessmentContractSnapshotPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/assessment/source-assessment-v4.json'
 $null = Copy-RunInputFile -SourcePath $resolvedContractPath -DestinationPath $assessmentContractSnapshotPath
 $repositoryInputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($relativePath in @(
     'hosted_copilot/tools/llm.json',
-    'hosted_copilot/copilot-rule-catalog/rule-assessments/assessment-contract.schema.json',
-    'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
-    'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
-    'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json',
-    'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json',
-    'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
+    'hosted_copilot/contracts/assessment/assessment-contract.schema.json',
+    'hosted_copilot/contracts/parsers/parser-contract.schema.json',
+    'hosted_copilot/contracts/sources/source-definition.schema.json',
+    'hosted_copilot/contracts/sources/source-inventory.schema.json',
+    'hosted_copilot/contracts/catalog/instruction-catalog.schema.json',
+    'hosted_copilot/contracts/catalog/protected-rules.schema.json'
 ) + @($assessmentContract.behaviorFiles)) {
     $null = $repositoryInputs.Add([string]$relativePath)
 }
@@ -513,7 +502,7 @@ foreach ($sourceDefinitionId in $expectedSourceDefinitionIds) {
     $definitionRelativePath = "hosted_copilot/copilot-rule-catalog/source-definitions/$sourceDefinitionId.json"
     $null = $repositoryInputs.Add($definitionRelativePath)
     $definition = Get-Content -LiteralPath (Join-Path $resolvedRepositoryRoot $definitionRelativePath) -Raw | ConvertFrom-Json
-    $contractRelativePath = "hosted_copilot/copilot-rule-catalog/parser-contracts/$($definition.parser).json"
+    $contractRelativePath = "hosted_copilot/contracts/parsers/$($definition.parser).json"
     $null = $repositoryInputs.Add($contractRelativePath)
     $parserContract = Get-Content -LiteralPath (Join-Path $resolvedRepositoryRoot $contractRelativePath) -Raw | ConvertFrom-Json
     foreach ($behaviorFile in @($parserContract.behaviorFiles)) {
@@ -527,12 +516,13 @@ $resolvedBuilderPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/intern
 $resolvedCatalogPath = Copy-RunInputFile -SourcePath $resolvedCatalogPath -DestinationPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json')
 $resolvedProtectedRulesPath = Copy-RunInputFile -SourcePath $resolvedProtectedRulesPath -DestinationPath (Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.json')
 $resolvedContractPath = $assessmentContractSnapshotPath
-$inventorySchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
-$definitionSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
-$draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments/source-assessment-draft.schema.json'
-$catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
-$protectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.schema.json'
-$promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/assessment-prompts/SourceAssessment-v4.md'
+$inventorySchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/sources/source-inventory.schema.json'
+$definitionSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/sources/source-definition.schema.json'
+$draftSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/assessment/source-assessment-draft.schema.json'
+$catalogSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/catalog/instruction-catalog.schema.json'
+$protectedRulesSchemaPath = Join-Path $runRepositoryRoot 'hosted_copilot/contracts/catalog/protected-rules.schema.json'
+$promptPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/prompts/assessment/SourceAssessment-v4.md'
+$assessmentAttemptTemplate = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $promptPath) 'AssessmentAttempt.md') -Raw
 $resolvedEvaluatorScriptPath = $null
 $evaluatorIdentity = $EvaluatorCommand
 if (-not [string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {

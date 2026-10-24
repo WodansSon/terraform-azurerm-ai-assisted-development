@@ -53,7 +53,7 @@ If either review is incomplete, the command prints the required pull request lin
 
 ## Result And Schema
 
-After adjudication, the command writes a local result validated against [`paired-review-result.schema.json`](../regression/schema/paired-review-result.schema.json) and prints a comparison of expected findings, misses, additional valid findings, false positives, and runtime limitations. New adjudicated results use schema version 2. The schema continues to accept version 1 historical records; this compatibility has no relationship to a fixture name ending in `-v2`.
+After adjudication, the command writes a local result validated against [`paired-review-result.schema.json`](../contracts/review/paired-review-result.schema.json) and prints a comparison of expected findings, misses, additional valid findings, false positives, and runtime limitations. New adjudicated results use schema version 2. The schema continues to accept version 1 historical records; this compatibility has no relationship to a fixture name ending in `-v2`.
 
 Generated evidence remains beneath `hosted_copilot/regression/raw/` and `hosted_copilot/regression/results/`; both directories are Git-ignored. Captured metadata includes the installed Hosted source commit and manifest hash, the exact review diff identity, requested review effort, and available product-generated model evidence. A comparison is marked confounded when the observed model or reasoning evidence differs, and unknown model identity is not inferred.
 

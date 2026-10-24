@@ -14,9 +14,9 @@ $hostedRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $generatorPath = Join-Path $PSScriptRoot '../commands/catalog/Generate-Instructions.ps1'
 $protectedGeneratorPath = Join-Path $PSScriptRoot '../commands/catalog/Generate-ProtectedRules.ps1'
 $sourceCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
-$sourceSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
+$sourceSchemaPath = Join-Path $hostedRoot 'contracts/catalog/instruction-catalog.schema.json'
 $sourceProtectedRulesPath = Join-Path $hostedRoot 'copilot-rule-catalog/protected-rules.json'
-$sourceProtectedRulesSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/protected-rules.schema.json'
+$sourceProtectedRulesSchemaPath = Join-Path $hostedRoot 'contracts/catalog/protected-rules.schema.json'
 $sourceProtectedRulesRoot = Join-Path $hostedRoot 'authored-rules/protected'
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
@@ -107,11 +107,12 @@ function Invoke-ProtectedGenerator {
 try {
     Write-TestProgress -Name 'fixture-preparation' -Detail 'Staging the catalog, schema, and generated instruction files'
     $catalogDirectory = Join-Path $tempHostedRoot 'copilot-rule-catalog'
-    New-Item -ItemType Directory -Path $catalogDirectory -Force | Out-Null
+    $catalogContractDirectory = Join-Path $tempHostedRoot 'contracts/catalog'
+    New-Item -ItemType Directory -Path $catalogDirectory, $catalogContractDirectory -Force | Out-Null
     Copy-Item -LiteralPath $sourceCatalogPath -Destination (Join-Path $catalogDirectory 'instruction-catalog.json')
-    Copy-Item -LiteralPath $sourceSchemaPath -Destination (Join-Path $catalogDirectory 'instruction-catalog.schema.json')
+    Copy-Item -LiteralPath $sourceSchemaPath -Destination (Join-Path $catalogContractDirectory 'instruction-catalog.schema.json')
     Copy-Item -LiteralPath $sourceProtectedRulesPath -Destination (Join-Path $catalogDirectory 'protected-rules.json')
-    Copy-Item -LiteralPath $sourceProtectedRulesSchemaPath -Destination (Join-Path $catalogDirectory 'protected-rules.schema.json')
+    Copy-Item -LiteralPath $sourceProtectedRulesSchemaPath -Destination (Join-Path $catalogContractDirectory 'protected-rules.schema.json')
     $tempProtectedRulesRoot = Join-Path $tempHostedRoot 'authored-rules/protected'
     New-Item -ItemType Directory -Path $tempProtectedRulesRoot -Force | Out-Null
     Copy-Item -Path (Join-Path $sourceProtectedRulesRoot '*.rules.md') -Destination $tempProtectedRulesRoot

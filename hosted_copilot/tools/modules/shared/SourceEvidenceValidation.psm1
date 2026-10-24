@@ -130,8 +130,8 @@ function Get-CurrentSourceDefinitionEvidence {
     $catalogRoot = Join-Path $RepositoryRoot 'hosted_copilot/copilot-rule-catalog'
     $definitionRoot = Join-Path $catalogRoot 'source-definitions'
     $definitionPath = Join-Path $definitionRoot "$SourceDefinitionId.json"
-    $definitionSchemaPath = Join-Path $definitionRoot 'source-definition.schema.json'
-    $contractRoot = Join-Path $catalogRoot 'parser-contracts'
+    $definitionSchemaPath = Join-Path $definitionRoot '../../contracts/sources/source-definition.schema.json'
+    $contractRoot = Join-Path $RepositoryRoot 'hosted_copilot/contracts/parsers'
     $contractSchemaPath = Join-Path $contractRoot 'parser-contract.schema.json'
     foreach ($requiredPath in @($definitionPath, $definitionSchemaPath, $contractSchemaPath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -187,7 +187,7 @@ function Get-ExpectedSourceDefinitionIds {
 
     $definitionRoot = Join-Path $RepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions'
     $setPath = Join-Path $definitionRoot 'source-definition-set.json'
-    $setSchemaPath = Join-Path $definitionRoot 'source-definition-set.schema.json'
+    $setSchemaPath = Join-Path $definitionRoot '../../contracts/sources/source-definition-set.schema.json'
     foreach ($requiredPath in @($setPath, $setSchemaPath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "Required source definition set input was not found: $requiredPath"

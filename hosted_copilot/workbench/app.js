@@ -17,8 +17,6 @@ const PREVIEW_TREE_DEFAULT_WIDTH = 380;
 const PREVIEW_TREE_MIN_WIDTH = 296;
 const PREVIEW_TREE_MAX_WIDTH = 520;
 const PREVIEW_TREE_KEYBOARD_STEP = 16;
-const ASSISTANCE_RESPONSE_MIN_HEIGHT = 160;
-const ASSISTANCE_RESPONSE_KEYBOARD_STEP = 16;
 const PREVIEW_VIRTUALIZATION_BUFFER_VIEWPORTS = 2;
 const PREVIEW_SCOPE_LABELS = {
   proposed: "Proposed changes",
@@ -124,12 +122,12 @@ const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
 const activeRelationshipChecks = new Map();
 let ruleAssistance = null;
-let ruleAssistanceExpanded = false;
+let ruleAssistanceExpanded = true;
+let ruleAssistanceSidebarWidth = 420;
+let ruleAssistanceSidebarResize = null;
 let pendingRuleAssistanceNavigation = null;
 let ruleAssistanceWaitingPhrases;
 let llmBrandMap = [];
-let ruleAssistanceResponseHeight = 320;
-let ruleAssistanceResponseResize = null;
 const dismissedManualRelationshipFailures = new WeakSet();
 const expandedEvidencePanels = new Set();
 const sourceRuleDisclosureStates = new Map();
@@ -511,6 +509,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 function captureElements() {
   for (const id of [
     "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
+    "assist-panel-toggle", "rule-assistance-panel", "assist-sidebar-content", "assist-sidebar-resizer",
     "promotion-plan-stage", "promotion-plan-stage-icon", "plan-activity-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel", "rule-issues-panel",
@@ -544,6 +543,15 @@ function bindEvents() {
   elements["plan-undo-menu"].addEventListener("click", handlePlanUndoMenuClick);
   elements["plan-undo-menu"].addEventListener("mouseleave", () => elements["plan-undo-menu"].removeAttribute("open"));
   elements["close-button"].addEventListener("click", closeWorkbench);
+  elements["assist-panel-toggle"].addEventListener("click", () => setRuleAssistanceExpanded(!ruleAssistanceExpanded));
+  elements["assist-sidebar-resizer"].addEventListener("pointerdown", handleAssistanceSidebarResizeStart);
+  elements["assist-sidebar-resizer"].addEventListener("pointermove", handleAssistanceSidebarResizeMove);
+  elements["assist-sidebar-resizer"].addEventListener("pointerup", finishAssistanceSidebarResize);
+  elements["assist-sidebar-resizer"].addEventListener("pointercancel", finishAssistanceSidebarResize);
+  elements["assist-sidebar-resizer"].addEventListener("lostpointercapture", finishAssistanceSidebarResize);
+  elements["assist-sidebar-resizer"].addEventListener("keydown", handleAssistanceSidebarResizeKeyboard);
+  setAssistanceSidebarWidth(ruleAssistanceSidebarWidth);
+  setRuleAssistanceExpanded(ruleAssistanceExpanded);
   elements["export-button"].addEventListener("click", () => {
     exportDraft();
     elements["draft-menu"].removeAttribute("open");
@@ -639,13 +647,10 @@ function bindEvents() {
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
   elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
-  elements["assessment-panel"].addEventListener("pointerdown", handleRuleAssistanceResizeStart);
-  elements["assessment-panel"].addEventListener("pointermove", handleRuleAssistanceResizeMove);
-  elements["assessment-panel"].addEventListener("pointerup", handleRuleAssistanceResizeEnd);
-  elements["assessment-panel"].addEventListener("pointercancel", handleRuleAssistanceResizeEnd);
-  elements["assessment-panel"].addEventListener("lostpointercapture", handleRuleAssistanceResizeEnd);
-  elements["assessment-panel"].addEventListener("keydown", handleRuleAssistanceResizeKeyboard);
-  elements["assessment-panel"].addEventListener("keydown", (event) => {
+  elements["assist-sidebar-content"].addEventListener("click", handleRuleAssistanceClick);
+  elements["assist-sidebar-content"].addEventListener("input", handleRuleAssistanceInput);
+  elements["assist-sidebar-content"].addEventListener("scroll", handleDetailContentScroll, true);
+  elements["assist-sidebar-content"].addEventListener("keydown", (event) => {
     if (!event.target.matches(".assist-goal") || event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.repeat) return;
     event.preventDefault();
     if (!ruleAssistance?.active) void sendRuleAssistance();
@@ -715,7 +720,7 @@ function bindEvents() {
     candidateHierarchicalView?.refreshLayout();
     assessmentHierarchicalView?.refreshLayout();
     setPreviewTreeWidth(Number(elements["preview-tree-resizer"].getAttribute("aria-valuenow")));
-    setRuleAssistanceResponseHeight(ruleAssistanceResponseHeight);
+    setAssistanceSidebarWidth(ruleAssistanceSidebarWidth);
     schedulePreviewBodyVirtualizerRefresh();
   });
 }
@@ -980,24 +985,19 @@ async function loadBundle() {
 }
 
 async function closeWorkbench() {
-  let runtimeConfig;
+  let shutdownConfig;
   try {
-    const configResponse = await fetch("/runtime-config", { cache: "no-store" });
-    if (!configResponse.ok) throw new Error(`Workbench runtime configuration failed with ${configResponse.status}`);
-    runtimeConfig = await configResponse.json();
-    if (!/^[0-9a-f]{64}$/.test(runtimeConfig?.shutdownToken || "") || !/^[0-9a-f]{64}$/.test(runtimeConfig?.operationToken || "")) {
-      throw new Error("Workbench runtime configuration is invalid");
+    const configResponse = await fetch("/shutdown-config", { cache: "no-store" });
+    if (!configResponse.ok) throw new Error(`Workbench shutdown configuration failed with ${configResponse.status}`);
+    shutdownConfig = await configResponse.json();
+    if (!/^[0-9a-f]{64}$/.test(shutdownConfig?.shutdownToken || "")) {
+      throw new Error("Workbench shutdown configuration is invalid");
     }
-    globalThis.__HOSTED_RULE_WORKBENCH__ = runtimeConfig;
   } catch (error) {
     showToast(error.message, true);
     return;
   }
-  const shutdownToken = runtimeConfig.shutdownToken;
-  if (!shutdownToken) {
-    showToast("Workbench shutdown is unavailable.", true);
-    return;
-  }
+  const shutdownToken = shutdownConfig.shutdownToken;
   elements["close-button"].disabled = true;
   try {
     const response = await fetch("/shutdown", {
@@ -1035,7 +1035,14 @@ function validateDisplay(display) {
   if (display.catalog.protectedRuleFiles.some((file) => typeof file.path !== "string" || typeof file.content !== "string" || !file.content || !Array.isArray(file.ruleIds) || file.ruleIds.length === 0)) {
     throw new Error("The Workbench display contains an invalid protected rule file projection.");
   }
-  if (!display.guidanceCapacity || display.guidanceCapacity.reportCount !== 8) {
+  if (!display.guidanceCapacity || !Array.isArray(display.guidanceCapacity.reports)
+    || display.guidanceCapacity.reportCount !== display.guidanceCapacity.reports.length
+    || display.guidanceCapacity.reportCount < 1
+    || new Set(display.guidanceCapacity.reports.map((report) => report.name)).size !== display.guidanceCapacity.reportCount
+    || !/^[a-f0-9]{64}$/.test(display.guidanceCapacity.tokenPolicySha256)
+    || !Number.isInteger(display.guidanceCapacity.safetyMarginPercent)
+    || display.guidanceCapacity.safetyMarginPercent < 0 || display.guidanceCapacity.safetyMarginPercent > 100
+    || !Number.isInteger(display.guidanceCapacity.maximumGuidanceTokens) || display.guidanceCapacity.maximumGuidanceTokens < 1) {
     throw new Error("The Workbench display does not contain all guidance capacity reports.");
   }
   if (!display.reconciliation || display.reconciliation.status !== "ready") {
@@ -1627,7 +1634,17 @@ function renderRuleIssueWording(wording, ruleIds) {
   return `<section class="rule-issue-suggestion ${unresolved ? "rule-issue-wording-unresolved" : ""}"><h3>${escapeHtml(wording.label)}</h3><p>${renderRuleReferences(text, ruleIds)}</p></section>`;
 }
 
-function renderRuleIssueContent(issue, { candidateDetails = false } = {}) {
+function renderRuleIssueResolutionPreview(issue, proposedText) {
+  if (issue.wording.status === "unresolved") return renderRuleIssueWording(issue.wording, issue.ruleIds);
+  const file = createPreviewFile("", "Resolution wording", proposedText.split("\n"), issue.wording.text.split("\n"));
+  return `<section class="rule-issue-resolution-preview" aria-label="Resolution wording preview">
+    <div class="rule-issue-resolution-preview-heading"><h3>${escapeHtml(issue.wording.label)}</h3><span class="preview-change-summary" aria-label="${file.additions} additions and ${file.deletions} deletions"><b>+${file.additions}</b><i>-${file.deletions}</i></span></div>
+    <div class="rule-issue-resolution-columns"><span>Saved Wording</span><span>Recommended Wording</span></div>
+    <div class="preview-contextual-diff">${file.rows.map(row => renderPreviewDiffRow({ type: "line", row })).join("")}</div>
+  </section>`;
+}
+
+function renderRuleIssueContent(issue, { candidateDetails = false, proposedText = null } = {}) {
   const visibleRules = getVisibleRuleIssueRules(issue);
   const ordinaryRelationship = candidateDetails && !issue.blocking && !issue.classification.includes("conflict") && issue.classification !== "contradiction";
   const banner = state.dismissedRuleIssueBannerKeys.has(issue.id) ? "" : `
@@ -1635,6 +1652,7 @@ function renderRuleIssueContent(issue, { candidateDetails = false } = {}) {
   return `
     ${banner}
     <div class="rule-issue-comparison">${visibleRules.map((rule) => renderRuleIssueRule(rule, issue)).join("")}</div>
+    ${candidateDetails && proposedText !== null ? renderRuleIssueResolutionPreview(issue, proposedText) : ""}
     ${candidateDetails ? "" : `<span class="section-label rule-issue-assessment-label">Assessment:</span>
     <section class="rule-issue-assessment"><p>${renderRuleReferences(issue.assessmentSummary, issue.ruleIds)}</p></section>
     ${renderRuleIssueWording(issue.wording, issue.ruleIds)}
@@ -1987,11 +2005,16 @@ function renderManualRelationshipStatus(candidate, proposedText) {
   const attention = getRuleValidationAttention(candidate, proposedText);
   if (attention) {
     const kind = attention.reason === "failed" ? "excluded" : "warning";
-    return `<button class="ui-badge status-capsule relationship-check-status status-badge ${kind} clickable" type="button" data-maintainer-resolution-jump aria-controls="maintainer-resolution-heading" aria-label="${escapeHtml(attention.label)}: go to Maintainer Resolution" data-workbench-tooltip="Go to Maintainer Resolution">${escapeHtml(attention.label)}</button>`;
+    return `<span class="ui-badge status-capsule relationship-check-status status-badge ${kind}">${escapeHtml(attention.label)}</span>`;
   }
   if (validation.status === "unchanged") return '<span class="ui-badge status-capsule relationship-check-status status-badge neutral" data-workbench-tooltip="Current and proposed wording are identical; the original AI assessment is retained.">Unchanged</span>';
   if (validation.status === "reconciled") return '<span class="ui-badge status-capsule relationship-check-status status-badge neutral">Reconciled</span>';
   return '<span class="ui-badge status-capsule relationship-check-status status-badge success">Relationships resolved</span>';
+}
+
+function renderManualRelationshipReviewAction(candidate, proposedText) {
+  const attention = getRuleValidationAttention(candidate, proposedText);
+  return `<div class="manual-relationship-actions" data-relationship-review-actions ${attention ? "" : "hidden"}><button class="button review clickable" type="button" data-maintainer-resolution-jump aria-controls="maintainer-resolution-heading">${icon("git-branch-conflicts")}<span>Review Relationships</span></button></div>`;
 }
 
 function renderManualRelationshipFailure(candidate, proposedText) {
@@ -2087,7 +2110,7 @@ function renderManualRelationshipReviews(candidate, proposedText) {
   if (!check) return "";
   const issues = getOpenRuleIssues().filter((issue) => issue.candidateKeys.includes(candidate.key));
   if (!issues.length) return "";
-  return `<div class="manual-relationship-reviews">${issues.map((issue) => renderRuleIssueContent(issue, { candidateDetails: true })).join("")}</div>`;
+  return `<div class="manual-relationship-reviews">${issues.map((issue) => renderRuleIssueContent(issue, { candidateDetails: true, proposedText })).join("")}</div>`;
 }
 
 function renderMaintainerResolution(candidate, proposedText, dirty = false) {
@@ -2274,6 +2297,8 @@ function syncProposedRuleControls(candidate) {
     : retryable ? "Check saved Hosted rule relationships" : "Save proposed Hosted rule");
   setWorkbenchTooltip(save, save.getAttribute("aria-label"));
   if (status) status.outerHTML = renderManualRelationshipStatus(candidate, textarea.value);
+  const reviewAction = section.querySelector("[data-relationship-review-actions]");
+  if (reviewAction) reviewAction.outerHTML = renderManualRelationshipReviewAction(candidate, textarea.value);
   const resolution = section.querySelector("[data-maintainer-resolution]");
   if (resolution) resolution.outerHTML = renderMaintainerResolution(candidate, textarea.value, dirty);
   syncRelationshipCheckProgress(candidate);
@@ -2832,7 +2857,7 @@ function calculateImpact(factors) {
 
 function estimateGuardedTokens(text) {
   const estimated = Math.ceil(String(text || "").length / 4);
-  return Math.ceil(estimated * 1.25);
+  return Math.ceil(estimated * (1 + state.bundle.guidanceCapacity.safetyMarginPercent / 100));
 }
 
 function getAssessmentTokenValue(candidate, assessment, decision = getDecision(candidate)) {
@@ -4074,75 +4099,109 @@ function validateRuleAssistanceWaitingPhrases(phrases) {
   return phrases;
 }
 
-function setRuleAssistanceResponseHeight(value) {
-  const maximum = Math.max(ASSISTANCE_RESPONSE_MIN_HEIGHT, document.documentElement.clientHeight);
-  ruleAssistanceResponseHeight = Math.round(Math.max(ASSISTANCE_RESPONSE_MIN_HEIGHT, Math.min(maximum, value)));
-  const handle = elements["assessment-panel"].querySelector("[data-assist-response-resizer]");
-  if (!handle) return;
-  handle.parentElement.style.setProperty("--assist-chat-response-height", `${ruleAssistanceResponseHeight}px`);
-  handle.setAttribute("aria-valuemax", String(maximum));
-  handle.setAttribute("aria-valuenow", String(ruleAssistanceResponseHeight));
-  handle.setAttribute("aria-valuetext", `Conversation height ${ruleAssistanceResponseHeight} pixels`);
-}
-
-function finishRuleAssistanceResize() {
-  const resize = ruleAssistanceResponseResize;
-  if (!resize) return;
-  ruleAssistanceResponseResize = null;
-  resize.handle.parentElement.classList.remove("assist-chat-response-resizing");
-  if (resize.handle.hasPointerCapture(resize.pointerId)) resize.handle.releasePointerCapture(resize.pointerId);
-}
-
-function handleRuleAssistanceResizeStart(event) {
-  const handle = event.target.closest("[data-assist-response-resizer]");
-  if (!handle || event.button !== 0 || ruleAssistanceResponseResize) return;
-  ruleAssistanceResponseResize = {
-    handle, pointerId: event.pointerId, startY: event.clientY,
-    startHeight: handle.parentElement.getBoundingClientRect().height
-  };
-  handle.setPointerCapture(event.pointerId);
-  handle.parentElement.classList.add("assist-chat-response-resizing");
-  event.preventDefault();
-}
-
-function handleRuleAssistanceResizeMove(event) {
-  const resize = ruleAssistanceResponseResize;
-  if (!resize || event.pointerId !== resize.pointerId) return;
-  setRuleAssistanceResponseHeight(resize.startHeight + event.clientY - resize.startY);
-}
-
-function handleRuleAssistanceResizeEnd(event) {
-  if (event.pointerId === ruleAssistanceResponseResize?.pointerId) finishRuleAssistanceResize();
-}
-
-function handleRuleAssistanceResizeKeyboard(event) {
-  if (!event.target.matches("[data-assist-response-resizer]") || !["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-  event.preventDefault();
-  setRuleAssistanceResponseHeight(event.key === "Home"
-    ? ASSISTANCE_RESPONSE_MIN_HEIGHT
-    : event.key === "End"
-      ? document.documentElement.clientHeight
-      : ruleAssistanceResponseHeight + (event.key === "ArrowUp" ? -ASSISTANCE_RESPONSE_KEYBOARD_STEP : ASSISTANCE_RESPONSE_KEYBOARD_STEP));
+function syncRuleAssistanceScrollControl() {
+  const root = elements["assist-sidebar-content"].querySelector("[data-rule-assistance]");
+  const transcript = root?.querySelector(".assist-chat-response");
+  const button = root?.querySelector("[data-assist-scroll-latest]");
+  if (transcript && button) button.hidden = transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop <= 4;
 }
 
 function setRuleAssistanceCandidate(candidate) {
-  if (ruleAssistance?.candidateKey === candidate?.key) return;
+  if (ruleAssistance?.candidateKey === candidate?.key) {
+    if (!elements["assist-sidebar-content"].hasChildNodes()) renderRuleAssistanceSidebar();
+    else syncRuleAssistanceVisibility();
+    return;
+  }
   ruleAssistance?.active?.controller.abort();
   ruleAssistance = candidate ? { candidateKey: candidate.key, input: "", turns: [], active: null, followOutput: true, scrollTop: 0 } : null;
+  renderRuleAssistanceSidebar();
+}
+
+function getRuleAssistanceCandidate() {
+  return state.assessedCandidates.find(candidate => candidate.key === ruleAssistance?.candidateKey) || null;
+}
+
+function renderRuleAssistanceSidebar() {
+  const candidate = getRuleAssistanceCandidate();
+  elements["assist-sidebar-content"].innerHTML = candidate ? renderRuleAssistance(candidate)
+    : '<div class="empty-state compact"><h2>AI Assistance</h2><p>No candidate selected.</p></div>';
+  syncRuleAssistanceVisibility();
+  requestAnimationFrame(syncRuleAssistanceScrollControl);
 }
 
 function setRuleAssistanceExpanded(expanded) {
   ruleAssistanceExpanded = expanded;
-  const root = elements["assessment-panel"].querySelector("[data-rule-assistance]");
-  if (!root) return;
-  root.querySelector("[data-assist-body]").hidden = !expanded;
-  const toggle = root.querySelector("[data-assist-toggle]");
-  const label = `${expanded ? "Collapse" : "Expand"} AI assistance`;
+  syncRuleAssistanceVisibility();
+}
+
+function syncRuleAssistanceVisibility() {
+  const candidate = getRuleAssistanceCandidate();
+  const available = state.currentView === "catalog" && Boolean(candidate) && (
+    (state.workspaceTab === "candidate-sources" && state.candidatePane === "details" && !state.activeProtectedRuleId && candidate.key === state.activeKey)
+    || (state.workspaceTab === "assessment-results" && state.assessmentPane === "details" && candidate.key === state.assessmentActiveKey)
+  );
+  const expanded = available && ruleAssistanceExpanded;
+  const transcript = elements["assist-sidebar-content"].querySelector(".assist-chat-response");
+  if (!expanded && !elements["rule-assistance-panel"].hidden && ruleAssistance && transcript) ruleAssistance.scrollTop = transcript.scrollTop;
+  if (!expanded) finishAssistanceSidebarResize();
+  elements["rule-assistance-panel"].hidden = !expanded;
+  document.querySelector(".app-shell").classList.toggle("assist-sidebar-open", expanded);
+  const toggle = elements["assist-panel-toggle"];
+  const controls = document.getElementById(state.workspaceTab === "assessment-results" ? "assessment-assistance-controls" : "candidate-assistance-controls");
+  if (toggle.parentElement !== controls) controls.appendChild(toggle);
+  toggle.disabled = !available;
+  const label = `${expanded ? "Hide" : "Show"} AI assistance`;
   toggle.setAttribute("aria-expanded", String(expanded));
+  toggle.setAttribute("aria-pressed", String(expanded));
   toggle.setAttribute("aria-label", label);
   setWorkbenchTooltip(toggle, label);
-  toggle.innerHTML = icon(expanded ? "chevron-up" : "chevron-down");
-  root.querySelector(".assist-header-controls").classList.toggle("expanded", expanded);
+  toggle.innerHTML = icon(expanded ? "layout-sidebar-right" : "layout-sidebar-right-off");
+  if (expanded) requestAnimationFrame(() => {
+    const response = elements["assist-sidebar-content"].querySelector(".assist-chat-response");
+    if (response && ruleAssistance) response.scrollTop = ruleAssistance.followOutput ? response.scrollHeight : ruleAssistance.scrollTop;
+    syncRuleAssistanceScrollControl();
+  });
+}
+
+function setAssistanceSidebarWidth(value) {
+  const maximum = Math.max(320, Math.min(680, document.documentElement.clientWidth - 400));
+  ruleAssistanceSidebarWidth = Math.round(Math.max(320, Math.min(maximum, value)));
+  document.documentElement.style.setProperty("--assist-sidebar-width", `${ruleAssistanceSidebarWidth}px`);
+  const handle = elements["assist-sidebar-resizer"];
+  handle.setAttribute("aria-valuemax", String(maximum));
+  handle.setAttribute("aria-valuenow", String(ruleAssistanceSidebarWidth));
+  handle.setAttribute("aria-valuetext", `Panel width ${ruleAssistanceSidebarWidth} pixels`);
+  requestAnimationFrame(syncRuleAssistanceScrollControl);
+}
+
+function handleAssistanceSidebarResizeStart(event) {
+  if (event.button !== 0 || ruleAssistanceSidebarResize) return;
+  event.preventDefault();
+  const handle = elements["assist-sidebar-resizer"];
+  ruleAssistanceSidebarResize = { pointerId: event.pointerId, start: event.clientX, width: ruleAssistanceSidebarWidth };
+  handle.setPointerCapture(event.pointerId);
+}
+
+function handleAssistanceSidebarResizeMove(event) {
+  const resize = ruleAssistanceSidebarResize;
+  if (!resize || resize.pointerId !== event.pointerId) return;
+  setAssistanceSidebarWidth(resize.width + resize.start - event.clientX);
+}
+
+function finishAssistanceSidebarResize() {
+  const resize = ruleAssistanceSidebarResize;
+  if (!resize) return;
+  ruleAssistanceSidebarResize = null;
+  const handle = elements["assist-sidebar-resizer"];
+  if (handle.hasPointerCapture(resize.pointerId)) handle.releasePointerCapture(resize.pointerId);
+}
+
+function handleAssistanceSidebarResizeKeyboard(event) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const maximum = Number(elements["assist-sidebar-resizer"].getAttribute("aria-valuemax"));
+  setAssistanceSidebarWidth(event.key === "Home" ? 320 : event.key === "End" ? maximum
+    : ruleAssistanceSidebarWidth + (event.key === "ArrowLeft" ? 16 : -16));
 }
 
 function closeRuleAssistanceNavigation(record, restoreFocus = false) {
@@ -4183,7 +4242,7 @@ function confirmRuleAssistanceNavigation(proceed) {
   dialog.setAttribute("aria-labelledby", "assist-navigation-title");
   dialog.setAttribute("aria-describedby", "assist-navigation-description");
   dialog.innerHTML = `<div class="modal-dialog-heading"><div class="modal-dialog-title">${fluentIcon("warning-20-regular")}<h2 id="assist-navigation-title">AI Request in Progress</h2></div><button class="titlebar-icon clickable" type="button" data-assist-navigation-allow aria-label="Close request navigation confirmation" data-workbench-tooltip="Close">${icon("close")}</button></div>
-    <div class="modal-dialog-content"><p id="assist-navigation-description">An AI request for <strong class="rule-reference">${escapeHtml(getEffectiveHostedRuleId(getActiveCandidate()))}</strong> is still running. Switching rules will cancel the current AI rule request before completion.</p>
+    <div class="modal-dialog-content"><p id="assist-navigation-description">An AI request for <strong class="rule-reference">${escapeHtml(getEffectiveHostedRuleId(getRuleAssistanceCandidate()))}</strong> is still running. Switching rules will cancel the current AI rule request before completion.</p>
     <div class="modal-dialog-actions assist-navigation-actions"><button class="button primary clickable" type="button" data-assist-navigation-allow>${icon("play-circle")}<span>Allow Request to Complete</span></button><button class="button destructive clickable" type="button" data-assist-navigation-cancel>${icon("stop-circle")}<span>Cancel Request</span></button></div></div>`;
   const record = { active, proceed, dialog, trigger: document.activeElement };
   pendingRuleAssistanceNavigation = record;
@@ -4211,7 +4270,10 @@ function confirmRuleAssistanceNavigation(proceed) {
 }
 
 function getAssistanceEditorText() {
-  return elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value;
+  const candidate = getRuleAssistanceCandidate();
+  if (!candidate) return undefined;
+  const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+  return editor?.dataset.proposedCandidateKey === candidate.key ? editor.value : getDecision(candidate).proposedText;
 }
 
 function renderAssistanceSendIcon(running) {
@@ -4243,7 +4305,6 @@ function renderRuleAssistance(candidate) {
   const chat = ruleAssistance;
   const profile = globalThis.__HOSTED_RULE_WORKBENCH__?.ruleAssistance;
   const running = Boolean(chat.active);
-  const failed = !running && Boolean(chat.turns.at(-1)?.failed && !chat.turns.at(-1)?.errorDismissed);
   const ready = Boolean(chat.input.trim() && profile?.model);
   const model = profile?.model === "gpt-6.1-sol" ? "GPT-6.1 Sol"
     : profile?.model === "gpt-5.4" ? "GPT-5.4" : profile?.model || "Unavailable";
@@ -4251,26 +4312,28 @@ function renderRuleAssistance(candidate) {
     <div class="assist-chat-user-message">${escapeHtml(turn.question)}</div>
     ${turn.answer ? `<div class="assist-chat-ai-message">
       <div class="assist-chat-message-author">Completed in ${escapeHtml(turn.duration)}</div>
-      <div class="assist-chat-message-text">${escapeHtml(turn.answer.message)}</div>
       ${renderAssistanceContextNote(`Context: ${formatCountLabel(turn.answer.catalogRuleIds.length, "active or protected Hosted rule")}. Catalog snapshot only; other draft and Plan changes are not included.`)}
-      ${turn.answer.suggestedWording ? `<details class="assist-chat-suggestion">
-        <summary class="clickable">Review suggested wording<span class="assist-chat-suggestion-chevron" aria-hidden="true">${icon("chevron-down")}${icon("chevron-up")}</span></summary>
-        ${renderInformationPanel("<p>Only fills the editor. Review and Save through the existing validation flow.</p>", { className: "assist-chat-suggestion-guidance" })}
-        <pre class="evidence-box scroll-surface">${escapeHtml(turn.answer.suggestedWording)}</pre>
-        <button class="button clickable" type="button" data-assist-use="${index}" ${running ? "disabled" : ""}>Use wording in editor</button>
-      </details>` : ""}
+      <div class="assist-chat-message-text">${escapeHtml(turn.answer.message)}</div>
+      ${turn.answer.suggestedWording ? `<section class="assist-chat-inline-wording">
+        <p>I suggest updating the rule to:</p>
+        <div class="assist-chat-wording-block">
+          <pre class="evidence-box">${escapeHtml(turn.answer.suggestedWording)}</pre>
+          <div class="assist-chat-floating-toolbar" role="toolbar" aria-label="Suggested wording actions">
+            <button class="titlebar-icon clickable assist-chat-floating-action" type="button" data-assist-copy="${index}" aria-label="Copy suggested rule wording" data-workbench-tooltip="Copy suggested wording">${icon("copy")}</button>
+          </div>
+        </div>
+      </section>` : ""}
     </div>` : ""}
     ${turn.failed ? renderRuleAssistanceError(turn, index) : turn.status ? `<div class="assist-chat-operation-message" role="status">${chat.active?.turn === turn ? renderShimmerHeading(turn.status) : escapeHtml(turn.status)}</div>` : ""}
   `).join("");
   const waiting = running ? renderWaitingPanel({ title: chat.active.turn.status, body: "Preparing rule assistance." })
     .replace('class="waiting-panel"', 'class="waiting-panel assist-chat-animation-layer" aria-hidden="true"') : "";
-  return `<section class="section-block rule-assistance" data-rule-assistance>
-    <div class="assist-header"><span class="section-label">AI Assistance:</span><div class="assist-header-controls${ruleAssistanceExpanded ? " expanded" : ""}">
-      <span class="assist-header-slot"><span class="assist-header-working" role="status" aria-label="Working..." data-workbench-tooltip="Working..." ${running ? "" : "hidden"}><span class="waiting-panel-spinner" aria-hidden="true"></span></span></span>
-      <span class="assist-header-slot"><button class="titlebar-icon clickable" type="button" data-assist-header-cancel aria-label="Cancel request" data-workbench-tooltip="Cancel request" ${running ? "" : "hidden"}>${icon("stop-circle")}</button><button class="titlebar-icon clickable assist-header-error" type="button" data-assist-error aria-label="The request encountered an error. Open AI assistance" data-workbench-tooltip="The request encountered an error." aria-controls="rule-assistance-body" ${failed ? "" : "hidden"}>${icon("error")}</button></span>
-      <button class="titlebar-icon clickable evidence-disclosure-toggle" type="button" data-assist-toggle aria-label="${ruleAssistanceExpanded ? "Collapse" : "Expand"} AI assistance" data-workbench-tooltip="${ruleAssistanceExpanded ? "Collapse" : "Expand"} AI assistance" aria-controls="rule-assistance-body" aria-expanded="${ruleAssistanceExpanded}">${icon(ruleAssistanceExpanded ? "chevron-up" : "chevron-down")}</button>
+  return `<section class="rule-assistance" data-rule-assistance>
+    <div class="assist-header"><span class="section-label">AI Assistance:</span><div class="assist-sidebar-heading-actions">
+      <span class="assist-header-working" role="status" aria-label="Working..." data-workbench-tooltip="Working..." ${running ? "" : "hidden"}><span class="waiting-panel-spinner" aria-hidden="true"></span></span>
+      <button class="titlebar-icon clickable" type="button" data-assist-header-cancel aria-label="Cancel request" data-workbench-tooltip="Cancel request" ${running ? "" : "hidden"}>${icon("stop-circle")}</button>
     </div></div>
-    <div id="rule-assistance-body" data-assist-body ${ruleAssistanceExpanded ? "" : "hidden"}>
+    <div id="rule-assistance-body" data-assist-body>
     ${renderInformationPanel(`<p>${profile?.model ? "This response is AI-generated. Please review it for accuracy and relevance before use." : "AI assistance is unavailable. Restart the Workbench with the current source."}</p>`, { className: "section-guidance" })}
     <div class="assist-chat-reply-window">
       <div class="assist-chat-conversation-toolbar">
@@ -4278,7 +4341,7 @@ function renderRuleAssistance(candidate) {
         <button class="titlebar-icon clickable assist-chat-clear-conversation" type="button" data-assist-clear aria-label="Clear conversation" data-workbench-tooltip="Clear conversation" ${running || !chat.turns.length ? "disabled" : ""}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M4 9h12M4 13h5M12 12l4 4m0-4-4 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <div class="assist-chat-response scroll-surface" id="rule-assistance-conversation" role="region" aria-label="AI assistance conversation">${messages}</div>
-      <div class="assist-chat-response-resizer" data-assist-response-resizer tabindex="0" role="separator" aria-orientation="horizontal" aria-label="Resize AI assistance conversation" aria-controls="rule-assistance-conversation" aria-valuemin="${ASSISTANCE_RESPONSE_MIN_HEIGHT}" aria-valuemax="${Math.max(ASSISTANCE_RESPONSE_MIN_HEIGHT, document.documentElement.clientHeight)}" aria-valuenow="${ruleAssistanceResponseHeight}" aria-valuetext="Conversation height ${ruleAssistanceResponseHeight} pixels" title="Drag to resize conversation; Arrow Up or Arrow Down also adjusts the height"></div>
+      <button class="assist-chat-scroll-latest clickable" type="button" data-assist-scroll-latest aria-label="Scroll to latest reply" data-workbench-tooltip="Scroll to latest reply" aria-controls="rule-assistance-conversation" hidden>${icon("chevron-down")}</button>
     </div>
     <div class="assist-chat-composer ${running ? "assist-chat-running" : ""}">
       ${waiting}
@@ -4296,25 +4359,21 @@ function renderRuleAssistance(candidate) {
 }
 
 function syncRuleAssistance() {
-  const root = elements["assessment-panel"].querySelector("[data-rule-assistance]");
-  const candidate = getActiveCandidate();
-  if (!root || !ruleAssistance || candidate?.key !== ruleAssistance.candidateKey) return;
-  finishRuleAssistanceResize();
+  const root = elements["assist-sidebar-content"].querySelector("[data-rule-assistance]");
+  const candidate = getRuleAssistanceCandidate();
+  if (!root || !candidate) { renderRuleAssistanceSidebar(); return; }
   const transcript = root.querySelector(".assist-chat-response");
   const focus = root.contains(document.activeElement);
-  const focusedHeaderControl = document.activeElement?.closest(".assist-header-controls")
-    ? ["data-assist-toggle", "data-assist-header-cancel", "data-assist-error"].find((name) => document.activeElement.hasAttribute(name)) : null;
-  const resizerFocused = document.activeElement?.matches("[data-assist-response-resizer]");
+  const cancelFocused = document.activeElement?.matches("[data-assist-header-cancel]");
   const position = [root.querySelector(".assist-goal").selectionStart, root.querySelector(".assist-goal").selectionEnd];
   const scrollTop = transcript.scrollTop;
   root.outerHTML = renderRuleAssistance(candidate);
-  const updated = elements["assessment-panel"].querySelector("[data-rule-assistance]");
-  setRuleAssistanceResponseHeight(ruleAssistanceResponseHeight);
+  const updated = elements["assist-sidebar-content"].querySelector("[data-rule-assistance]");
   const response = updated.querySelector(".assist-chat-response");
   response.scrollTop = ruleAssistance.followOutput ? response.scrollHeight : scrollTop;
-  if (focus) {
-    const headerControl = focusedHeaderControl && updated.querySelector(`[${focusedHeaderControl}]:not([hidden])`);
-    const input = headerControl || updated.querySelector(!ruleAssistanceExpanded ? "[data-assist-toggle]" : resizerFocused ? "[data-assist-response-resizer]" : ".assist-goal");
+  syncRuleAssistanceScrollControl();
+  if (focus && ruleAssistanceExpanded) {
+    const input = cancelFocused && updated.querySelector("[data-assist-header-cancel]:not([hidden])") || updated.querySelector(".assist-goal");
     input.focus({ preventScroll: true });
     if (input.matches(".assist-goal")) input.setSelectionRange(...position);
   }
@@ -4323,7 +4382,7 @@ function syncRuleAssistance() {
 
 async function sendRuleAssistance(retryTurn = null) {
   const chat = ruleAssistance;
-  const candidate = getActiveCandidate();
+  const candidate = getRuleAssistanceCandidate();
   if (!chat || chat.active || candidate?.key !== chat.candidateKey || (retryTurn ? !canRetryRuleAssistance(retryTurn) : !chat.input.trim())) return;
   const proposedText = getAssistanceEditorText();
   const controller = new AbortController();
@@ -4424,11 +4483,6 @@ async function handleRuleAssistanceClick(event) {
   } else if (retry) {
     const turn = chat.turns[Number(retry.dataset.assistErrorRetry)];
     if (canRetryRuleAssistance(turn)) await sendRuleAssistance(turn);
-  } else if (event.target.closest("[data-assist-toggle]")) {
-    setRuleAssistanceExpanded(!ruleAssistanceExpanded);
-  } else if (event.target.closest("[data-assist-error]")) {
-    setRuleAssistanceExpanded(true);
-    elements["assessment-panel"].querySelector("[data-assist-toggle]").focus({ preventScroll: true });
   } else if (event.target.closest("[data-assist-header-cancel]")) {
     cancelRuleAssistance();
   } else if (event.target.closest("[data-assist-clear]") && !chat.active) {
@@ -4439,28 +4493,32 @@ async function handleRuleAssistanceClick(event) {
     if (chat.active) {
       cancelRuleAssistance();
     } else await sendRuleAssistance();
-  } else if (event.target.closest("[data-assist-use]")) {
-    const turn = chat.turns[Number(event.target.closest("[data-assist-use]").dataset.assistUse)];
-    if (!turn?.answer?.suggestedWording || chat.active) return;
+  } else if (event.target.closest("[data-assist-scroll-latest]")) {
+    const transcript = elements["assist-sidebar-content"].querySelector(".assist-chat-response");
+    if (!transcript) return;
+    transcript.scrollTop = transcript.scrollHeight;
+    chat.scrollTop = transcript.scrollTop;
+    chat.followOutput = true;
+    syncRuleAssistanceScrollControl();
+  } else if (event.target.closest("[data-assist-copy]")) {
+    const button = event.target.closest("[data-assist-copy]");
+    const turn = chat.turns[Number(button.dataset.assistCopy)];
+    if (!turn?.answer?.suggestedWording) return;
     try {
-      const config = await loadSavedRuleRuntimeConfig();
-      if (ruleAssistance !== chat || chat.active || !chat.turns.includes(turn)
-        || config.ruleAssistance?.authoritySha256 !== turn.answer.authoritySha256 || getAssistanceEditorText() !== turn.proposedText) {
-        throw new Error("The rule or assistance context changed. Ask for an updated suggestion before using this wording.");
-      }
-      const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
-      editor.value = turn.answer.suggestedWording;
-      editor.dispatchEvent(new Event("input", { bubbles: true }));
-      editor.scrollIntoView({ block: "nearest" });
-      editor.focus({ preventScroll: true });
-      showToast("Suggested wording is in the editor. Review and Save to validate it.");
-    } catch (error) { showToast(error.message); }
+      await navigator.clipboard.writeText(turn.answer.suggestedWording);
+      button.innerHTML = icon("check");
+      button.setAttribute("aria-label", "Suggested rule wording copied");
+      button.dataset.workbenchTooltip = "Copied";
+    } catch {
+      button.innerHTML = icon("copy");
+      button.setAttribute("aria-label", "Unable to copy suggested rule wording");
+      button.dataset.workbenchTooltip = "Unable to copy";
+    }
   }
 }
 
 function renderAssessment() {
-  finishRuleAssistanceResize();
-  setRuleAssistanceCandidate(getActiveCandidate());
+  if (!ruleAssistance) setRuleAssistanceCandidate(getActiveCandidate());
   const protectedRule = getActiveProtectedRule();
   if (protectedRule) {
     renderProtectedRuleDetails(protectedRule);
@@ -4508,7 +4566,6 @@ function renderAssessment() {
       ${renderEvidenceDisclosure(candidate, "sources", "Source Rules", candidate.members.length, renderContributingRules(candidate))}
       <div class="section-block" data-assessment-evidence>${renderAssessmentEvidence(candidate, assessment, decision)}</div>
 
-      ${renderRuleAssistance(candidate)}
       <div class="section-block hosted-rule-comparison">
         ${renderCurrentHostedRules(catalogStatus)}
         <div class="proposed-rule-heading">
@@ -4524,6 +4581,7 @@ function renderAssessment() {
         </div>
         <div data-proposed-rule-explanation ${getRuleValidationAttention(candidate, decision.proposedText) ? "hidden" : ""}>${getRuleValidationAttention(candidate, decision.proposedText) ? "" : renderAssessmentExplanation(candidate, assessment)}</div>
         <label><textarea class="evidence-box proposed-rule scroll-surface" data-decision-field="proposedText" data-proposed-candidate-key="${escapeHtml(candidate.key)}" aria-label="Proposed Hosted rule wording">${escapeHtml(decision.proposedText || "")}</textarea></label>
+        ${renderManualRelationshipReviewAction(candidate, decision.proposedText)}
         ${renderMaintainerResolution(candidate, decision.proposedText)}
       </div>
 
@@ -4582,9 +4640,6 @@ function renderAssessment() {
     ${renderRuleActionResolutionDialog(candidate)}
   `;
   syncProposedRuleControls(candidate);
-  setRuleAssistanceResponseHeight(ruleAssistanceResponseHeight);
-  const transcript = elements["assessment-panel"].querySelector(".assist-chat-response");
-  transcript.scrollTop = ruleAssistance.followOutput ? transcript.scrollHeight : ruleAssistance.scrollTop;
 }
 
 function renderAssessmentEvidence(candidate, assessment, decision) {
@@ -4652,7 +4707,7 @@ function undoDecision(candidate) {
   });
 }
 
-function handleAssessmentInput(event) {
+function handleRuleAssistanceInput(event) {
   if (event.target.matches(".assist-goal") && ruleAssistance) {
     ruleAssistance.input = event.target.value;
     const button = event.target.closest("[data-rule-assistance]").querySelector("[data-assist-send]");
@@ -4662,6 +4717,9 @@ function handleAssessmentInput(event) {
     button.classList.toggle("clickable", ready);
     return;
   }
+}
+
+function handleAssessmentInput(event) {
   const candidate = getActiveCandidate();
   if (!candidate) return;
   if (event.target.dataset.ruleAction) {
@@ -4735,7 +4793,7 @@ function handleAssessmentInput(event) {
     event.target.value = value;
     if (event.target.dataset.decisionField === "proposedText") {
       restoreOriginalRuleProposal(candidate, value);
-      elements["assessment-panel"].querySelectorAll("[data-assist-error-retry]").forEach(button => {
+      elements["assist-sidebar-content"].querySelectorAll("[data-assist-error-retry]").forEach(button => {
         button.disabled = !canRetryRuleAssistance(ruleAssistance?.turns[Number(button.dataset.assistErrorRetry)]);
       });
       syncAssessmentEvaluation(candidate);
@@ -4761,8 +4819,10 @@ function handleDetailBackToTopClick(event) {
 function handleDetailContentScroll(event) {
   const content = event.target;
   if (content instanceof Element && content.matches(".assist-chat-response") && ruleAssistance) {
+    if (!ruleAssistanceExpanded) return;
     ruleAssistance.scrollTop = content.scrollTop;
     ruleAssistance.followOutput = content.scrollHeight - content.clientHeight - content.scrollTop <= 4;
+    syncRuleAssistanceScrollControl();
     return;
   }
   if (!(content instanceof Element) || !content.matches(".assessment-content")) return;
@@ -5285,7 +5345,11 @@ function getGuidanceCapacityProjection() {
   });
   const currentGuardedTokens = buckets.reduce((sum, bucket) => sum + bucket.currentGuardedTokens, 0);
   const draftDeltaTokens = buckets.reduce((sum, bucket) => sum + bucket.draftDeltaTokens, 0);
-  const budgetTokens = buckets.reduce((sum, bucket) => sum + bucket.budgetTokens, 0);
+  const bucketNames = new Set(buckets.map((bucket) => bucket.reportName));
+  const reservedTokens = getCapacityReports().filter((report) => report.kind === "file" && !bucketNames.has(report.name))
+    .reduce((sum, report) => sum + report.guardedTokens, 0);
+  const budgetTokens = Math.min(buckets.reduce((sum, bucket) => sum + bucket.budgetTokens, 0),
+    state.bundle.guidanceCapacity.maximumGuidanceTokens - reservedTokens);
   return {
     buckets,
     currentGuardedTokens,
@@ -5297,14 +5361,10 @@ function getGuidanceCapacityProjection() {
 }
 
 function getProjectedCapacityDelta(report) {
-  const reportSurfaces = {
-    "go-combined": new Set(["repository", "implementation", "review-skill"]),
-    "test-combined": new Set(["repository", "implementation", "testing", "review-skill"]),
-    "documentation-combined": new Set(["repository", "documentation", "review-skill"])
-  }[report.name];
-  if (!reportSurfaces) return 0;
-  return getPlanCandidates().reduce((sum, candidate) => {
-    return getPlanAffectedSurfaces(candidate).some((surface) => reportSurfaces.has(surface)) ? sum + getPlanTokenDelta(candidate) : sum;
+  const paths = new Set(report.paths);
+  const fileReports = new Map(getCapacityReports().filter((item) => item.kind === "file").map((item) => [item.name, item]));
+  return getGuidanceCapacityProjection().buckets.reduce((sum, bucket) => {
+    return fileReports.get(bucket.reportName).paths.some((path) => paths.has(path)) ? sum + bucket.draftDeltaTokens : sum;
   }, 0);
 }
 
@@ -5535,7 +5595,7 @@ function alignPreviewLines(beforeLines, afterLines) {
   const appendChanges = (before, after) => {
     const count = Math.max(before.length, after.length);
     for (let index = 0; index < count; index += 1) {
-      rows.push({ changed: true, oldText: before[index], oldLine: before[index] === undefined ? undefined : beforeLine++, newText: after[index], newLine: after[index] === undefined ? undefined : afterLine++ });
+      rows.push({ changed: before[index] !== after[index], oldText: before[index], oldLine: before[index] === undefined ? undefined : beforeLine++, newText: after[index], newLine: after[index] === undefined ? undefined : afterLine++ });
     }
   };
   while (beforeIndex < beforeLines.length || afterIndex < afterLines.length) {
@@ -6222,10 +6282,11 @@ function syncCandidateTreeAggregates() {
 }
 
 function selectCandidate(key, rationaleReturnView = null) {
-  if (state.activeKey !== key && !confirmRuleAssistanceNavigation(() => selectCandidate(key, rationaleReturnView))) return;
+  if (ruleAssistance?.candidateKey !== key && !confirmRuleAssistanceNavigation(() => selectCandidate(key, rationaleReturnView))) return;
   state.activeKey = key;
   state.activeProtectedRuleId = null;
   state.rationaleReturnView = rationaleReturnView;
+  setRuleAssistanceCandidate(getActiveCandidate());
   syncCandidateTreeRows();
   renderAssessment();
   refreshPresentation();
@@ -6235,6 +6296,7 @@ function selectProtectedRule(id) {
   if (state.activeProtectedRuleId !== id && !confirmRuleAssistanceNavigation(() => selectProtectedRule(id))) return;
   state.activeKey = null;
   state.activeProtectedRuleId = id;
+  setRuleAssistanceCandidate(null);
   candidateHierarchicalView?.refresh();
   renderAssessment();
   refreshPresentation();
@@ -6252,6 +6314,7 @@ function showCandidatePane(pane) {
     button.setAttribute("aria-selected", String(active));
   });
   if (!detailsActive) candidateHierarchicalView?.refreshLayout();
+  syncRuleAssistanceVisibility();
 }
 
 function updateFilter(value) {
@@ -6316,8 +6379,10 @@ function handleStatusNavigation(event) {
 }
 
 function selectAssessmentResult(key) {
+  if (ruleAssistance?.candidateKey !== key && !confirmRuleAssistanceNavigation(() => selectAssessmentResult(key))) return;
   if (state.assessmentActiveKey !== key) state.assessmentOverrideEditingKey = null;
   state.assessmentActiveKey = key;
+  setRuleAssistanceCandidate(state.assessedCandidates.find(candidate => candidate.key === key) || null);
   syncAssessmentResultRows();
   renderAssessmentResultDetail();
   refreshPresentation();
@@ -6356,12 +6421,19 @@ function showAssessmentPane(pane) {
     button.setAttribute("aria-selected", String(active));
   });
   if (!detailsActive) assessmentHierarchicalView?.refreshLayout();
+  syncRuleAssistanceVisibility();
 }
 
 function setWorkspaceTab(tab) {
   if (!["candidate-sources", "assessment-results", "rule-issues"].includes(tab)) return;
+  const key = tab === "candidate-sources" ? state.activeKey : tab === "assessment-results" ? state.assessmentActiveKey : null;
+  const protectedTarget = tab === "candidate-sources" && Boolean(state.activeProtectedRuleId);
+  if (((key && ruleAssistance?.candidateKey !== key) || (protectedTarget && ruleAssistance))
+    && !confirmRuleAssistanceNavigation(() => setWorkspaceTab(tab))) return;
   dismissNotification();
   state.workspaceTab = tab;
+  if (protectedTarget) setRuleAssistanceCandidate(null);
+  else if (key) setRuleAssistanceCandidate(state.assessedCandidates.find(candidate => candidate.key === key) || null);
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
     const active = button.dataset.workspaceTab === tab;
     button.classList.toggle("active", active);
@@ -6696,6 +6768,7 @@ function showToast(message, error = false) {
 }
 
 function refreshPresentation() {
+  syncRuleAssistanceVisibility();
   scheduleTruncationTooltips();
 }
 

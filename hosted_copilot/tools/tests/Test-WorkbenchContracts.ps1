@@ -11,8 +11,8 @@ $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $validationOutputModulePath = Join-Path $repositoryRoot 'tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputModulePath -Force
 $catalogRoot = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog'
-$reconciliationRoot = Join-Path $catalogRoot 'assessment-reconciliation'
-$assessmentRoot = Join-Path $catalogRoot 'rule-assessments'
+$reconciliationRoot = Join-Path $catalogRoot '../contracts/reconciliation'
+$assessmentRoot = Join-Path $catalogRoot '../contracts/assessment'
 $results = [Collections.Generic.List[object]]::new()
 $issues = [Collections.Generic.List[string]]::new()
 
@@ -66,20 +66,9 @@ function Write-TestProgress {
     }
 }
 
-$capacityReports = @('repository', 'go', 'test', 'documentation', 'skill', 'go-combined', 'test-combined', 'documentation-combined') | ForEach-Object {
-    [ordered]@{
-        name = $_
-        kind = if ($_ -like '*-combined') { 'combined' } else { 'file' }
-        paths = @("fixture/$_.md")
-        characterCount = 400
-        estimatedTokens = 100
-        guardedTokens = 125
-        budgetTokens = 1000
-        budgetHeadroomTokens = 875
-        utilizationPercent = 12.5
-        withinBudget = $true
-    }
-}
+$capacityOutput = @(& pwsh -NoProfile -File (Join-Path $PSScriptRoot '../internal/workbench/Get-GuidanceCapacity.ps1') -OutputFormat Json)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot construct the policy-bound capacity fixture' }
+$guidanceCapacityFixture = ($capacityOutput | Out-String) | ConvertFrom-Json -Depth 50
 $assessment = [ordered]@{
     id = 'validate-rule'
     title = 'Validate rule'
@@ -194,16 +183,10 @@ $display = [ordered]@{
             ruleIds = @('IMPL-WF-000')
         })
     }
-    guidanceCapacity = [ordered]@{
-        status = 'passed'
-        estimator = 'character-quarter-estimate-25pct-v1'
-        safetyMarginPercent = 25
-        reportCount = 8
-        reports = $capacityReports
-    }
+    guidanceCapacity = $guidanceCapacityFixture
 }
 Write-TestProgress -Name 'display-contract' -Detail 'Validating display candidates, catalog lifecycle, capacity, and authority boundaries'
-$displaySchemaPath = Join-Path $reconciliationRoot 'workbench-display-v4.schema.json'
+$displaySchemaPath = Join-Path $reconciliationRoot '../workbench/workbench-display-v4.schema.json'
 Add-TestResult -Name 'display-valid' -Passed (Test-JsonInstance -Value $display -SchemaPath $displaySchemaPath) -Detail 'The v4 display contains only display-ready candidates, catalog projection, capacity, and one input fingerprint.'
 $activeRuleWithoutPlacement = Copy-JsonValue -Value $display
 $activeRuleWithoutPlacement.catalog.rules[0].placements = @()
@@ -256,7 +239,7 @@ $draft = [ordered]@{
     applicabilityOverrides = [ordered]@{}
     bulkOperations = @()
 }
-$draftSchemaPath = Join-Path $reconciliationRoot 'workbench-draft-v4.schema.json'
+$draftSchemaPath = Join-Path $reconciliationRoot '../workbench/workbench-draft-v4.schema.json'
 Add-TestResult -Name 'draft-valid' -Passed (Test-JsonInstance -Value $draft -SchemaPath $draftSchemaPath) -Detail 'The local draft preserves incomplete decisions without becoming approval authority.'
 $draftWithApproval = Copy-JsonValue -Value $draft
 $draftWithApproval | Add-Member -NotePropertyName approvedAt -NotePropertyValue $timestamp
@@ -299,7 +282,7 @@ $approved = [ordered]@{
         })
     })
 }
-$approvedSchemaPath = Join-Path $reconciliationRoot 'approved-rules-v4.schema.json'
+$approvedSchemaPath = Join-Path $reconciliationRoot '../workbench/approved-rules-v4.schema.json'
 Add-TestResult -Name 'approved-rules-valid' -Passed (Test-JsonInstance -Value $approved -SchemaPath $approvedSchemaPath) -Detail 'The approved-rules file contains one catalog precondition, attribution, complete mutations, placements, and relationships.'
 $approvedWithNoChange = Copy-JsonValue -Value $approved
 $approvedWithNoChange.mutations[0].action = 'no-change'
@@ -309,6 +292,25 @@ $approvedWithPayload | Add-Member -NotePropertyName previewPayload -NoteProperty
 Add-TestResult -Name 'approved-rules-envelope-rejected' -Passed (-not (Test-JsonInstance -Value $approvedWithPayload -SchemaPath $approvedSchemaPath)) -Detail 'The approved-rules file is the payload and rejects a duplicate embedded approval envelope.'
 
 Write-TestProgress -Name 'behavior-boundaries' -Detail 'Checking contract dependencies, Remote Rules ownership, and v4 naming'
+$contractLibraryRoot = Join-Path $repositoryRoot 'hosted_copilot/contracts'
+$schemaSources = @(& git -C $repositoryRoot ls-files --cached --others --exclude-standard -- 'hosted_copilot/**/*.schema.json')
+if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate Hosted contract schema sources' }
+$schemaPaths = @($schemaSources | Sort-Object -Unique | ForEach-Object {
+    $path = Join-Path $repositoryRoot $_
+    if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Item -LiteralPath $path }
+})
+$misplacedSchemas = @($schemaPaths | Where-Object { [IO.Path]::GetRelativePath($contractLibraryRoot, $_.FullName).Replace('\', '/').StartsWith('../', [StringComparison]::Ordinal) })
+Add-TestResult -Name 'central-schema-library' -Passed ($schemaPaths.Count -gt 0 -and $misplacedSchemas.Count -eq 0) -Detail 'Every Hosted JSON validation schema has one authoritative source under contracts.'
+$descriptorIssues = [Collections.Generic.List[string]]::new()
+foreach ($descriptorPath in @(Get-ChildItem $contractLibraryRoot -Recurse -File -Filter '*.json' | Where-Object Name -NotLike '*.schema.json')) {
+    $descriptorJson = Get-Content -LiteralPath $descriptorPath.FullName -Raw
+    $descriptor = $descriptorJson | ConvertFrom-Json -DateKind String
+    $descriptorSchemaPath = Join-Path $descriptorPath.DirectoryName ([string]$descriptor.'$schema')
+    if (-not (Test-JsonInstance -Value $descriptor -SchemaPath $descriptorSchemaPath)) {
+        $descriptorIssues.Add($descriptorPath.Name)
+    }
+}
+Add-TestResult -Name 'central-descriptor-schemas' -Passed ($descriptorIssues.Count -eq 0) -Detail 'All behavior and exchange descriptors validate against their colocated contract schemas.'
 $sourceAssessmentContract = Get-Content -LiteralPath (Join-Path $assessmentRoot 'source-assessment-v4.json') -Raw | ConvertFrom-Json -DateKind String
 $reconciliationContract = Get-Content -LiteralPath (Join-Path $reconciliationRoot 'assessment-reconciliation-v4.json') -Raw | ConvertFrom-Json -DateKind String
 $forbiddenBehaviorPattern = '(?:source-generations/|publication-request|promotion-plan|approval-handoff|catalog-apply-receipt)'
@@ -333,6 +335,9 @@ foreach ($manifestPath in @(Get-ChildItem (Join-Path $repositoryRoot 'hosted_cop
     }
     $behaviorManifestCount++
     $manifestRelativePath = $manifestPath.FullName.Substring($repositoryRoot.Length + 1).Replace('\', '/')
+    if ($manifestRelativePath -notlike 'hosted_copilot/contracts/*') {
+        $behaviorManifestIssues.Add("Behavior descriptor is outside the contract library: $manifestRelativePath")
+    }
     foreach ($behaviorFile in @($behaviorFilesProperty.Value)) {
         $relativePath = [string]$behaviorFile
         if ($relativePath -notlike 'hosted_copilot/*') {
@@ -381,17 +386,17 @@ $behaviorManifestsClean = $behaviorManifestCount -gt 0 -and $behaviorManifestIss
 Add-TestResult -Name 'all-behavior-manifests-active-only' -Passed $behaviorManifestsClean -Detail $(if ($behaviorManifestsClean) { "All $behaviorManifestCount behavior manifests reference only existing active Hosted files without v1 reconciliation symbols." } else { $behaviorManifestIssues -join ' | ' })
 Add-TestResult -Name 'presentation-authority-boundaries' -Passed ($presentationManifestCount -eq 3 -and $behaviorManifestIssues.Count -eq 0) -Detail 'Source assessment and both reconciliation contracts snapshot existing Hosted presentation files without treating them as semantic cache authority.'
 
-$remoteParserContract = Get-Content -LiteralPath (Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v4.json') -Raw | ConvertFrom-Json -DateKind String
+$remoteParserContract = Get-Content -LiteralPath (Join-Path $catalogRoot '../contracts/parsers/maintainer-proposals-v4.json') -Raw | ConvertFrom-Json -DateKind String
 $remoteParserOwnsExchange = [string]$remoteParserContract.parserId -ceq 'maintainer-proposals-v4' -and 'hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV4.psm1' -in @($remoteParserContract.behaviorFiles)
 Add-TestResult -Name 'remote-rules-parser-owned' -Passed $remoteParserOwnsExchange -Detail 'Remote Rules remain ordinary Maintainer Proposal files owned by the lane parser rather than an endpoint contract.'
 
-$requiredV4Names = @(
-    'approved-rules-v4.schema.json',
-    'assessment-reconciliation-v4.json',
-    'workbench-display-v4.schema.json',
-    'workbench-draft-v4.schema.json'
+$requiredV4Paths = @(
+    $approvedSchemaPath,
+    (Join-Path $reconciliationRoot 'assessment-reconciliation-v4.json'),
+    $displaySchemaPath,
+    $draftSchemaPath
 )
-$missingV4Names = @($requiredV4Names | Where-Object { -not (Test-Path -LiteralPath (Join-Path $reconciliationRoot $_) -PathType Leaf) })
+$missingV4Names = @($requiredV4Paths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
 $missingAssessmentV4Names = @('source-assessment-v4.json' | Where-Object { -not (Test-Path -LiteralPath (Join-Path $assessmentRoot $_) -PathType Leaf) })
 Add-TestResult -Name 'v4-contract-naming' -Passed ($missingV4Names.Count -eq 0 -and $missingAssessmentV4Names.Count -eq 0) -Detail 'Every v4 Workbench authority uses an explicit v4 filename.'
 

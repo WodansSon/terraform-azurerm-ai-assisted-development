@@ -97,7 +97,7 @@ $reviewSkillPath = Join-Path $hostedRuntimePath 'skills/code-review/SKILL.md'
 $userDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_COPILOT_CODE_REVIEW.md'
 $hostedReviewDocumentationPath = Join-Path $hostedRoot 'docs/HOSTED_REVIEW.md'
 $regressionCasesPath = Join-Path $hostedRoot 'regression/cases'
-$reviewResultSchemaPath = Join-Path $hostedRoot 'regression/schema/paired-review-result.schema.json'
+$reviewResultSchemaPath = Join-Path $hostedRoot 'contracts/review/paired-review-result.schema.json'
 $reviewCommonModulePath = Join-Path $PSScriptRoot 'modules/review/Review.Common.psm1'
 $hostedReviewCommandPath = Join-Path $PSScriptRoot 'Invoke-HostedReview.ps1'
 $hostedReviewWorkflowModulePath = Join-Path $PSScriptRoot 'modules/review/HostedReview.Workflow.psm1'
@@ -110,7 +110,7 @@ $reviewPairCloserPath = Join-Path $PSScriptRoot 'internal/review/Close-ReviewPai
 $reviewResultValidatorPath = Join-Path $PSScriptRoot 'tests/Test-ReviewResults.ps1'
 $hostedReviewWorkflowTestPath = Join-Path $PSScriptRoot 'tests/Test-HostedReviewWorkflow.ps1'
 $instructionCatalogPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.json'
-$instructionCatalogSchemaPath = Join-Path $hostedRoot 'copilot-rule-catalog/instruction-catalog.schema.json'
+$instructionCatalogSchemaPath = Join-Path $hostedRoot 'contracts/catalog/instruction-catalog.schema.json'
 $maintainerRulePaths = @('documentation.rules.md', 'implementation.rules.md', 'testing.rules.md') | ForEach-Object { Join-Path $hostedRoot "authored-rules/proposals/$_" }
 $instructionGeneratorPath = Join-Path $PSScriptRoot 'commands/catalog/Generate-Instructions.ps1'
 $instructionGenerationTestPath = Join-Path $PSScriptRoot 'tests/Test-InstructionGeneration.ps1'
@@ -126,15 +126,15 @@ $sourceEvidenceModulePath = Join-Path $PSScriptRoot 'modules/shared/SourceEviden
 $workbenchGitHubContextModulePath = Join-Path $PSScriptRoot 'modules/workbench/Workbench.GitHubContext.psm1'
 $contributorSourceDefinitionPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/contributor-guidance.json'
 $sourceAssessmentTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceAssessment.ps1'
-$assessmentReconciliationRoot = Join-Path $hostedRoot 'copilot-rule-catalog/assessment-reconciliation'
+$assessmentReconciliationRoot = Join-Path $hostedRoot 'contracts/reconciliation'
 $assessmentReconciliationContractSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-contract.schema.json'
 $assessmentReconciliationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-draft.schema.json'
 $hierarchicalReconciliationCacheSchemaPath = Join-Path $assessmentReconciliationRoot 'hierarchical-reconciliation-cache.schema.json'
 $hierarchicalReconciliationRunSchemaPath = Join-Path $assessmentReconciliationRoot 'hierarchical-reconciliation-run.schema.json'
 $assessmentReconciliationContractPath = Join-Path $assessmentReconciliationRoot 'assessment-reconciliation-v4.json'
-$workbenchDisplaySchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-display-v4.schema.json'
-$workbenchDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-draft-v4.schema.json'
-$approvedRulesSchemaPath = Join-Path $assessmentReconciliationRoot 'approved-rules-v4.schema.json'
+$workbenchDisplaySchemaPath = Join-Path $assessmentReconciliationRoot '../workbench/workbench-display-v4.schema.json'
+$workbenchDraftSchemaPath = Join-Path $assessmentReconciliationRoot '../workbench/workbench-draft-v4.schema.json'
+$approvedRulesSchemaPath = Join-Path $assessmentReconciliationRoot '../workbench/approved-rules-v4.schema.json'
 $assessmentReconciliationRunnerPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
 $assessmentReconciliationBuilderPath = Join-Path $PSScriptRoot 'internal/reconciliation/New-WorkbenchDisplay.ps1'
 $hierarchicalReconciliationPipelinePath = Join-Path $PSScriptRoot 'modules/reconciliation/HierarchicalReconciliationPipeline.psm1'
@@ -143,13 +143,15 @@ $reconciliationStageExecutorPath = Join-Path $PSScriptRoot 'modules/reconciliati
 $copilotReconciliationStageAdapterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-CopilotReconciliationStage.ps1'
 $assessmentReconciliationTestPath = Join-Path $PSScriptRoot 'tests/Test-AssessmentReconciliation.ps1'
 $reconciliationStageExecutorTestPath = Join-Path $PSScriptRoot 'tests/Test-ReconciliationStageExecutor.ps1'
-$assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/AssessmentReconciliation-v4.md'
+$promptLibraryTestPath = Join-Path $PSScriptRoot 'tests/Test-PromptLibrary.ps1'
+$repositoryAdoptionTestPath = Join-Path $PSScriptRoot 'tests/Test-RepositoryAdoption.ps1'
+$assessmentReconciliationPromptPath = Join-Path $PSScriptRoot 'prompts/reconciliation/AssessmentReconciliation-v4.md'
 $ruleIssueAdjudicationInputSchemaPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-input-v4.schema.json'
 $ruleIssueAdjudicationDraftSchemaPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-draft-v4.schema.json'
 $ruleIssueAdjudicationContractSchemaPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-contract.schema.json'
 $ruleIssueAdjudicationContractPath = Join-Path $assessmentReconciliationRoot 'rule-issue-adjudication-v4.json'
-$workbenchRuleIssuesSchemaPath = Join-Path $assessmentReconciliationRoot 'workbench-rule-issues-v4.schema.json'
-$ruleIssueAdjudicationPromptPath = Join-Path $PSScriptRoot 'assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md'
+$workbenchRuleIssuesSchemaPath = Join-Path $assessmentReconciliationRoot '../workbench/workbench-rule-issues-v4.schema.json'
+$ruleIssueAdjudicationPromptPath = Join-Path $PSScriptRoot 'prompts/reconciliation/RuleIssueAdjudication-v4.md'
 $ruleIssueAdjudicationRunnerPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-RuleIssueAdjudication.ps1'
 $ruleIssueAdjudicationModulePath = Join-Path $PSScriptRoot 'modules/reconciliation/RuleIssueAdjudication.psm1'
 $ruleIssueExporterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
@@ -160,7 +162,7 @@ $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbench.ps1'
 $ruleWorkbenchIconPreviewRendererPath = Join-Path $PSScriptRoot 'Render-WorkbenchIconPreview.cjs'
 $ruleWorkbenchBehaviorManifestPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.json'
-$ruleWorkbenchBehaviorManifestSchemaPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.schema.json'
+$ruleWorkbenchBehaviorManifestSchemaPath = Join-Path $hostedRoot 'contracts/workbench/behavior-manifest.schema.json'
 $ruleWorkbenchPlaywrightRunnerPath = Join-Path $hostedRoot 'regression/workbench/playwright/run.cjs'
 $ruleWorkbenchLayoutTestPath = Join-Path $hostedRoot 'regression/workbench/puppeteer/Test-RuleWorkbenchLayout.cjs'
 $nodePackageManifestPath = Join-Path $PSScriptRoot 'package.json'
@@ -169,7 +171,7 @@ $ruleWorkbenchIndexPath = Join-Path $hostedRoot 'workbench/index.html'
 $ruleWorkbenchScriptPath = Join-Path $hostedRoot 'workbench/app.js'
 $ruleWorkbenchStylesPath = Join-Path $hostedRoot 'workbench/styles.css'
 $upstreamSourceValidatorPath = Join-Path $PSScriptRoot 'commands/catalog/Test-UpstreamSources.ps1'
-$tokenEstimator = 'character-quarter-estimate-25pct-v1'
+$tokenEstimator = 'character-quarter-estimate-v1'
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $checks = New-Object 'System.Collections.Generic.List[object]'
@@ -202,7 +204,7 @@ function Add-CheckResult {
 
     $durationSeconds = 0
     if ($checkStartTimes.ContainsKey($Name)) {
-        $durationSeconds = [Math]::Round(((Get-Date) - $checkStartTimes[$Name]).TotalSeconds, 2)
+        $durationSeconds = ((Get-Date) - $checkStartTimes[$Name]).TotalSeconds
         $checkStartTimes.Remove($Name)
     }
 
@@ -217,7 +219,7 @@ function Add-CheckResult {
     })
 
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail ("{0}s" -f $durationSeconds))
+        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail (Format-ValidationDuration -DurationSeconds $durationSeconds))
     }
 }
 
@@ -415,6 +417,8 @@ if ($runtimeStarted) {
         $copilotReconciliationStageAdapterPath,
         $assessmentReconciliationTestPath,
         $reconciliationStageExecutorTestPath,
+        $promptLibraryTestPath,
+        $repositoryAdoptionTestPath,
         $assessmentReconciliationPromptPath,
         $ruleIssueAdjudicationInputSchemaPath,
         $ruleIssueAdjudicationDraftSchemaPath,
@@ -657,7 +661,7 @@ if ($runtimeStarted) {
     $outputContracts = @(
         @{ Path = $installerPath; Opening = 'Hosted Rules deployment'; Summary = 'Hosted Rules deployment summary'; Results = 'Deployment operations'; Activity = 'manifest-validation' },
         @{ Path = $hostedReviewCommandPath; Opening = 'Hosted review workflow'; Summary = 'Hosted review workflow summary'; Results = 'Hosted review request'; Activity = 'Write-ValidationSummary' },
-        @{ Path = $ruleWorkbenchLauncherPath; Opening = 'Hosted Rule Workbench'; Summary = 'Summary'; Results = 'Workbench Stages'; Activity = 'Write-ValidationSummary' },
+        @{ Path = $ruleWorkbenchLauncherPath; Opening = 'Hosted Rule Workbench'; Summary = 'Workbench Summary'; Results = 'Workbench Stages'; Activity = 'Write-ValidationSummary' },
         @{ Path = $PSCommandPath; Opening = 'Hosted Rules validation'; Summary = 'Hosted Rules validation summary'; Results = 'Validation checks'; Activity = 'Start-ValidationCheck' },
         @{ Path = $instructionGeneratorPath; Opening = 'Hosted instruction generation'; Summary = 'Hosted instruction generation summary'; Results = 'Instruction surfaces'; Activity = 'catalog-validation' },
         @{ Path = $upstreamSourceValidatorPath; Opening = 'Hosted upstream source drift validation'; Summary = 'Hosted upstream source drift validation summary'; Results = 'Source results'; Activity = 'source-fetch' },
@@ -669,6 +673,8 @@ if ($runtimeStarted) {
         @{ Path = $sourceAssessmentTestPath; Opening = 'Hosted source assessment'; Summary = 'Hosted source assessment test summary'; Results = 'Source assessment tests'; Activity = 'contract-validation' },
         @{ Path = $assessmentReconciliationTestPath; Opening = 'Hosted assessment reconciliation'; Summary = 'Hosted assessment reconciliation test summary'; Results = 'Assessment reconciliation tests'; Activity = 'fixture-validation' },
         @{ Path = $reconciliationStageExecutorTestPath; Opening = 'Hosted reconciliation stage executor'; Summary = 'Hosted reconciliation stage executor test summary'; Results = 'Reconciliation stage executor tests'; Activity = 'hierarchical-cache-contract-files' },
+        @{ Path = $promptLibraryTestPath; Opening = 'Hosted prompt library'; Summary = 'Hosted prompt library test summary'; Results = 'Prompt library tests'; Activity = 'prompt-library-contracts' },
+        @{ Path = $repositoryAdoptionTestPath; Opening = 'Hosted repository adoption tests'; Summary = 'Hosted repository adoption test summary'; Results = 'Adoption tests'; Activity = 'policy-and-preflight-boundaries' },
         @{ Path = $ruleIssueAdjudicationTestPath; Opening = 'Hosted Rule Issue adjudication'; Summary = 'Hosted Rule Issue adjudication test summary'; Results = 'Rule Issue adjudication tests'; Activity = 'first-run-evaluates-components' },
         @{ Path = $v4WorkbenchContractsTestPath; Opening = 'Hosted Workbench contracts'; Summary = 'Hosted Workbench contract test summary'; Results = 'Workbench contract tests'; Activity = 'display-contract' },
         @{ Path = $ruleWorkbenchTestPath; Opening = 'Hosted Rule Workbench tests'; Summary = 'Hosted Rule Workbench test summary'; Results = 'Add-TestResult'; Activity = 'Start-TestResult' }
@@ -713,6 +719,26 @@ if ($runtimeStarted) {
     catch {
         Add-ValidationIssue -Name 'command-help' -Issue "Hosted command help validation failed: $($_.Exception.Message)"
     }
+
+    Start-ValidationCheck -Name 'prompt-library'
+    try {
+        $promptLibraryOutput = @(& pwsh -NoProfile -File $promptLibraryTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw (($promptLibraryOutput | Out-String).Trim()) }
+        $promptLibraryResult = ($promptLibraryOutput | Out-String) | ConvertFrom-Json
+        if ($promptLibraryResult.status -ne 'passed') { throw 'Prompt library contracts reported failures' }
+        Add-CheckResult -Name 'prompt-library' -Passed $true -Detail "Passed $($promptLibraryResult.testCount) task layout, registered boundary, frozen authority and external template checks without model calls."
+    }
+    catch { Add-ValidationIssue -Name 'prompt-library' -Issue "Hosted prompt library validation failed: $($_.Exception.Message)" }
+
+    Start-ValidationCheck -Name 'repository-adoption'
+    try {
+        $adoptionOutput = @(& pwsh -NoProfile -File $repositoryAdoptionTestPath -OutputFormat Json 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw (($adoptionOutput | Out-String).Trim()) }
+        $adoptionResult = ($adoptionOutput | Out-String) | ConvertFrom-Json
+        if ($adoptionResult.status -cne 'passed') { throw 'Adoption policy tests reported failures' }
+        Add-CheckResult -Name 'repository-adoption' -Passed $true -Detail "Passed $($adoptionResult.testCount) configured token policy, exhaustive accounting and read-only preflight checks."
+    }
+    catch { Add-ValidationIssue -Name 'repository-adoption' -Issue "Hosted adoption validation failed: $($_.Exception.Message)" }
 
     Start-ValidationCheck -Name 'instruction-frontmatter'
     $instructionExpectations = @(
@@ -1128,9 +1154,11 @@ if ($runtimeStarted) {
                 throw (($capacityOutput | Out-String).Trim())
             }
             $tokenCapacityResult = ($capacityOutput | Out-String) | ConvertFrom-Json
-            $expectedCapacityNames = @('repository', 'go', 'test', 'documentation', 'skill', 'go-combined', 'test-combined', 'documentation-combined') | Sort-Object
-            $actualCapacityNames = @($tokenCapacityResult.reports | ForEach-Object { [string]$_.name } | Sort-Object)
-            if ($tokenCapacityResult.status -ne 'passed' -or $tokenCapacityResult.estimator -ne $tokenEstimator -or @(Compare-Object $expectedCapacityNames $actualCapacityNames).Count -gt 0) {
+            Import-Module (Join-Path $PSScriptRoot 'modules/shared/HostedAdoption.psm1')
+            $adoptionConfiguration = Get-HostedAdoptionConfiguration -HostedRoot $hostedRoot
+            $adoptionTokenPolicy = Get-HostedTokenPolicy -Configuration $adoptionConfiguration
+            Assert-HostedGuidanceCapacity -Capacity $tokenCapacityResult -TokenPolicy $adoptionTokenPolicy
+            if ($tokenCapacityResult.status -ne 'passed') {
                 throw 'guidance capacity command returned an invalid report set'
             }
             foreach ($report in @($tokenCapacityResult.reports)) {
@@ -1388,7 +1416,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'output-contracts', 'command-help', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'rule-issue-adjudication', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'output-contracts', 'command-help', 'prompt-library', 'repository-adoption', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'rule-issue-adjudication', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

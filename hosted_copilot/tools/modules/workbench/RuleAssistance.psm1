@@ -112,8 +112,8 @@ function Get-RuleAssistanceRuntime {
     )
 
     $files = @(
-        'hosted_copilot/tools/workbench-prompts/RuleAssistance.md',
-        'hosted_copilot/tools/workbench-prompts/rule-assistance-result.schema.json',
+        'hosted_copilot/tools/prompts/chat/RuleAssistance.md',
+        'hosted_copilot/contracts/workbench/rule-assistance-result.schema.json',
         'hosted_copilot/tools/modules/workbench/RuleAssistance.psm1',
         'hosted_copilot/tools/internal/workbench/Invoke-RuleAssistance.ps1'
         'hosted_copilot/tools/modules/shared/HostedCli.psm1'

@@ -21,7 +21,7 @@ param(
 
     [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
 
-    [string]$ReconciliationContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/assessment-reconciliation-v4.json'),
+    [string]$ReconciliationContractPath = (Join-Path $PSScriptRoot '../../../contracts/reconciliation/assessment-reconciliation-v4.json'),
 
     [object]$GeneratedAt = [DateTime]::UtcNow,
 
@@ -31,6 +31,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedAdoption.psm1')
 
 $helpersPath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 $sourceEvidencePath = Join-Path $PSScriptRoot '../../modules/shared/SourceEvidenceValidation.psm1'
@@ -78,7 +79,7 @@ function Get-EstimatedTokens {
 function Get-GuardedTokens {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
 
-    return [int][Math]::Ceiling((Get-EstimatedTokens -Text $Text) * 1.25)
+    return [int][Math]::Ceiling((Get-EstimatedTokens -Text $Text) * (1 + $guidanceTokenPolicy.policy.safetyMarginPercent / 100.0))
 }
 
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
@@ -88,15 +89,18 @@ if ($resolvedOutputPath.StartsWith($repositoryPrefix, [StringComparison]::Ordina
     throw 'Workbench display output must be outside the repository root'
 }
 
-$reconciliationRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation'
-$assessmentRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments'
+$reconciliationRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/reconciliation'
+$assessmentRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/assessment'
 $catalogRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog'
 $baselineInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentBaselinePath)) -SchemaPath (Join-Path $assessmentRoot 'source-assessment-baseline-v4.schema.json') -Name 'Source assessment baseline'
 $draftInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ReconciliationDraftPath)) -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-draft.schema.json') -Name 'Assessment reconciliation draft'
-$catalogInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Name 'Hosted instruction catalog'
-$protectedRulesInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ProtectedRulesPath)) -SchemaPath (Join-Path $catalogRoot 'protected-rules.schema.json') -Name 'Protected rules catalog'
+$catalogInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($HostedCatalogPath)) -SchemaPath (Join-Path $catalogRoot '../contracts/catalog/instruction-catalog.schema.json') -Name 'Hosted instruction catalog'
+$protectedRulesInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ProtectedRulesPath)) -SchemaPath (Join-Path $catalogRoot '../contracts/catalog/protected-rules.schema.json') -Name 'Protected rules catalog'
 $contractInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($ReconciliationContractPath)) -SchemaPath (Join-Path $reconciliationRoot 'assessment-reconciliation-contract.schema.json') -Name 'Assessment reconciliation contract'
-$guidanceCapacityInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($GuidanceCapacityPath)) -SchemaPath (Join-Path $catalogRoot 'guidance-capacity.schema.json') -Name 'Guidance capacity'
+$guidanceCapacityInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($GuidanceCapacityPath)) -SchemaPath (Join-Path $catalogRoot '../contracts/catalog/guidance-capacity.schema.json') -Name 'Guidance capacity'
+$adoptionConfiguration = Get-HostedAdoptionConfiguration -HostedRoot (Join-Path $resolvedRepositoryRoot 'hosted_copilot')
+$guidanceTokenPolicy = Get-HostedTokenPolicy -Configuration $adoptionConfiguration
+Assert-HostedGuidanceCapacity -Capacity $guidanceCapacityInput.Value -TokenPolicy $guidanceTokenPolicy
 $baseline = $baselineInput.Value
 $draft = $draftInput.Value
 $catalog = $catalogInput.Value
@@ -110,7 +114,7 @@ $inventoryRecords = @{}
 $inventoryHashes = [ordered]@{}
 $inventoryRevisions = @{}
 $sourceFiles = [Collections.Generic.List[object]]::new()
-$inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
+$inventorySchemaPath = Join-Path $catalogRoot '../contracts/sources/source-inventory.schema.json'
 foreach ($inventoryPath in $InventoryPaths) {
     $inventoryInput = Read-JsonFile -Path ([IO.Path]::GetFullPath($inventoryPath)) -SchemaPath $inventorySchemaPath -Name 'Source inventory'
     $inventory = $inventoryInput.Value
@@ -909,7 +913,7 @@ $display = [ordered]@{
 }
 $displayJson = $display | ConvertTo-Json -Depth 40
 $schemaErrors = @()
-$displayValid = $displayJson | Test-Json -SchemaFile (Join-Path $reconciliationRoot 'workbench-display-v4.schema.json') -ErrorAction SilentlyContinue -ErrorVariable schemaErrors
+$displayValid = $displayJson | Test-Json -SchemaFile (Join-Path $reconciliationRoot '../workbench/workbench-display-v4.schema.json') -ErrorAction SilentlyContinue -ErrorVariable schemaErrors
 if (-not $displayValid) {
     $schemaDetail = @($schemaErrors | ForEach-Object { $_.Exception.Message } | Sort-Object -Unique) -join '; '
     throw "Workbench display does not satisfy its schema: $schemaDetail"

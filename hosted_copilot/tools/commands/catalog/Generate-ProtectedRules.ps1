@@ -26,7 +26,7 @@ $resolvedOutputPath = [IO.Path]::GetFullPath($OutputPath)
 $registry = Get-ProtectedRulesCatalog -SourceRoot $resolvedSourceRoot -RepositoryRoot $resolvedRepositoryRoot
 
 $content = ConvertTo-ProtectedRulesJson -Catalog $registry
-$protectedSchemaPath = Join-Path (Split-Path -Parent $resolvedOutputPath) 'protected-rules.schema.json'
+$protectedSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/catalog/protected-rules.schema.json'
 if (-not ($content | Test-Json -SchemaFile $protectedSchemaPath -ErrorAction SilentlyContinue)) {
     throw 'Protected rules schema validation failed'
 }

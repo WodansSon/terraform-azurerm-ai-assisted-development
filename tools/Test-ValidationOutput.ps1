@@ -14,6 +14,26 @@ $modulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
 Import-Module -Name $modulePath -Force
 
 $issues = New-Object 'System.Collections.Generic.List[string]'
+$results = New-Object 'System.Collections.Generic.List[object]'
+$suiteStopwatch = [Diagnostics.Stopwatch]::StartNew()
+$checkStopwatch = [Diagnostics.Stopwatch]::StartNew()
+
+if ($OutputFormat -eq 'Text') {
+    Write-ValidationSectionHeader -Title 'Validation output contracts'
+    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'output-contracts' -Detail "Checking shared formatter sequences and $ProductScope presentation consumers")
+}
+
+function Add-OutputTestResult {
+    param([string]$Name, [bool]$Passed)
+
+    $checkStopwatch.Stop()
+    $results.Add([pscustomobject]@{
+        name = $Name
+        status = if ($Passed) { 'passed' } else { 'failed' }
+        durationSeconds = $checkStopwatch.Elapsed.TotalSeconds
+    })
+    $checkStopwatch.Restart()
+}
 
 function Assert-OutputSequence {
     param(
@@ -31,9 +51,11 @@ function Assert-OutputSequence {
 
     $actualText = @($Actual | ForEach-Object { [string]$_ }) -join "`n"
     $expectedText = @($Expected | ForEach-Object { [string]$_ }) -join "`n"
-    if ($actualText -cne $expectedText) {
+    $passed = $actualText -ceq $expectedText
+    if (-not $passed) {
         $issues.Add("$Name output does not match the validation presentation contract")
     }
+    Add-OutputTestResult -Name $Name -Passed $passed
 }
 
 $separator = '-' * 51
@@ -69,6 +91,20 @@ Assert-OutputSequence -Name 'relayed child line' -Actual @(
 Assert-OutputSequence -Name 'leaf duration' -Actual @(
     Format-ValidationDuration -DurationSeconds 1.25
 ) -Expected @('1.25s')
+
+Assert-OutputSequence -Name 'duration precision' -Actual @(
+    Format-ValidationDuration -DurationSeconds 13.9885322
+    Format-ValidationDuration -DurationSeconds 21.3602894
+    Format-ValidationDuration -DurationSeconds 20.8940928
+    Format-ValidationDuration -DurationSeconds 0.0049
+    Format-ValidationDuration -DurationSeconds 0.0051
+    Format-ValidationDuration -DurationSeconds 1.999
+    Format-ValidationDuration -DurationSeconds 0
+) -Expected @('13.99s', '21.36s', '20.89s', '0s', '0.01s', '2s', '0s')
+
+Assert-OutputSequence -Name 'child duration precision' -Actual @(
+    Format-ValidationStatusLine -Status 'passed' -Name 'server/internal' -Detail (Format-ValidationDuration -DurationSeconds 13.9885322) -IndentLevel 1
+) -Expected @('  [PASSED]   server/internal                : 13.99s')
 
 Assert-OutputSequence -Name 'summary' -Actual @(
     Write-ValidationSummary -Fields ([ordered]@{ Status = 'PASSED'; 'Issue Count' = 0 })
@@ -143,12 +179,15 @@ if ($ProductScope -in @('All', 'Hosted')) {
     $presentationConsumers += @(
         '../hosted_copilot/tools/tests/Test-InstructionGeneration.ps1',
         '../hosted_copilot/tools/tests/Test-ReviewResults.ps1',
+        '../hosted_copilot/tools/tests/Test-RuleAssistance.ps1',
         '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1',
         '../hosted_copilot/tools/Test-HostedRules.ps1',
         '../hosted_copilot/tools/commands/catalog/Test-UpstreamSources.ps1'
     )
 }
 foreach ($relativePath in $presentationConsumers) {
+    $checkStopwatch.Restart()
+    $priorIssueCount = $issues.Count
     $consumerPath = Join-Path $PSScriptRoot $relativePath
     $consumerContent = Get-Content -LiteralPath $consumerPath -Raw
     if ($consumerContent -notmatch 'ValidationOutput\.psm1' -or $consumerContent -notmatch 'Write-ValidationSectionHeader') {
@@ -160,16 +199,52 @@ foreach ($relativePath in $presentationConsumers) {
     if ($consumerContent -match '(?m)^function\s+(Write-TextSectionHeader|Format-HarnessStatusLine|Format-DriftStatusLine)\s*\{') {
         $issues.Add("$relativePath defines a private validation presentation formatter")
     }
+    Add-OutputTestResult -Name "consumer/$([IO.Path]::GetFileName($relativePath))" -Passed ($issues.Count -eq $priorIssueCount)
+}
+
+if ($ProductScope -in @('All', 'Hosted')) {
+    foreach ($relativePath in @(
+        'Test-ValidationOutput.ps1',
+        '../hosted_copilot/tools/Test-HostedRules.ps1',
+        '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1',
+        '../hosted_copilot/tools/tests/Test-RuleAssistance.ps1',
+        '../hosted_copilot/tools/tests/Test-WorkbenchServerResponsiveness.ps1'
+    )) {
+        $checkStopwatch.Restart()
+        $priorIssueCount = $issues.Count
+        $tokens = $null
+        $parseErrors = $null
+        $consumerAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $relativePath), [ref]$tokens, [ref]$parseErrors)
+        $localDurationFormatting = @($consumerAst.FindAll({
+            param($node)
+            if ($node -is [Management.Automation.Language.InvokeMemberExpressionAst] -and $node.Member.Value -eq 'Round') {
+                return @($node.Arguments | Where-Object { $_.Extent.Text -match 'TotalSeconds|durationSeconds' }).Count -gt 0
+            }
+            return $node -is [Management.Automation.Language.BinaryExpressionAst] -and
+                $node.Operator -eq [Management.Automation.Language.TokenKind]::Format -and
+                $node.Left -is [Management.Automation.Language.StringConstantExpressionAst] -and
+                $node.Left.Value -match '^\{0(?::[^}]*)?\}s$' -and $node.Right.Extent.Text -match 'durationSeconds'
+        }, $true))
+        if ($parseErrors.Count -or $localDurationFormatting.Count) {
+            $issues.Add("$relativePath must parse and delegate elapsed-time display precision to Format-ValidationDuration")
+        }
+        Add-OutputTestResult -Name "duration owner/$([IO.Path]::GetFileName($relativePath))" -Passed ($issues.Count -eq $priorIssueCount)
+    }
 }
 
 foreach ($relativePath in @('Validate-ChangedToolkits.ps1') + $(if ($ProductScope -in @('All', 'Interactive')) { @('validate-ai-toolkit.ps1') } else { @() })) {
+    $checkStopwatch.Restart()
+    $priorIssueCount = $issues.Count
     $consumerContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot $relativePath) -Raw
     if ($consumerContent -notmatch '\^\\s\*\\\[\(RUNNING\|PASSED\|FAILED\|SKIPPED\)\\\]' -or $consumerContent -notmatch 'Add-ValidationIndent -Line') {
         $issues.Add("$relativePath does not preserve nested child status indentation")
     }
+    Add-OutputTestResult -Name "nested statuses/$([IO.Path]::GetFileName($relativePath))" -Passed ($issues.Count -eq $priorIssueCount)
 }
 
 if ($ProductScope -in @('All', 'Interactive')) {
+    $checkStopwatch.Restart()
+    $priorIssueCount = $issues.Count
     $interactiveValidationContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'validate-ai-toolkit.ps1') -Raw
     if ($interactiveValidationContent -match "-Name 'npm-install'" -or
         $interactiveValidationContent -notmatch "-Name 'npm-packages'.*-RunningDetail 'VERIFYING AUDITED LOCKFILE'.*-SuccessDetail 'CURRENT \(MATCHES AUDITED LOCKFILE\)'" -or
@@ -178,22 +253,33 @@ if ($ProductScope -in @('All', 'Interactive')) {
         $interactiveValidationContent -notmatch 'if \(-not \(Test-NpmPackageGraphCurrent') {
         $issues.Add('Interactive npm validation must report package currency against the audited lockfile instead of labeling the result as an install')
     }
+    Add-OutputTestResult -Name 'Interactive npm audit/package wording' -Passed ($issues.Count -eq $priorIssueCount)
 }
 
 if ($ProductScope -in @('All', 'Hosted')) {
+    $checkStopwatch.Restart()
+    $priorIssueCount = $issues.Count
     $hostedWorkbenchValidationContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1') -Raw
     if ($hostedWorkbenchValidationContent -match "Start-TestResult -Name 'locked-browser-dependencies'" -or
-        $hostedWorkbenchValidationContent -notmatch "Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING AUDITED LOCKFILE'" -or
+        $hostedWorkbenchValidationContent -notmatch '\$dependencyRunningDetail = if \(\$auditPassed\) \{ ''VERIFYING AUDITED LOCKFILE'' \} else \{ ''VERIFYING INSTALLED LOCKFILE GRAPH'' \}' -or
+        $hostedWorkbenchValidationContent -notmatch 'Start-TestResult -Name ''npm-packages'' -RunningDetail \$dependencyRunningDetail' -or
         $hostedWorkbenchValidationContent -notmatch '\$lockedDependencySuccessDetail = if \(\$auditPassed\) \{ ''CURRENT \(MATCHES AUDITED LOCKFILE\)'' \} else \{ ''CURRENT \(MATCHES LOCKFILE; UNVERIFIED\)'' \}' -or
         $hostedWorkbenchValidationContent -notmatch 'Add-TestResult -Name ''npm-packages''.*-SuccessDetail \$lockedDependencySuccessDetail' -or
         $hostedWorkbenchValidationContent -notmatch 'function Test-NpmPackageGraphCurrent' -or
         $hostedWorkbenchValidationContent -notmatch "node_modules/\.package-lock\.json") {
         $issues.Add('Hosted npm validation must skip redundant installs and distinguish audited from unverified lockfile currency')
     }
+    Add-OutputTestResult -Name 'Hosted npm audit/package wording' -Passed ($issues.Count -eq $priorIssueCount)
 }
 
+$suiteStopwatch.Stop()
 $result = [ordered]@{
     status = if ($issues.Count -eq 0) { 'passed' } else { 'failed' }
+    testCount = $results.Count
+    passedCount = @($results | Where-Object status -CEQ 'passed').Count
+    failedCount = @($results | Where-Object status -CEQ 'failed').Count
+    elapsedSeconds = $suiteStopwatch.Elapsed.TotalSeconds
+    tests = $results.ToArray()
     issueCount = $issues.Count
     issues = @($issues.ToArray())
 }
@@ -202,11 +288,20 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 4
 }
 else {
+    Write-Host (Format-ValidationStatusLine -Status $result.status -Name 'output-contracts' -Detail (Format-ValidationDuration -DurationSeconds $result.elapsedSeconds))
     Write-ValidationSectionHeader -Title 'Validation output contract test summary'
     Write-ValidationSummary -Fields ([ordered]@{
         Status = $result.status.ToUpperInvariant()
+        Scope = $ProductScope
+        Tests = $result.testCount
+        Passed = $result.passedCount
+        Failed = $result.failedCount
         'Issue Count' = $result.issueCount
+        Elapsed = Format-ValidationDuration -DurationSeconds $result.elapsedSeconds
     })
+    Write-ValidationSectionHeader -Title 'Validation output contract tests'
+    $nameWidth = Get-ValidationNameWidth -Names @($results.name) -MinimumWidth 32
+    Write-ValidationStatusTable -Rows $results.ToArray() -NameHeader 'Test' -NameWidth $nameWidth
     if ($issues.Count -gt 0) {
         Write-ValidationSectionHeader -Title 'Issues'
         foreach ($issue in $issues) {

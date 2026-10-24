@@ -2,13 +2,16 @@
 param(
     [Parameter(Mandatory = $true)][string]$DisplayPath,
     [Parameter(Mandatory = $true)][string]$RuleIssuesPath,
-    [Parameter(Mandatory = $true)][string]$TemporaryDirectory
+    [Parameter(Mandatory = $true)][string]$TemporaryDirectory,
+    [switch]$Quiet,
+    [ValidateRange(0, 10)][int]$IndentLevel = 0
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+Import-Module (Join-Path $repositoryRoot 'tools/ValidationOutput.psm1')
 $toolsRoot = Join-Path $repositoryRoot 'hosted_copilot\tools'
 $workbenchRoot = Join-Path $repositoryRoot 'hosted_copilot\workbench'
 $display = Get-Content -LiteralPath $DisplayPath -Raw | ConvertFrom-Json -Depth 100
@@ -132,6 +135,11 @@ foreach ($profile in @('internal', 'production', 'production-override')) {
     $baseUrl = "http://127.0.0.1:$port"
     $runtime = $null
     $cancellation = [Threading.CancellationTokenSource]::new()
+    $profileName = "server/$profile"
+    $profileStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    if (-not $Quiet) {
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $profileName -Detail 'IN PROGRESS' -IndentLevel $IndentLevel)
+    }
     try {
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
         while ($null -eq $runtime) {
@@ -153,7 +161,7 @@ foreach ($profile in @('internal', 'production', 'production-override')) {
         if ($worker.model -cne $expectedModel -or $worker.effort -cne $expectedEffort) {
             throw "$profile did not use its independent saved-rule profile for discovery"
         }
-        foreach ($path in @('/icons/codicons/sprite.svg', '/styles.css', '/', '/runtime-config')) {
+        foreach ($path in @('/icons/codicons/sprite.svg', '/styles.css', '/', '/runtime-config', '/shutdown-config')) {
             $response = Receive-FixtureResponse ($http.GetAsync("$baseUrl$path"))
             if ($response.StatusCode -ne 200 -or $pending.IsCompleted) { throw "$profile did not serve $path while validation was running" }
         }
@@ -177,7 +185,7 @@ foreach ($profile in @('internal', 'production', 'production-override')) {
         foreach ($task in @($pending, $queued)) {
             $response = Receive-FixtureResponse $task 20000
             $json = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-            $schema = Join-Path $repositoryRoot 'hosted_copilot\copilot-rule-catalog\assessment-reconciliation\saved-rule-evaluation.schema.json'
+            $schema = Join-Path $repositoryRoot 'hosted_copilot/contracts/reconciliation/saved-rule-evaluation.schema.json'
             if ($response.StatusCode -ne 200) {
                 $failure = $json | ConvertFrom-Json
                 throw "$profile saved-rule evaluation failed with HTTP $([int]$response.StatusCode): $($failure.error)"
@@ -204,14 +212,41 @@ foreach ($profile in @('internal', 'production', 'production-override')) {
         $shutdownText = "$($candidate.recommendation.ruleText) Shutdown $profile check."
         $shutdownPending = $http.SendAsync((New-FixtureRequest POST "$baseUrl/reconcile-rule" (New-FixturePayload $shutdownText $runtime.savedRuleAuthoritySha256) $runtime.operationToken))
         $shutdownWorker = Wait-FixtureWorker $controlDirectory $shutdownText $shutdownPending
+        Move-Item -LiteralPath (Join-Path $siteDirectory 'workbench-display.json') -Destination (Join-Path $profileDirectory 'unavailable-display.json')
+        $brokenRuntime = Receive-FixtureResponse ($http.GetAsync("$baseUrl/runtime-config"))
+        if ($brokenRuntime.StatusCode -ne 500) { throw "$profile fixture did not make evaluator configuration unavailable" }
+        $shutdownHead = Receive-FixtureResponse ($http.SendAsync((New-FixtureRequest HEAD "$baseUrl/shutdown-config")))
+        if ($shutdownHead.StatusCode -ne 200 -or $shutdownHead.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult().Length -ne 0) {
+            throw "$profile shutdown configuration did not preserve HEAD while evaluation configuration was broken"
+        }
+        $shutdownResponse = Receive-FixtureResponse ($http.GetAsync("$baseUrl/shutdown-config"))
+        if ($shutdownResponse.StatusCode -ne 200 -or -not $shutdownResponse.Headers.CacheControl.NoStore) {
+            throw "$profile shutdown configuration was unavailable or cacheable"
+        }
+        $shutdownConfig = $shutdownResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+        if (@($shutdownConfig.PSObject.Properties).Count -ne 1 -or $shutdownConfig.shutdownToken -cne $runtime.shutdownToken) {
+            throw "$profile shutdown configuration did not return only its server-owned shutdown capability"
+        }
+        $invalidShutdown = New-FixtureRequest POST "$baseUrl/shutdown"
+        $invalidShutdown.Headers.Add('X-Workbench-Shutdown-Token', 'invalid')
+        $invalidShutdownResponse = Receive-FixtureResponse ($http.SendAsync($invalidShutdown))
+        if ($invalidShutdownResponse.StatusCode -ne 403) { throw "$profile shutdown accepted an invalid capability" }
         $shutdown = New-FixtureRequest POST "$baseUrl/shutdown"
-        $shutdown.Headers.Add('X-Workbench-Shutdown-Token', [string]$runtime.shutdownToken)
+        $shutdown.Headers.Add('X-Workbench-Shutdown-Token', [string]$shutdownConfig.shutdownToken)
         $response = Receive-FixtureResponse ($http.SendAsync($shutdown))
         if ($response.StatusCode -ne 200 -or -not (Wait-Job -Job $serverJob -Timeout 10)) { throw "$profile did not shut down during evaluation" }
         Assert-FixtureWorkersStopped $shutdownWorker
         $null = Receive-Job -Job $serverJob -ErrorAction Stop
         if ($serverJob.State -ne 'Completed') { throw "$profile server did not finish cleanly" }
-        Write-Host "Passed $profile server: saved-rule model/effort isolation, in-flight GET/HEAD, authorization, serialized checks, validated results, failures, disconnect cancellation, and shutdown cleanup."
+        if (-not $Quiet) {
+            Write-Host (Format-ValidationStatusLine -Status 'passed' -Name $profileName -Detail (Format-ValidationDuration -DurationSeconds $profileStopwatch.Elapsed.TotalSeconds) -IndentLevel $IndentLevel)
+        }
+    }
+    catch {
+        if (-not $Quiet) {
+            Write-Host (Format-ValidationStatusLine -Status 'failed' -Name $profileName -Detail (Format-ValidationDuration -DurationSeconds $profileStopwatch.Elapsed.TotalSeconds) -IndentLevel $IndentLevel)
+        }
+        throw
     }
     finally {
         $http.Dispose()

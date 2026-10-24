@@ -1,0 +1,26 @@
+{
+  "$schema": "contracts/adoption/repository-adoption.schema.json",
+  "$comment": "Paths declared in this file are relative to the Hosted Toolkit root (hosted_copilot/), not the repository root. Referenced source-definition documents retain their own path rules.",
+  "schemaVersion": 1,
+  "reviewUpstream": "hashicorp/terraform-provider-azurerm",
+  "sourceDefinitionSet": "copilot-rule-catalog/source-definitions/source-definition-set.json",
+  "catalog": "copilot-rule-catalog/instruction-catalog.json",
+  "protectedRules": "copilot-rule-catalog/protected-rules.json",
+  "tokenPolicy": {
+    "estimator": "character-quarter-estimate-v1",
+    "safetyMarginPercent": 25,
+    "maximumGuidanceTokens": 110000,
+    "areas": [
+      { "name": "repository", "path": ".github/copilot-instructions.md", "budgetTokens": 2000 },
+      { "name": "go", "surfaceId": "implementation", "budgetTokens": 8000 },
+      { "name": "test", "surfaceId": "testing", "budgetTokens": 4000 },
+      { "name": "documentation", "surfaceId": "documentation", "budgetTokens": 8000 },
+      { "name": "skill", "path": ".github/skills/code-review/SKILL.md", "budgetTokens": 3000 }
+    ],
+    "combinations": [
+      { "name": "go-combined", "members": ["repository", "go", "skill"], "budgetTokens": 25000 },
+      { "name": "test-combined", "members": ["repository", "go", "test", "skill"], "budgetTokens": 25000 },
+      { "name": "documentation-combined", "members": ["repository", "documentation", "skill"], "budgetTokens": 25000 }
+    ]
+  }
+}

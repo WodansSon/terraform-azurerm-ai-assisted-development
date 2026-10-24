@@ -490,20 +490,38 @@ async function run({ page, baseUrl, assert, playback }) {
     const candidate = getActiveCandidate();
     const issue = getOpenRuleIssues().find((item) => item.candidateKeys.includes(candidate.key));
     const expected = document.createElement("div");
-    if (issue) expected.innerHTML = renderRuleIssueContent(issue, { candidateDetails: true });
+    if (issue) expected.innerHTML = renderRuleIssueContent(issue, { candidateDetails: true, proposedText: getDecision(candidate).proposedText });
     return Boolean(issue && elements["assessment-panel"].querySelector(".manual-relationship-reviews").innerHTML === expected.innerHTML);
   });
   assert(sharedResult, "Details did not use the shared compact relationship presentation");
   assert(!await page.locator(".manual-relationship-reviews .rule-issue-assessment, .manual-relationship-reviews .rule-issue-suggestion").count()
     && await page.locator(".manual-relationship-reviews .rule-issue-recommendation > .information-panel").count() === 1,
     "Compact Details retained redundant assessment or suggested wording, or lost the shared recommendation panel");
+  assert(await page.locator(".relationship-check-status").evaluate(node => node.tagName === "SPAN" && !node.hasAttribute("tabindex") && !node.hasAttribute("data-maintainer-resolution-jump")),
+    "Relationship status remained an interactive navigation control");
+  assert(await page.locator("[data-relationship-review-actions]").evaluate(node => node.previousElementSibling.querySelector('[data-decision-field="proposedText"]') !== null
+    && node.nextElementSibling.matches("[data-maintainer-resolution]"))
+    && await page.locator("[data-maintainer-resolution-jump]").textContent().then(text => text.trim()) === "Review Relationships",
+    "Relationship review is not an explicit action directly after the proposed editor");
+  const preview = await page.locator(".rule-issue-resolution-preview").evaluate(node => {
+    const candidate = getActiveCandidate();
+    const issue = getOpenRuleIssues().find(item => item.candidateKeys.includes(candidate.key));
+    const file = createPreviewFile("", "Resolution wording", getDecision(candidate).proposedText.split("\n"), issue.wording.text.split("\n"));
+    return {
+      exactRows: node.querySelectorAll(".preview-split-row").length === file.rows.length,
+      exactCounts: node.querySelector(".preview-change-summary").getAttribute("aria-label") === `${file.additions} additions and ${file.deletions} deletions`,
+      readOnly: !node.querySelector("input,textarea,button"),
+      noNestedScroll: getComputedStyle(node.querySelector(".preview-contextual-diff")).overflowY !== "auto"
+    };
+  });
+  assert(Object.values(preview).every(Boolean), `Resolution preview lost its exact, read-only shared diff: ${JSON.stringify(preview)}`);
   const outerScroll = await page.locator(".app-shell").evaluate((node) => node.scrollTop);
   await page.locator("[data-maintainer-resolution-jump]").focus();
   await page.locator("[data-maintainer-resolution-jump]").press("Enter");
   assert(await page.locator("#maintainer-resolution-heading").evaluate((node) => document.activeElement === node && node.tabIndex === -1
     && getComputedStyle(node).outlineStyle === "none")
     && await page.locator(".app-shell").evaluate((node) => node.scrollTop) === outerScroll,
-    "Status-pill keyboard navigation did not focus the resolution heading without scrolling the outer shell");
+    "Review action keyboard navigation did not focus the resolution heading without scrolling the outer shell");
   assert(await page.evaluate(() => {
     const issue = getOpenRuleIssues().find((item) => item.candidateKeys.includes(getActiveCandidate().key));
     const content = document.createElement("div");

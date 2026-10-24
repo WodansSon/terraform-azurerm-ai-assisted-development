@@ -14,7 +14,7 @@ param(
 
     [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
 
-    [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/rule-assessments/source-assessment-v4.json'),
+    [string]$AssessmentContractPath = (Join-Path $PSScriptRoot '../../../contracts/assessment/source-assessment-v4.json'),
 
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
@@ -99,14 +99,14 @@ if ([string]::IsNullOrWhiteSpace($Model) -or [string]::IsNullOrWhiteSpace($Evalu
     throw 'Model and Evaluator cannot be empty'
 }
 
-$assessmentRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/rule-assessments'
-$inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json'
-$definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json'
+$assessmentRoot = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/assessment'
+$inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/sources/source-inventory.schema.json'
+$definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/sources/source-definition.schema.json'
 $baselineSchemaPath = Join-Path $assessmentRoot 'source-assessment-baseline-v4.schema.json'
 $draftSchemaPath = Join-Path $assessmentRoot 'source-assessment-draft.schema.json'
 $contractSchemaPath = Join-Path $assessmentRoot 'assessment-contract.schema.json'
-$catalogSchemaPath = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($HostedCatalogPath))) 'instruction-catalog.schema.json'
-$protectedRulesSchemaPath = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($ProtectedRulesPath))) 'protected-rules.schema.json'
+$catalogSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/catalog/instruction-catalog.schema.json'
+$protectedRulesSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/catalog/protected-rules.schema.json'
 $contractInput = Test-JsonFile -Path ([IO.Path]::GetFullPath($AssessmentContractPath)) -SchemaPath $contractSchemaPath
 $contract = $contractInput.Value
 $assessmentContractSha256 = Get-SourceAssessmentContractSha256 -Contract $contract -RepositoryRoot $resolvedRepositoryRoot

@@ -74,8 +74,8 @@ $resolvedOutputPath = [IO.Path]::GetFullPath($OutputPath)
 $resolvedCacheDirectory = [IO.Path]::GetFullPath($CacheDirectory)
 $catalogPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/instruction-catalog.json'
 $protectedRulesPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/protected-rules.json'
-$schemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/manual-rule-relationship.schema.json'
-$promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/ManualRuleRelationship-v4.md'
+$schemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/reconciliation/manual-rule-relationship.schema.json'
+$promptPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/tools/prompts/reconciliation/ManualRuleRelationship-v4.md'
 foreach ($path in @($resolvedRequestPath, $catalogPath, $protectedRulesPath, $schemaPath, $promptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required manual relationship input was not found: $path"

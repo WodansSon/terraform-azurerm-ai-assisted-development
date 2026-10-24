@@ -4,7 +4,7 @@ param(
 
     [string]$CasesDirectory = (Join-Path $PSScriptRoot '../../regression/cases'),
 
-    [string]$SchemaPath = (Join-Path $PSScriptRoot '../../regression/schema/paired-review-result.schema.json'),
+    [string]$SchemaPath = (Join-Path $PSScriptRoot '../../contracts/review/paired-review-result.schema.json'),
 
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'

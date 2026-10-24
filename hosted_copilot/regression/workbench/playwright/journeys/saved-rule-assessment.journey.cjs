@@ -39,7 +39,8 @@ async function verifyDetailLayout(panel, assert, context) {
         && getComputedStyle(previousEvidence).paddingBottom === "15px"
         && getComputedStyle(evidence).paddingTop === "15px"
         && Math.abs(heading.getBoundingClientRect().top - previousEvidence.getBoundingClientRect().bottom - 15) < 1,
-      assistance: audit ? !node.querySelector("[data-rule-assistance]") : !coverage && Boolean(node.querySelector("[data-rule-assistance]")),
+      assistance: !node.querySelector("[data-rule-assistance]") && Boolean(document.querySelector("#rule-assistance-panel [data-rule-assistance]"))
+        && (audit || !coverage),
       info: heading.nextElementSibling === info && info.nextElementSibling === strip
         && !info.querySelector("button")
         && info.querySelector("p > strong")?.textContent === "Assessment:"
@@ -289,7 +290,7 @@ async function run({ page, baseUrl, assert }) {
     const candidate = getActiveCandidate();
     const sourcePanel = panel.querySelector("[data-evidence-title='Source Rules']").closest("section");
     const nodes = [
-      sourcePanel, panel.querySelector(".assessment-details-heading"), panel.querySelector(".score-strip"), panel.querySelector("[data-rule-assistance]"),
+      sourcePanel, panel.querySelector(".assessment-details-heading"), panel.querySelector(".score-strip"),
       panel.querySelector(".current-hosted-rule"), panel.querySelector(".proposed-rule-heading"),
       panel.querySelector("[data-assessment-explanation]"), panel.querySelector("[data-proposed-candidate-key]"),
       panel.querySelector(".rule-actions > .section-label")
@@ -338,6 +339,13 @@ async function run({ page, baseUrl, assert }) {
     assert(passed, `The accepted Details presentation failed ${name}${name === "geometry" ? `: ${JSON.stringify(presentation.geometryDetails)}` : ""}`);
   }
   assert(presentation.session === setup.session, "Evidence disclosure changed the saved draft");
+  await panel.locator(".assessment-content").hover();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector("#assessment-panel > .assessment-content"), "::-webkit-scrollbar-thumb").backgroundColor !== "rgba(0, 0, 0, 0)");
+  await page.locator("#assist-panel-toggle").hover();
+  await page.locator("#assist-panel-toggle").focus();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector("#assessment-panel > .assessment-content"), "::-webkit-scrollbar-thumb").backgroundColor === "rgba(0, 0, 0, 0)");
+  assert(await panel.locator(".assessment-content").evaluate(node => !node.matches(":hover, :focus-within")
+    && getComputedStyle(node).transitionDuration === "0.36s"), "Details scrollbar did not return to the shared fade when hover and focus left");
   await panel.locator(".contributing-rule summary").first().click();
   const sourceWasOpen = await panel.locator(".contributing-rule").first().evaluate((node) => node.open);
   await page.evaluate(() => renderAssessment());

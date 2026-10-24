@@ -570,10 +570,10 @@ if ($resolvedOutputPath.StartsWith($repositoryPrefix, [StringComparison]::Ordina
     throw 'Staged inventory output must be outside the repository root'
 }
 
-$definitionSchemaPath = Join-Path (Split-Path -Parent $resolvedDefinitionPath) 'source-definition.schema.json'
+$definitionSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/sources/source-definition.schema.json'
 $catalogRoot = Split-Path -Parent $resolvedCatalogPath
-$inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
-$contractSchemaPath = Join-Path $catalogRoot 'parser-contracts/parser-contract.schema.json'
+$inventorySchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/sources/source-inventory.schema.json'
+$contractSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/parsers/parser-contract.schema.json'
 foreach ($requiredPath in @($resolvedDefinitionPath, $definitionSchemaPath, $inventorySchemaPath, $contractSchemaPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required source inventory input was not found: $requiredPath"
@@ -582,7 +582,7 @@ foreach ($requiredPath in @($resolvedDefinitionPath, $definitionSchemaPath, $inv
 
 Test-JsonFile -Path $resolvedDefinitionPath -SchemaPath $definitionSchemaPath
 $definition = Get-Content -LiteralPath $resolvedDefinitionPath -Raw | ConvertFrom-Json
-$contractPath = Join-Path $catalogRoot "parser-contracts/$($definition.parser).json"
+$contractPath = Join-Path $resolvedRepositoryRoot "hosted_copilot/contracts/parsers/$($definition.parser).json"
 if (-not (Test-Path -LiteralPath $contractPath -PathType Leaf)) {
     throw "Parser contract was not found: $contractPath"
 }
@@ -625,7 +625,7 @@ switch ([string]$definition.root.kind) {
 
 $catalog = $null
 if ([string]$definition.parser -in @('maintainer-proposals-v2', 'maintainer-proposals-v4')) {
-    $catalogSchemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
+    $catalogSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/catalog/instruction-catalog.schema.json'
     foreach ($requiredPath in @($resolvedCatalogPath, $catalogSchemaPath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "Required Maintainer Proposal parser input was not found: $requiredPath"

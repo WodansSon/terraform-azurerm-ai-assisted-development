@@ -1,10 +1,57 @@
 # Hosted Toolkit Commands
 
-Only the commands listed here are supported maintainer entry points. The four normal-operation commands remain at the tools root. Specialized catalog commands live beneath `commands/catalog/`.
+Only the commands listed here are supported maintainer entry points. The four normal-operation commands remain at the tools root. Specialized catalog commands live beneath `commands/catalog/`; the read-only adoption preflight lives beneath `commands/adoption/`.
 
 Files beneath `internal/`, `modules/`, and `tests/` are implementation or validation details rather than an equivalent manual command surface. Reusable `.psm1` files live under `modules/`; `internal/` is reserved for implementation `.ps1` scripts. Shared cross-workflow primitives live under `modules/shared/`, review compatibility and workflow composition live under `modules/review/`, source-format parsers live under `modules/source-parsers/`, and Workbench runtime composition lives under `modules/workbench/`. Retired migration and version 3 tools are preserved under `local-only-docs/obsolete-v3/`.
 
 `modules/shared/HostedGitHub.Helpers.psm1` exclusively owns GitHub CLI process execution and reusable API, CODEOWNERS, and fork-target primitives. Workbench, review, and source-collection consumers retain their domain-specific policy but must delegate authenticated GitHub CLI execution to that shared module.
+
+## Contract And Prompt Libraries
+
+All local evaluator instructions live under [prompts/](prompts/README.md), grouped into assessment, reconciliation, chat, and shared templates. Runtime code loads those files rather than embedding instruction prose. The library index documents consumers, behavior-authority registration, boundaries, and the configuration-versus-engine separation required for adoption beyond the current AzureRM use case.
+
+Behavior descriptors and JSON schemas live in the separate [contract library](../contracts/README.md), grouped by task. Configuration and rule data remain under the rule catalog; validation loads schemas explicitly from the contract library rather than assuming they live beside input data.
+
+## Repository Adoption And Token Policy
+
+[adoption.json](../adoption.json) is repo-local maintainer configuration, not deployed review guidance. It owns the canonical review upstream, references to the source-definition set, catalog and protected rules, and the guidance token policy. Model profiles remain in [llm.json](llm.json). Source repositories belong to individual lane definitions and can differ from the review upstream; changing that upstream does not authorize access or bypass fork-family validation.
+
+Paths declared in the descriptor are relative to the Hosted Toolkit root (`hosted_copilot/`), not the repository root or the descriptor's parent directory. Its `$comment` records that convention in the JSON itself. Paths inside referenced source-definition documents retain their own contract's resolution rules.
+
+The descriptor's `tokenPolicy` contains:
+
+- `estimator`: The supported `character-quarter-estimate-v1` algorithm estimates tokens with the ceiling of character count divided by four.
+- `safetyMarginPercent`: The configured percentage added to each file's estimate before checking budgets. Combined views sum the guarded counts of their members.
+- `maximumGuidanceTokens`: The ceiling on all unique configured guidance files, counted once rather than summing overlapping combined views. This is an engineering allocation, not evidence of the model runtime's actual context capacity.
+- `areas`: Named file allocations. Use `surfaceId` to reference a catalog surface's output path or `path` for shared repository or skill guidance. Each area requires a positive `budgetTokens`; file paths and report names must be unique. Every deployed catalog surface must be accounted for.
+- `combinations`: Named applicable-review views with explicit area `members` and independent budgets. Unknown or duplicate members are rejected. Areas and combined views are deployed guidance allocations, not source lanes.
+
+Multiple skills use separate entries in `areas`, each with a unique name, file path and budget. Include each skill's area name only in the combined review views where it applies; `skill` is the initial profile's area name, not a singleton configuration property.
+
+The initial descriptor retains the existing AzureRM allocations and combined memberships, a 25% safety margin, and the 110,000-token deployed-guidance ceiling. The reader and capacity-report validator enforce the configured set rather than assuming three source lanes or eight reports. Missing or malformed configuration fails without an AzureRM fallback. Reports bind the resolved policy, and display generation rejects stale, missing, duplicated or arithmetically inconsistent reports. Browser token estimates and advisory AI use the display snapshot's margin and limits.
+
+Run the offline adoption preflight:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/commands/adoption/Test-RepositoryAdoption.ps1
+```
+
+Use `-HostedRoot <profile-root>` for a prepared local profile and `-DescriptorPath <relative-json-path>` for an alternative descriptor inside that root. `-OutputFormat Json` emits findings suitable for automation. Paths cannot escape the root or traverse symbolic links or junctions. The preflight runs only installed deterministic capacity code, not commands named by input data; it performs no collection, inference, authorization request, rewriting, staging, or cache migration.
+
+| Finding Status | Meaning |
+| --- | --- |
+| `passed` | The stated structural, accounting or declaration check succeeded; this is not universal readiness |
+| `requires-adaptation` | A confirmed restriction or exhausted budget needs attention |
+| `invalid` | A required input or dependency is missing, unsafe, malformed or inconsistent |
+| `not-assessed` | Compatibility needs integration review beyond an offline check |
+
+Each finding contains its reason, `requiredChanges`, `relatedFiles`, and verification commands. Required changes are evidence-backed; related behavior files are review points, not a claim that every dependency must be edited. The checker recognizes only known static parser/repository declarations and reports unrecognized declarations as unassessed rather than executing them or guessing support. A source schema's repository-only rejection is distinguished from other malformed source configuration.
+
+Process exit codes are `0` for fully passing checks, `1` for invalid inputs or required adaptations, and `2` for review still required. The initial profile intentionally returns `2`: source-format semantics, arbitrary rule categories, current Workbench surface mappings, live GitHub access and actual runtime limits cannot be established by this command.
+
+The descriptor currently drives preflight and capacity configuration; it does not automatically rewire the existing collection/review entry points, replace supported parser implementations, generalize the browser's surface map, or grant new repository permissions. The preflight is a migration checklist rather than an automatic code migration engine. Keep these integration boundaries explicit when preparing another repository.
+
+Run [Test-RepositoryAdoption.ps1](tests/Test-RepositoryAdoption.ps1) for focused policy, alternate-profile, browser-calculation and read-only diagnostic tests. Normal Hosted validation also runs this suite. A policy change requires explicit reconstruction of staged displays before use; the live Workbench and saved artifacts are not silently rewritten. An explicit rebuild may require fresh inference when behavior authority changes.
 
 ## Normal Operations
 

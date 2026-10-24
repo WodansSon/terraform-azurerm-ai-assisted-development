@@ -1,7 +1,8 @@
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Http')]
 param(
     [Parameter(Mandatory)][string]$DisplayPath,
-    [Parameter(Mandatory)][string]$RuleIssuesPath,
+    [Parameter(Mandatory, ParameterSetName = 'Http')][string]$RuleIssuesPath,
+    [Parameter(Mandatory, ParameterSetName = 'Worker')][switch]$WorkerOnly,
     [Parameter(Mandatory)][string]$TemporaryDirectory,
     [switch]$Quiet,
     [int]$IndentLevel = 0
@@ -15,13 +16,62 @@ Import-Module (Join-Path $toolsRoot 'modules/workbench/RuleAssistance.psm1')
 Import-Module (Join-Path $toolsRoot 'modules/shared/HostedToolkit.Helpers.psm1')
 Import-Module (Join-Path $repositoryRoot 'tools/ValidationOutput.psm1')
 
-function Write-AssistanceTestResult {
+$testResults = [Collections.Generic.List[object]]::new()
+$currentTestName = 'assistance-inputs'
+$suiteStopwatch = [Diagnostics.Stopwatch]::StartNew()
+$caseStopwatch = [Diagnostics.Stopwatch]::StartNew()
+
+function Start-AssistanceTest {
     param([string]$Name, [string]$Detail)
 
+    $script:currentTestName = $Name
+    $script:caseStopwatch = [Diagnostics.Stopwatch]::StartNew()
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name $Name -Detail $Detail -IndentLevel $IndentLevel)
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail -IndentLevel $IndentLevel)
     }
 }
+
+function Add-AssistanceTestResult {
+    param([string]$Name, [string]$Detail)
+
+    $caseStopwatch.Stop()
+    $durationSeconds = $caseStopwatch.Elapsed.TotalSeconds
+    $testResults.Add([pscustomobject]@{ name = $Name; status = 'passed'; detail = $Detail; durationSeconds = $durationSeconds })
+    if (-not $Quiet) {
+        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name $Name -Detail (Format-ValidationDuration -DurationSeconds $durationSeconds) -IndentLevel $IndentLevel)
+    }
+}
+
+function Complete-AssistanceTestOutput {
+    $suiteStopwatch.Stop()
+    if ($Quiet -or $IndentLevel -gt 0) { return }
+    $failures = @($testResults | Where-Object status -CEQ 'failed')
+    Write-ValidationSectionHeader -Title 'Hosted rule assistance test summary'
+    Write-ValidationSummary -Fields ([ordered]@{ Status = if ($failures.Count) { 'FAILED' } else { 'PASSED' }; Tests = $testResults.Count; Issues = $failures.Count; Elapsed = Format-ValidationDuration -DurationSeconds $suiteStopwatch.Elapsed.TotalSeconds })
+    Write-ValidationSectionHeader -Title 'Assistance tests'
+    Write-ValidationStatusTable -Rows $testResults.ToArray() -NameHeader 'Test'
+    if ($failures.Count) {
+        Write-ValidationSectionHeader -Title 'Failures'
+        foreach ($failure in $failures) { Write-Output "  - $($failure.name): $($failure.detail)" }
+    }
+    Complete-ValidationTextOutput
+}
+
+trap {
+    $caseStopwatch.Stop()
+    $durationSeconds = $caseStopwatch.Elapsed.TotalSeconds
+    $testResults.Add([pscustomobject]@{ name = $currentTestName; status = 'failed'; detail = $_.Exception.Message; durationSeconds = $durationSeconds })
+    if (-not $Quiet) {
+        Write-Host (Format-ValidationStatusLine -Status 'failed' -Name $currentTestName -Detail (Format-ValidationDuration -DurationSeconds $durationSeconds) -IndentLevel $IndentLevel)
+    }
+    Complete-AssistanceTestOutput
+    if ($Quiet -or $IndentLevel -gt 0) {
+        [Console]::Error.WriteLine("$($currentTestName): $($_.Exception.Message)")
+    }
+    exit 1
+}
+
+if (-not $Quiet -and $IndentLevel -eq 0) { Write-ValidationSectionHeader -Title 'Hosted rule assistance tests' }
 
 $normalProfile = Resolve-HostedLlmProfile -Profile normal
 $fixtureCommand = Join-Path $PSScriptRoot 'fixtures/copilot-assistance-evaluator.ps1'
@@ -75,22 +125,35 @@ function Invoke-AssistanceFixture {
     return Get-Content -LiteralPath $outputPath -Raw | ConvertFrom-Json -Depth 100
 }
 
-$promptRoot = Join-Path $toolsRoot 'workbench-prompts'
+Start-AssistanceTest -Name 'assistance-prompt-boundaries' -Detail 'Checking registered prompt, inline capacity guidance and quoted-data boundaries'
+$promptRoot = Join-Path $toolsRoot 'prompts/chat'
 $registeredPrompts = @(Get-ChildItem -LiteralPath $promptRoot -Filter '*.md')
 if ($registeredPrompts.Count -ne 1 -or $registeredPrompts[0].Name -cne 'RuleAssistance.md') { throw 'Update the assistance runtime prompt boundary registry' }
 foreach ($prompt in $registeredPrompts) {
     $content = Get-Content -LiteralPath $prompt.FullName -Raw
+    if ($content -notmatch '(?m)^## Consolidation Objective\s*$') { throw 'Assistance prompt has no consolidation objective' }
+    $objective = (($content -split '(?m)^## Consolidation Objective\s*$', 2)[1] -split '(?m)^## ', 2)[0]
+    foreach ($required in @('across source lanes', 'smallest accurate Hosted catalog result', 'shortest clear wording', 'all enforceable source obligations', 'avoid duplicating requirements', 'Preserve adequate current wording', '`guidanceCapacity` report supplied inline', 'Do not assume access to `adoption.json` or external policy files', 'total deployed Hosted guidance', 'not per rule or the chat input budget', 'do not invent token counts', 'projected Plan changes')) {
+        if (-not $objective.Contains($required, [StringComparison]::Ordinal)) { throw "Assistance prompt omitted consolidation guidance: $required" }
+    }
     if ($content -notmatch '(?m)^## Boundaries\s*$') { throw 'Assistance prompt has no Boundaries section' }
     $boundary = ($content -split '(?m)^## Boundaries\s*$', 2)[1]
     foreach ($required in @('source', 'assessment', 'catalog', 'untrusted quoted data', 'prompt injection', 'tool requests', 'role changes', 'output-format changes', 'policy claims')) {
         if (-not $boundary.Contains($required, [StringComparison]::OrdinalIgnoreCase)) { throw "Assistance prompt omitted boundary: $required" }
     }
 }
-Write-AssistanceTestResult -Name 'assistance-prompt-boundaries' -Detail 'Prompt registry and quoted-data boundaries'
+Add-AssistanceTestResult -Name 'assistance-prompt-boundaries' -Detail 'Registered prompt, token-constrained consolidation objective and quoted-data boundaries'
+Start-AssistanceTest -Name 'assistance-inline-capacity' -Detail 'Checking the actual worker stdin against the complete supplied capacity snapshot'
 $reply = Invoke-AssistanceFixture (New-AssistancePayload 'warning')
 if ($reply.requestId -eq '' -or $reply.model -cne 'gpt-5.4' -or $reply.reasoningEffort -cne 'high' -or
     (@($reply.catalogRuleIds | Sort-Object -CaseSensitive) -join "`0") -cne (@($catalogIds | Sort-Object -CaseSensitive) -join "`0") -or
     $reply.message -notlike 'Synthetic catalog advice*' -or -not $reply.suggestedWording -or $reply.elapsedMilliseconds -lt 0) { throw 'Valid assistance result lost its context, profile, or proposal' }
+$received = Get-Content -LiteralPath (Join-Path $control 'metrics.jsonl') | Select-Object -Last 1 | ConvertFrom-Json -Depth 100
+if (($received.guidanceCapacity | ConvertTo-Json -Depth 100 -Compress) -cne ($display.guidanceCapacity | ConvertTo-Json -Depth 100 -Compress)) {
+    throw 'The actual assistance stdin payload omitted or changed the supplied guidance-capacity snapshot'
+}
+Add-AssistanceTestResult -Name 'assistance-inline-capacity' -Detail 'Actual CLI stdin retains the complete supplied capacity report, policy identity, limits, allocations and combined views'
+Start-AssistanceTest -Name 'assistance-cli-contract' -Detail 'Checking replies, no-tools transport, history, identity and input limits'
 foreach ($question in @('multiple-messages', 'two-structured-messages', 'empty-intermediate', 'null-tool-requests')) {
     $completed = Invoke-AssistanceFixture (New-AssistancePayload $question)
     if ($completed.message -cne $reply.message -or $completed.suggestedWording -cne $reply.suggestedWording) { throw 'Completed assistance did not select its final response' }
@@ -113,8 +176,9 @@ $overBudget.messages = @(
 )
 $failure = Invoke-AssistanceFixture $overBudget -Reject
 if ($failure -notlike '*input budget*' -or $failure -notlike '*No catalog rules or conversation turns were dropped*') { throw 'Oversized conversations did not fail explicitly without truncation' }
-Write-AssistanceTestResult -Name 'assistance-cli-contract' -Detail 'Catalog grounding, CLI transport, history, strict replies, identity and input limits'
+Add-AssistanceTestResult -Name 'assistance-cli-contract' -Detail 'Catalog grounding, CLI transport, history, strict replies, identity and input limits'
 
+Start-AssistanceTest -Name 'assistance-error-details' -Detail 'Checking safe structured errors and diagnostic cleanup'
 foreach ($known in @($true, $false)) {
     $exception = if ($known) { New-RuleAssistanceException -Message 'Synthetic safe validation reason.' -Code 'synthetic-validation' }
         else { [InvalidOperationException]::new('SYNTHETIC_SENSITIVE_VALUE') }
@@ -125,7 +189,12 @@ foreach ($known in @($true, $false)) {
     if ($failure.message -cne $expected -or ($failure | ConvertTo-Json -Compress) -match 'SYNTHETIC_SENSITIVE_VALUE') { throw 'Error conversion replaced a known reason or exposed an unexpected exception' }
     Remove-Item -LiteralPath (Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-assistance-diagnostics/$($failure.diagnosticId).json")
 }
-Write-AssistanceTestResult -Name 'assistance-error-details' -Detail 'Known reasons preserved; unexpected exception details excluded'
+Add-AssistanceTestResult -Name 'assistance-error-details' -Detail 'Known reasons preserved; unexpected exception details excluded'
+
+if ($WorkerOnly) {
+    Complete-AssistanceTestOutput
+    return
+}
 
 function Send-AssistanceHttp {
     param([Net.Http.HttpClient]$Http, [string]$Url, [object]$Payload, [string]$Token, [Threading.CancellationToken]$Cancellation = [Threading.CancellationToken]::None)
@@ -158,6 +227,7 @@ function Assert-AssistanceStopped {
 }
 
 foreach ($profile in @('internal', 'production')) {
+    Start-AssistanceTest -Name "assistance-$profile-http" -Detail 'Checking authorization, responses, cancellation, shutdown and cleanup'
     $site = Join-Path $TemporaryDirectory "$profile-site"
     $null = New-Item -ItemType Directory -Path $site
     foreach ($asset in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'icons')) {
@@ -221,7 +291,7 @@ foreach ($profile in @('internal', 'production')) {
         Assert-AssistanceStopped $worker
         Remove-Item -LiteralPath (Join-Path $control 'held.json')
         $null = Receive-Job $job -ErrorAction Stop
-        Write-AssistanceTestResult -Name "assistance-$profile-http" -Detail 'Authorization, replies, responsive assets, disconnect cancellation, shutdown and cleanup'
+        Add-AssistanceTestResult -Name "assistance-$profile-http" -Detail 'Authorization, replies, responsive assets, disconnect cancellation, shutdown and cleanup'
     } finally {
         if ($job.State -notin @('Completed', 'Failed', 'Stopped') -and $null -ne $config) {
             $shutdown = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::Post, "$url/shutdown")
@@ -242,3 +312,4 @@ foreach ($profile in @('internal', 'production')) {
         Remove-Job $job -Force
     }
 }
+Complete-AssistanceTestOutput

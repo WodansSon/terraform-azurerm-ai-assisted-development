@@ -14,9 +14,9 @@ $normalProfile = Resolve-HostedLlmProfile -Profile normal
 $runnerPath = Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Invoke-RuleIssueAdjudication.ps1'
 $exporterPath = Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
 $fixturePath = Join-Path $PSScriptRoot 'fixtures/rule-issue-adjudication-evaluator.ps1'
-$inputSchemaPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-input-v4.schema.json'
-$draftSchemaPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-draft-v4.schema.json'
-$promptPath = Join-Path $repositoryRoot 'hosted_copilot/tools/assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md'
+$inputSchemaPath = Join-Path $repositoryRoot 'hosted_copilot/contracts/reconciliation/rule-issue-adjudication-input-v4.schema.json'
+$draftSchemaPath = Join-Path $repositoryRoot 'hosted_copilot/contracts/reconciliation/rule-issue-adjudication-draft-v4.schema.json'
+$promptPath = Join-Path $repositoryRoot 'hosted_copilot/tools/prompts/reconciliation/RuleIssueAdjudication-v4.md'
 $results = [Collections.Generic.List[object]]::new()
 $issues = [Collections.Generic.List[string]]::new()
 $root = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-issue-adjudication-test-' + [Guid]::NewGuid().ToString('N'))
@@ -95,8 +95,8 @@ function New-ComponentInput {
 
 try {
     Write-TestProgress -Name 'registered-evaluator-boundaries' -Detail 'Checking injection boundaries across the registered prompt set'
-    $authority = Get-Content -LiteralPath (Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-v4.json') -Raw | ConvertFrom-Json
-    $registeredPrompts = @($authority.behaviorFiles | Where-Object { $_ -like '*/assessment-reconciliation-prompts/*.md' })
+    $authority = Get-Content -LiteralPath (Join-Path $repositoryRoot 'hosted_copilot/contracts/reconciliation/rule-issue-adjudication-v4.json') -Raw | ConvertFrom-Json
+    $registeredPrompts = @($authority.behaviorFiles | Where-Object { $_ -like '*/prompts/reconciliation/*.md' })
     $boundariesValid = $registeredPrompts.Count -eq 2
     foreach ($relativePath in $registeredPrompts) {
         $content = Get-Content -LiteralPath (Join-Path $repositoryRoot $relativePath) -Raw
@@ -294,13 +294,20 @@ try {
         $nativeParameters.CacheDirectory = Join-Path $root 'native-adjudication-cache'
         $nativeParameters.OutputPath = Join-Path $root 'native-adjudication-result.json'
         $null = & $runnerPath @nativeParameters
+        $explicitNativeParameters = @{} + $nativeParameters
+        $explicitNativeParameters.EvaluatorScriptPath = Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Invoke-CopilotReconciliationStage.ps1'
+        $explicitNativeParameters.CacheDirectory = Join-Path $root 'explicit-native-adjudication-cache'
+        $explicitNativeParameters.OutputPath = Join-Path $root 'explicit-native-adjudication-result.json'
+        $null = & $runnerPath @explicitNativeParameters
     }
     finally {
         [Environment]::SetEnvironmentVariable('HOSTED_TEST_COPILOT_METRICS', $previousNativeMetricsPath)
     }
     $nativeMetrics = @(Get-Content -LiteralPath $nativeMetricsPath | ForEach-Object { $_ | ConvertFrom-Json })
     $nativeResult = Get-Content -LiteralPath $nativeParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
-    Add-TestResult -Name 'saved-edit-native-inline-context' -Passed ($nativeMetrics.Count -eq 2 -and $nativeMetrics[0].manual -and -not $nativeMetrics[1].manual -and $nativeMetrics[0].fileCount -eq 2 -and $nativeMetrics[1].fileCount -eq 5 -and $nativeMetrics[1].bytes -le 393216 -and @($nativeMetrics[1].candidates).Count -eq 1 -and @($nativeMetrics | Where-Object { $_.model -cne $normalProfile.model -or $_.effort -cne $normalProfile.reasoningEffort }).Count -eq 0 -and @($nativeResult.components[0].assessments).Count -eq 1) -Detail 'Discovery and adjudication use full validated inline evidence with the resolved normal model and effort; stdout JSONL is isolated from legitimate stderr diagnostics.'
+    $explicitNativeResult = Get-Content -LiteralPath $explicitNativeParameters.OutputPath -Raw | ConvertFrom-Json -Depth 100
+    Add-TestResult -Name 'saved-edit-native-inline-context' -Passed ($nativeMetrics.Count -eq 3 -and $nativeMetrics[0].manual -and -not $nativeMetrics[1].manual -and $nativeMetrics[0].fileCount -eq 2 -and $nativeMetrics[1].fileCount -eq 5 -and $nativeMetrics[1].bytes -le 393216 -and @($nativeMetrics[1].candidates).Count -eq 1 -and @($nativeMetrics | Where-Object { $_.model -cne $normalProfile.model -or $_.effort -cne $normalProfile.reasoningEffort }).Count -eq 0 -and @($nativeResult.components[0].assessments).Count -eq 1) -Detail 'Discovery and adjudication use full validated inline evidence with the resolved normal model and effort; stdout JSONL is isolated from legitimate stderr diagnostics.'
+    Add-TestResult -Name 'production-evaluator-frozen-layout' -Passed (-not $nativeMetrics[2].manual -and $nativeMetrics[2].fileCount -eq 5 -and $nativeMetrics[2].bytes -le 393216 -and @($explicitNativeResult.components[0].assessments).Count -eq 1) -Detail 'Both default and explicitly selected production evaluators import their declared dependencies from the frozen repository layout and complete against a synthetic CLI without using live checkout imports.'
     Write-TestProgress -Name 'manual-schema-failure-diagnostics' -Detail 'Retaining safe schema details after native discovery input cleanup'
     $invalidManualCommand = Join-Path $root 'invalid-manual-cli.ps1'
     $invalidManualScript = @'
@@ -491,7 +498,7 @@ $null = [Console]::In.ReadToEnd()
     $authorityParameters = @{} + $parameters
     $authorityParameters.RepositoryRoot = $authorityRepositoryRoot
     $authorityParameters.AdjudicationContractPath = $authorityContractPath
-    $authorityParameters.ContractSchemaPath = Join-Path $repositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-contract.schema.json'
+    $authorityParameters.ContractSchemaPath = Join-Path $repositoryRoot 'hosted_copilot/contracts/reconciliation/rule-issue-adjudication-contract.schema.json'
     $authorityParameters.CacheDirectory = Join-Path $root 'authority-cache'
     $authorityParameters.OutputPath = Join-Path $root 'authority-first.json'
     $authorityFirst = & $runnerPath @authorityParameters | ConvertFrom-Json

@@ -287,7 +287,21 @@ async function run() {
       const context = await (await getBrowser()).newContext({ viewport: { width: 768, height: 900 } });
       const page = await context.newPage();
       try {
+        let shutdownConfigurationRequests = 0;
+        let evaluationConfigurationRequests = 0;
+        page.on("request", (request) => {
+          if (new URL(request.url()).pathname === "/shutdown-config") shutdownConfigurationRequests += 1;
+        });
         await page.goto(baseUrl, { waitUntil: "networkidle" });
+        shutdownConfigurationRequests = 0;
+        await page.route("**/runtime-config", async (route) => {
+          evaluationConfigurationRequests += 1;
+          await route.fulfill({ status: 500, body: "Synthetic evaluation configuration failure" });
+        });
+        await page.evaluate(() => {
+          globalThis.__HOSTED_RULE_WORKBENCH__.shutdownToken = "e".repeat(64);
+          globalThis.__HOSTED_RULE_WORKBENCH__.operationToken = "f".repeat(64);
+        });
         await playback.show(page, "Close Workbench · shutdown verification");
         await page.locator("#close-button").click();
         await page.locator(".shutdown-state h1").waitFor({ state: "visible" });
@@ -303,6 +317,7 @@ async function run() {
           };
         });
         const closedChecks = [
+          [shutdownConfigurationRequests === 1 && evaluationConfigurationRequests === 0, `Close Workbench depended on evaluation configuration or reused cached shutdown credentials (${JSON.stringify({ shutdownConfigurationRequests, evaluationConfigurationRequests })})`],
           [closedState.productName === "HOSTED COPILOT RULE MANAGER", "closed state lost the approved product identity"],
           [closedState.heading === "Workbench Closed", "Close Workbench did not render the approved heading"],
           [closedState.copy === "The local server has stopped. This tab can be closed.", "closed state explanatory copy is incorrect"],

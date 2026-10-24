@@ -15,7 +15,7 @@ $validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/Validat
 Import-Module -Name $validationOutputModulePath -Force
 
 $resolvedCatalogPath = [IO.Path]::GetFullPath($CatalogPath)
-$schemaPath = Join-Path (Split-Path -Parent $resolvedCatalogPath) 'instruction-catalog.schema.json'
+$schemaPath = Join-Path $PSScriptRoot '../../../contracts/catalog/instruction-catalog.schema.json'
 if (-not (Test-Path -LiteralPath $resolvedCatalogPath -PathType Leaf)) {
     throw "Instruction catalog was not found: $resolvedCatalogPath"
 }

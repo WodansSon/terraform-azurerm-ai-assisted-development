@@ -19,13 +19,13 @@ $catalogRoot = Join-Path $repoRoot 'hosted_copilot/copilot-rule-catalog'
 $definitionPath = Join-Path $catalogRoot 'source-definitions/maintainer-proposals.json'
 $interactiveDefinitionPath = Join-Path $catalogRoot 'source-definitions/interactive-toolkit.json'
 $contributorDefinitionPath = Join-Path $catalogRoot 'source-definitions/contributor-guidance.json'
-$definitionSchemaPath = Join-Path $catalogRoot 'source-definitions/source-definition.schema.json'
-$inventorySchemaPath = Join-Path $catalogRoot 'source-inventories/source-inventory.schema.json'
-$contractPath = Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v2.json'
-$v4ContractPath = Join-Path $catalogRoot 'parser-contracts/maintainer-proposals-v4.json'
-$interactiveContractPath = Join-Path $catalogRoot 'parser-contracts/interactive-toolkit-v2.json'
-$contributorContractPath = Join-Path $catalogRoot 'parser-contracts/contributor-guidance-v2.json'
-$contractSchemaPath = Join-Path $catalogRoot 'parser-contracts/parser-contract.schema.json'
+$definitionSchemaPath = Join-Path $catalogRoot '../contracts/sources/source-definition.schema.json'
+$inventorySchemaPath = Join-Path $catalogRoot '../contracts/sources/source-inventory.schema.json'
+$contractPath = Join-Path $catalogRoot '../contracts/parsers/maintainer-proposals-v2.json'
+$v4ContractPath = Join-Path $catalogRoot '../contracts/parsers/maintainer-proposals-v4.json'
+$interactiveContractPath = Join-Path $catalogRoot '../contracts/parsers/interactive-toolkit-v2.json'
+$contributorContractPath = Join-Path $catalogRoot '../contracts/parsers/contributor-guidance-v2.json'
+$contractSchemaPath = Join-Path $catalogRoot '../contracts/parsers/parser-contract.schema.json'
 $collectorPath = Join-Path $PSScriptRoot '../internal/collection/New-SourceInventory.ps1'
 $parserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/MaintainerProposalsV2.psm1'
 $v4ParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/MaintainerProposalsV4.psm1'
@@ -175,6 +175,7 @@ try {
         $null = New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force
         Copy-Item -LiteralPath $sourcePath -Destination $destinationPath
     }
+    Copy-Item -LiteralPath $interactiveContractPath -Destination (Join-Path $interactiveFixtureRepositoryRoot 'hosted_copilot/contracts/parsers/interactive-toolkit-v2.json')
     $null = New-Item -ItemType Directory -Path $interactiveFixtureCatalogRoot, (Split-Path -Parent $interactiveFixtureContractPath) -Force
     $interactiveRuleContent = "### TEST-FIXTURE-001: Synthetic interactive rule`n`n- Rule: Validate the synthetic Interactive intake parser."
     [IO.File]::WriteAllText($interactiveFixtureContractPath, "# Synthetic Interactive contract`n`n## Rule IDs`n`n$interactiveRuleContent`n`n<!-- TEST-FIXTURE-CONTRACT-EOF -->`n", [Text.UTF8Encoding]::new($false))
@@ -327,14 +328,14 @@ try {
     Add-TestResult -Name 'contributor-definition-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contributorDefinitionPath -Raw) -SchemaPath $definitionSchemaPath) -Detail 'Contributor Guidance uses the strict shared source-definition schema.'
     Add-TestResult -Name 'contributor-contract-schema' -Passed (Test-JsonInstance -Json (Get-Content -LiteralPath $contributorContractPath -Raw) -SchemaPath $contractSchemaPath) -Detail 'The Contributor Guidance parser contract has a strict versioned shape.'
     $requiredParserValidationFiles = @(
-        'hosted_copilot/copilot-rule-catalog/parser-contracts/parser-contract.schema.json',
-        'hosted_copilot/copilot-rule-catalog/source-definitions/source-definition.schema.json',
-        'hosted_copilot/copilot-rule-catalog/source-inventories/source-inventory.schema.json',
+        'hosted_copilot/contracts/parsers/parser-contract.schema.json',
+        'hosted_copilot/contracts/sources/source-definition.schema.json',
+        'hosted_copilot/contracts/sources/source-inventory.schema.json',
         'hosted_copilot/tools/modules/shared/HostedGitHub.Helpers.psm1'
     )
     $parserContracts = @($contractPath, $v4ContractPath, $interactiveContractPath, $contributorContractPath) | ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
     $missingParserValidationFiles = @($parserContracts | ForEach-Object { $contract = $_; $requiredParserValidationFiles | Where-Object { $_ -notin @($contract.behaviorFiles) } })
-    $maintainerCatalogSchemaPath = 'hosted_copilot/copilot-rule-catalog/instruction-catalog.schema.json'
+    $maintainerCatalogSchemaPath = 'hosted_copilot/contracts/catalog/instruction-catalog.schema.json'
     Add-TestResult -Name 'parser-validation-dependencies' -Passed ($missingParserValidationFiles.Count -eq 0 -and $maintainerCatalogSchemaPath -in @($parserContracts[0].behaviorFiles)) -Detail 'Every parser behavior identity includes its definition, contract, inventory, shared GitHub runtime, and parser-specific validation schemas.'
     $collectorContent = Get-Content -LiteralPath $collectorPath -Raw
     $githubCliProcessOwnershipValid = $collectorContent -match 'HostedGitHub\.Helpers\.psm1' -and $collectorContent -match 'Invoke-HostedGitHubCli -Arguments' -and $collectorContent -notmatch 'ProcessStartInfo|\.Source api|& \$.*gh.* api'
@@ -390,15 +391,16 @@ try {
     $snapshotRepositoryRoot = Join-Path $fixtureRoot 'snapshot-repository'
     $snapshotCatalogRoot = Join-Path $snapshotRepositoryRoot 'hosted_copilot/copilot-rule-catalog'
     $snapshotDefinitionRoot = Join-Path $snapshotCatalogRoot 'source-definitions'
-    $snapshotInventoryRoot = Join-Path $snapshotCatalogRoot 'source-inventories'
-    $snapshotContractRoot = Join-Path $snapshotCatalogRoot 'parser-contracts'
+    $snapshotInventoryRoot = Join-Path $snapshotRepositoryRoot 'hosted_copilot/contracts/sources'
+    $snapshotContractRoot = Join-Path $snapshotRepositoryRoot 'hosted_copilot/contracts/parsers'
+    $snapshotCatalogContractRoot = Join-Path $snapshotRepositoryRoot 'hosted_copilot/contracts/catalog'
     $snapshotToolsRoot = Join-Path $snapshotRepositoryRoot 'hosted_copilot/tools'
     $snapshotCollectorRoot = Join-Path $snapshotToolsRoot 'internal/collection'
     $snapshotSharedModuleRoot = Join-Path $snapshotToolsRoot 'modules/shared'
     $snapshotParserRoot = Join-Path $snapshotToolsRoot 'modules/source-parsers'
     $snapshotSourceRoot = Join-Path $snapshotRepositoryRoot 'fixtures/rules'
-    $null = New-Item -ItemType Directory -Path $snapshotDefinitionRoot, $snapshotInventoryRoot, $snapshotContractRoot, $snapshotCollectorRoot, $snapshotSharedModuleRoot, $snapshotParserRoot, $snapshotSourceRoot -Force
-    Copy-Item -LiteralPath $definitionSchemaPath -Destination $snapshotDefinitionRoot
+    $null = New-Item -ItemType Directory -Path $snapshotDefinitionRoot, $snapshotInventoryRoot, $snapshotContractRoot, $snapshotCatalogContractRoot, $snapshotCollectorRoot, $snapshotSharedModuleRoot, $snapshotParserRoot, $snapshotSourceRoot -Force
+    Copy-Item -LiteralPath $definitionSchemaPath -Destination $snapshotInventoryRoot
     Copy-Item -LiteralPath $inventorySchemaPath -Destination $snapshotInventoryRoot
     Copy-Item -LiteralPath $contractSchemaPath -Destination $snapshotContractRoot
     Copy-Item -LiteralPath $contractPath -Destination $snapshotContractRoot
@@ -407,7 +409,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1') -Destination $snapshotSharedModuleRoot
     Copy-Item -LiteralPath $sourceEvidenceModulePath -Destination $snapshotSharedModuleRoot
     Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.json') -Destination $snapshotCatalogRoot
-    Copy-Item -LiteralPath (Join-Path $catalogRoot 'instruction-catalog.schema.json') -Destination $snapshotCatalogRoot
+    Copy-Item -LiteralPath (Join-Path $catalogRoot '../contracts/catalog/instruction-catalog.schema.json') -Destination $snapshotCatalogContractRoot
     $snapshotDefinitionPath = Join-Path $snapshotDefinitionRoot 'maintainer-proposals.json'
     Write-JsonFixture -Path $snapshotDefinitionPath -Value ([ordered]@{
         '$schema' = 'source-definition.schema.json'

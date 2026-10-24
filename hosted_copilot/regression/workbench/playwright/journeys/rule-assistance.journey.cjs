@@ -7,6 +7,20 @@ const behaviorIds = ["WB-UX-ASSISTANCE-001"];
 
 async function run({ page, baseUrl, assert }) {
   await openWorkbench(page, baseUrl);
+  const startup = await page.evaluate(() => {
+    const toggle = document.getElementById("assist-panel-toggle");
+    return {
+      hidden: document.getElementById("rule-assistance-panel").hidden,
+      disabled: toggle.disabled,
+      visible: toggle.getBoundingClientRect().width > 0,
+      inRow: toggle.parentElement.id === "candidate-assistance-controls",
+      outsideTablist: !toggle.closest('[role="tablist"]'),
+      outsideHeader: !toggle.closest(".topbar-actions"),
+      defaultCursor: getComputedStyle(toggle).cursor === "default"
+    };
+  });
+  assert(startup.hidden && startup.disabled && startup.visible && startup.inRow && startup.outsideTablist && startup.outsideHeader && startup.defaultCursor,
+    "Startup must hide empty assistance and retain one disabled command beside the candidate tabs");
   const phrases = await page.evaluate(() => ruleAssistanceWaitingPhrases);
   assert(phrases.length > 0 && new Set(phrases).size === phrases.length
     && JSON.stringify(phrases) === JSON.stringify(expectedWaitingPhrases), "The complete waiting-phrase catalog did not load");
@@ -144,9 +158,10 @@ async function run({ page, baseUrl, assert }) {
   assert(await page.evaluate(() => JSON.stringify(state.session)) === setup.session,
     "Content sizing changed saved rule decisions");
   await root.scrollIntoViewIfNeeded();
-  assert(await root.locator("[data-assist-toggle]").getAttribute("aria-expanded") === "false"
-    && !await root.locator("[data-assist-body]").isVisible(), "Empty assistance did not start collapsed");
-  await root.locator("[data-assist-toggle]").click();
+  assert(await page.locator("#assist-panel-toggle").getAttribute("aria-expanded") === "true"
+    && await root.locator("[data-assist-body]").isVisible()
+    && !await page.locator("#assessment-panel [data-rule-assistance]").count()
+    && await page.locator("#candidate-assistance-controls #assist-panel-toggle").isEnabled(), "Selected Candidate Details did not enable its shared sidebar control");
   assert(await clear.isDisabled() && await send.isDisabled(), "Empty chat offers Clear or Send");
   assert(await root.locator(".assist-header > .section-label").textContent() === "AI Assistance:", "Assistance heading changed");
   assert(!await page.locator('#assessment-panel [data-evidence-kind="coverage"]').count(), "Candidate Details retained inferred coverage");
@@ -222,7 +237,8 @@ async function run({ page, baseUrl, assert }) {
     const reply = node.querySelector(".assist-chat-reply-window");
     const goal = node.querySelector(".assist-goal");
     return {
-      sized: composer.getBoundingClientRect().height === 160 && reply.getBoundingClientRect().height === 320
+      sized: composer.getBoundingClientRect().height === 160 && reply.getBoundingClientRect().height > 160
+        && Math.abs(reply.getBoundingClientRect().bottom + parseFloat(getComputedStyle(reply).marginBottom) - composer.getBoundingClientRect().top) < 1
         && getComputedStyle(goal).resize === "none",
       scrolling: node.querySelector(".assist-chat-response").classList.contains("scroll-surface")
         && goal.classList.contains("scroll-surface"),
@@ -240,70 +256,71 @@ async function run({ page, baseUrl, assert }) {
   assert(geometry.sized && geometry.scrolling && geometry.metadata && geometry.placeholder
     && geometry.runtimeModel === expectedNormalProfile.model && geometry.runtimeEffort === expectedNormalProfile.reasoningEffort
     && geometry.profile.trim() === `${expectedModelLabel} · ${expectedEffortLabel}`, `Accepted assistance layout or runtime readout changed: ${JSON.stringify(geometry)}`);
-  const resizer = root.getByRole("separator", { name: "Resize AI assistance conversation" });
-  assert(await resizer.getAttribute("aria-orientation") === "horizontal"
-    && await resizer.getAttribute("aria-controls") === "rule-assistance-conversation"
-    && await resizer.getAttribute("aria-valuemin") === "160", "Conversation resizing lost accessible separator semantics");
+  const sidebar = page.locator("#rule-assistance-panel");
+  const resizer = page.locator("#assist-sidebar-resizer");
+  assert(await resizer.getAttribute("aria-orientation") === "vertical"
+    && await resizer.getAttribute("aria-controls") === "rule-assistance-panel"
+    && await resizer.getAttribute("aria-valuemin") === "320", "Sidebar resizing lost accessible separator semantics");
   await resizer.evaluate((node) => node.scrollIntoView({ block: "center" }));
   let edge = await resizer.boundingBox();
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
   await page.mouse.down();
-  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 + 64, { steps: 4 });
+  await page.mouse.move(edge.x + edge.width / 2 - 64, edge.y + edge.height / 2, { steps: 4 });
   await page.mouse.up();
-  assert(await resizer.getAttribute("aria-valuenow") === "384"
-    && await root.locator(".assist-chat-reply-window").evaluate((node) => node.getBoundingClientRect().height) === 384
+  assert(await resizer.getAttribute("aria-valuenow") === "484"
+    && await sidebar.evaluate((node) => node.getBoundingClientRect().width) === 484
     && await root.locator(".assist-chat-composer").evaluate((node) => node.getBoundingClientRect().height) === 160,
-  "Dragging the lower response edge did not resize only the conversation by the pointer delta");
+  "Dragging the sidebar divider did not resize the panel without changing the composer");
   await resizer.focus();
-  assert(await resizer.evaluate((node) => getComputedStyle(node, "::after").backgroundColor) === await getCssTokenColor(page, "--accent"),
-    "The conversation resize edge did not use the shared blue focus treatment");
+  assert(await sidebar.evaluate((node) => getComputedStyle(node).borderLeftColor) === await getCssTokenColor(page, "--accent")
+    && await resizer.evaluate(node => getComputedStyle(node).backgroundColor) === "rgba(0, 0, 0, 0)"
+    && await sidebar.evaluate(node => parseFloat(getComputedStyle(node).borderLeftWidth) <= 1),
+    "The sidebar resize focus filled the grab area instead of highlighting only its thin divider");
   await resizer.evaluate((node) => node.scrollIntoView({ block: "center" }));
   edge = await resizer.boundingBox();
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
   await page.mouse.down();
-  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 + 16);
+  await page.mouse.move(edge.x + edge.width / 2 - 16, edge.y + edge.height / 2);
   const canceledHeight = await resizer.getAttribute("aria-valuenow");
   await resizer.evaluate((node) => node.dispatchEvent(new PointerEvent("pointercancel", {
-    bubbles: true, pointerId: ruleAssistanceResponseResize.pointerId
+    bubbles: true, pointerId: ruleAssistanceSidebarResize.pointerId
   })));
-  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 + 48);
+  await page.mouse.move(edge.x + edge.width / 2 - 48, edge.y + edge.height / 2);
   await page.mouse.up();
   assert(await resizer.getAttribute("aria-valuenow") === canceledHeight
-    && await page.evaluate(() => !ruleAssistanceResponseResize && !document.querySelector(".assist-chat-response-resizing")),
-  "Pointer cancellation left a captured or moving conversation resize");
+    && await page.evaluate(() => !ruleAssistanceSidebarResize),
+  "Pointer cancellation left a captured or moving sidebar resize");
   await resizer.evaluate((node) => node.scrollIntoView({ block: "center" }));
   edge = await resizer.boundingBox();
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
   await page.mouse.down();
-  await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2 + 8);
+  await page.mouse.move(edge.x + edge.width / 2 - 8, edge.y + edge.height / 2);
   const rerenderHeight = await resizer.getAttribute("aria-valuenow");
   await page.evaluate(() => syncRuleAssistance());
   await page.mouse.up();
   assert(await resizer.getAttribute("aria-valuenow") === rerenderHeight
-    && await page.evaluate(() => !ruleAssistanceResponseResize && !document.querySelector(".assist-chat-response-resizing")),
-  "Rerendering during a drag lost the chosen height or left pointer state behind");
+    && await page.evaluate(() => !ruleAssistanceSidebarResize),
+  "Rerendering during a drag lost the chosen width or left pointer state behind");
   await resizer.press("Home");
-  await resizer.press("ArrowUp");
-  assert(await resizer.getAttribute("aria-valuenow") === "160", "Keyboard resizing did not enforce the minimum height");
-  await resizer.press("ArrowDown");
-  assert(await resizer.getAttribute("aria-valuenow") === "176"
-    && await resizer.getAttribute("aria-valuetext") === "Conversation height 176 pixels", "Keyboard resizing did not use accessible 16-pixel steps");
+  await resizer.press("ArrowRight");
+  assert(await resizer.getAttribute("aria-valuenow") === "320", "Keyboard resizing did not enforce the minimum width");
+  await resizer.press("ArrowLeft");
+  assert(await resizer.getAttribute("aria-valuenow") === "336"
+    && await resizer.getAttribute("aria-valuetext") === "Panel width 336 pixels", "Keyboard resizing did not use accessible 16-pixel steps");
   await resizer.press("End");
-  await resizer.press("ArrowDown");
-  assert(await resizer.getAttribute("aria-valuenow") === String(page.viewportSize().height), "Keyboard resizing exceeded the viewport height");
-  await page.setViewportSize({ width: 1440, height: 600 });
-  await page.waitForFunction(() => document.querySelector("[data-assist-response-resizer]").getAttribute("aria-valuemax") === "600");
-  assert(await resizer.getAttribute("aria-valuenow") === "600"
-    && await root.locator(".assist-chat-reply-window").evaluate((node) => node.getBoundingClientRect().height) === 600,
-  "Viewport changes did not clamp the conversation and its accessible maximum together");
+  await resizer.press("ArrowLeft");
+  assert(await resizer.getAttribute("aria-valuenow") === "680", "Keyboard resizing exceeded the maximum width");
+  await page.setViewportSize({ width: 900, height: 600 });
+  await page.waitForFunction(() => document.querySelector("#assist-sidebar-resizer").getAttribute("aria-valuemax") === "500");
+  assert(await resizer.getAttribute("aria-valuenow") === "500"
+    && await sidebar.evaluate(node => getComputedStyle(node).position === "fixed" && node.getBoundingClientRect().width === 500),
+  "A narrower supported viewport did not clamp sidebar width and switch to a drawer");
   await page.setViewportSize({ width: 1440, height: 900 });
-  await resizer.press("Home");
-  for (let step = 0; step < 10; step += 1) await resizer.press("ArrowDown");
+  await page.evaluate(() => setAssistanceSidebarWidth(420));
   await page.evaluate(() => syncRuleAssistance());
-  assert(await resizer.getAttribute("aria-valuenow") === "320"
-    && await resizer.evaluate((node) => document.activeElement === node), "Rerendering lost the chosen height or keyboard focus");
+  assert(await resizer.getAttribute("aria-valuenow") === "420", "Rerendering lost the chosen sidebar width");
   assert(await page.evaluate((session) => JSON.stringify(state.session) === session, setup.session)
-    && await editor.inputValue() === setup.text, "Conversation resizing mutated the draft or saved session");
+    && await editor.inputValue() === setup.text, "Sidebar resizing mutated the draft or saved session");
   await input.fill("   ");
   assert(await send.isDisabled(), "Whitespace enabled Send");
   await input.fill("Check this rule against the Hosted catalog.");
@@ -421,40 +438,65 @@ async function run({ page, baseUrl, assert }) {
   assert(contextNote.reference === "icons/codicons/sprite.svg#codicon-tools" && contextNote.iconFirst
     && contextNote.color === "rgb(115, 115, 115)" && contextNote.expectedText,
     "Successful reply did not render its unchanged catalog scope through the shared muted icon-first note helper");
-  const summary = root.locator(".assist-chat-suggestion summary");
-  const visibleChevron = () => summary.locator(".assist-chat-suggestion-chevron .codicon:visible use").getAttribute("href");
-  assert(await visibleChevron() === "icons/codicons/sprite.svg#codicon-chevron-down", "Collapsed suggestions did not show the shared down chevron");
-  await summary.click();
-  assert(await visibleChevron() === "icons/codicons/sprite.svg#codicon-chevron-up", "Expanded suggestions did not show the shared up chevron");
-  const suggestionLayout = await root.locator(".assist-chat-suggestion").evaluate((node) => {
-    const summary = node.querySelector("summary");
-    const guidance = summary.nextElementSibling;
+  const suggestion = root.locator(".assist-chat-inline-wording");
+  const copy = root.locator("[data-assist-copy]");
+  const suggestionLayout = await suggestion.evaluate((node) => {
     const wording = node.querySelector("pre");
-    const button = node.querySelector("[data-assist-use]");
-    const chevron = summary.querySelector(".assist-chat-suggestion-chevron");
-    const shared = document.querySelector("[data-assist-body] > .information-panel");
+    const message = node.closest(".assist-chat-ai-message");
+    const style = getComputedStyle(wording);
     return {
-      guidance: guidance.matches(".information-panel.assist-chat-suggestion-guidance") && guidance.nextElementSibling === wording
-        && guidance.textContent.trim() === "Only fills the editor. Review and Save through the existing validation flow."
-        && ["backgroundColor", "borderColor", "borderLeftWidth", "padding", "borderRadius"].every((property) => getComputedStyle(guidance)[property] === getComputedStyle(shared)[property])
-        && !node.querySelector(":scope > p"),
-      button: getComputedStyle(button).marginTop === "16px" && Math.abs(button.getBoundingClientRect().right - wording.getBoundingClientRect().right) < 1,
-      chevron: chevron.getBoundingClientRect().width === 24 && chevron.getBoundingClientRect().height === 24
-        && Math.abs(chevron.getBoundingClientRect().right - summary.getBoundingClientRect().right) < 1
-        && getComputedStyle(summary).listStyleType === "none"
+      inline: node.firstElementChild.textContent === "I suggest updating the rule to:" && !node.querySelector("details,summary,[data-assist-use]"),
+      exact: wording.textContent === ruleAssistance.turns[0].answer.suggestedWording,
+      unscrolled: style.maxHeight === "none" && style.overflowY === "visible" && wording.scrollHeight <= wording.clientHeight + 1,
+      metadataOrder: message.children[0].matches(".assist-chat-message-author") && message.children[1].matches(".assist-chat-scope")
+        && message.children[2].matches(".assist-chat-message-text") && message.children[3] === node
     };
   });
-  assert(suggestionLayout.guidance && suggestionLayout.button && suggestionLayout.chevron,
-    `Suggested-wording guidance or controls lost the approved shared layout: ${JSON.stringify(suggestionLayout)}`);
-  await summary.press("Enter");
-  assert(await root.locator(".assist-chat-suggestion").getAttribute("open") === null
-    && await visibleChevron() === "icons/codicons/sprite.svg#codicon-chevron-down", "Native keyboard disclosure did not collapse the suggestion and its chevron");
-  await summary.press("Enter");
-  await root.locator("[data-assist-use]").click();
-  await page.waitForFunction(() => document.querySelector('[data-decision-field="proposedText"]').value.endsWith("Preserve the reviewed obligations."));
-  assert((await editor.inputValue()).endsWith("Preserve the reviewed obligations.")
-    && await page.evaluate((session) => JSON.stringify(state.session) === session, setup.session), "Explicit wording handoff saved or staged a change");
-  await editor.fill(setup.text);
+  assert(suggestionLayout.inline && suggestionLayout.exact && suggestionLayout.unscrolled && suggestionLayout.metadataOrder,
+    `Inline wording or reply metadata lost the accepted layout: ${JSON.stringify(suggestionLayout)}`);
+  await root.locator(".assist-chat-conversation-toolbar").hover();
+  assert(await suggestion.locator(".assist-chat-floating-toolbar").evaluate(node => getComputedStyle(node).opacity) === "0",
+    "The wording action toolbar remained visible away from hover and keyboard focus");
+  await copy.focus();
+  assert(await suggestion.locator(".assist-chat-floating-toolbar").evaluate(node => getComputedStyle(node).opacity) === "1",
+    "Keyboard focus did not reveal the wording action toolbar");
+  await input.focus();
+  await suggestion.hover();
+  await copy.hover();
+  const copyLayout = await copy.evaluate(button => {
+    const toolbar = button.parentElement;
+    const bounds = toolbar.getBoundingClientRect();
+    const action = button.getBoundingClientRect();
+    const style = getComputedStyle(toolbar);
+    return {
+      visible: style.opacity === "1",
+      vertical: Math.abs(action.top - bounds.top - parseFloat(style.borderTopWidth)) < 1
+        && Math.abs(bounds.bottom - action.bottom - parseFloat(style.borderBottomWidth)) < 1,
+      gutters: Math.abs(action.left - bounds.left - parseFloat(style.borderLeftWidth) - 3) < 1
+        && Math.abs(bounds.right - action.right - parseFloat(style.borderRightWidth) - 3) < 1,
+      tooltip: !button.hasAttribute("title") && button.dataset.workbenchTooltip === "Copy suggested wording"
+    };
+  });
+  assert(copyLayout.visible && copyLayout.vertical && copyLayout.gutters && copyLayout.tooltip,
+    `The floating copy action lost its hover geometry or custom-only tooltip: ${JSON.stringify(copyLayout)}`);
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+    writeText: async text => { globalThis.__assistanceCopiedWording = text; }
+  } }));
+  await copy.click();
+  await page.waitForFunction(() => document.querySelector("[data-assist-copy]").dataset.workbenchTooltip === "Copied");
+  assert(await page.evaluate(() => globalThis.__assistanceCopiedWording === ruleAssistance.turns[0].answer.suggestedWording)
+    && await editor.inputValue() === setup.text
+    && await page.evaluate(session => JSON.stringify(state.session) === session, setup.session), "Copy changed the editor or draft, or copied different wording");
+  assert(await copy.getAttribute("title") === null && await copy.getAttribute("aria-label") === "Suggested rule wording copied",
+    "Copy feedback restored a native tooltip or lost its accessible label");
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+    writeText: async () => { throw new Error("Synthetic clipboard denial"); }
+  } }));
+  await copy.click();
+  await page.waitForFunction(() => document.querySelector("[data-assist-copy]").dataset.workbenchTooltip === "Unable to copy");
+  assert(await copy.getAttribute("title") === null && await editor.inputValue() === setup.text
+    && await copy.locator("use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-copy",
+    "Clipboard failure retained a success icon, restored a native tooltip or changed the editor");
   await input.fill("Follow up on that advice. ".repeat(50));
   holdNext = true;
   await send.click();
@@ -488,6 +530,37 @@ async function run({ page, baseUrl, assert }) {
   });
   assert(scrolling.scrollable && scrolling.fixed && scrolling.singleIdentity,
     `Conversation scrolling moved or repeated the Copilot header: ${JSON.stringify(scrolling)}`);
+  const latest = root.locator("[data-assist-scroll-latest]");
+  await page.waitForFunction(() => document.querySelector("[data-assist-scroll-latest]").hidden);
+  await root.locator(".assist-chat-response").evaluate(node => { node.scrollTop = 0; });
+  await latest.waitFor({ state: "visible" });
+  const latestLayout = await latest.evaluate(button => {
+    const response = button.parentElement.querySelector(".assist-chat-response");
+    const bounds = button.getBoundingClientRect();
+    const viewport = response.getBoundingClientRect();
+    let surface = response;
+    while (surface && getComputedStyle(surface).backgroundColor === "rgba(0, 0, 0, 0)") surface = surface.parentElement;
+    return {
+      circular: bounds.width === 28 && bounds.height === 28 && getComputedStyle(button).borderRadius === "50%",
+      bottomRight: Math.abs(viewport.right - bounds.right - 12) < 1 && bounds.bottom <= viewport.bottom,
+      background: Boolean(surface) && getComputedStyle(button).backgroundColor === getComputedStyle(surface).backgroundColor,
+      chevron: getComputedStyle(button.querySelector("svg")).transform === "matrix(1, 0, 0, 1, 0, 1)",
+      tooltip: !button.hasAttribute("title") && button.dataset.workbenchTooltip === "Scroll to latest reply"
+    };
+  });
+  assert(Object.values(latestLayout).every(Boolean), `Scroll-to-latest lost its accepted appearance: ${JSON.stringify(latestLayout)}`);
+  await page.evaluate(() => syncRuleAssistance());
+  assert(await latest.isVisible() && await root.locator(".assist-chat-response").evaluate(node => node.scrollTop) === 0,
+    "Rerendering pulled the reader down instead of retaining the earlier reply");
+  await page.locator("#assist-panel-toggle").click();
+  await page.locator("#assist-panel-toggle").click();
+  await page.waitForFunction(() => !ruleAssistance.followOutput && !document.querySelector("[data-assist-scroll-latest]").hidden);
+  assert(await root.locator(".assist-chat-response").evaluate(node => node.scrollTop) === 0,
+    "Hiding and showing the sidebar lost the earlier reading position");
+  await latest.click();
+  await page.waitForFunction(() => document.querySelector("[data-assist-scroll-latest]").hidden);
+  assert(await page.evaluate(() => ruleAssistance.followOutput) && await root.locator(".assist-chat-response").evaluate(node => node.scrollHeight - node.clientHeight - node.scrollTop <= 4),
+    "Scroll-to-latest did not reach the bottom and restore output following");
 
   await input.fill("Keep this unsent text.");
   await clear.click();
@@ -548,20 +621,19 @@ async function run({ page, baseUrl, assert }) {
     input: ruleAssistance?.input
   }));
   assert(handoffReply.answered, `Suggestion race fixture did not receive a successful reply: ${JSON.stringify(handoffReply)}`);
-  let releaseConfig = null;
-  await page.route("**/runtime-config", async (route) => {
-    const response = await route.fetch();
-    await new Promise((resolve) => { releaseConfig = async () => { await route.fulfill({ response }); resolve(); }; });
-  });
-  await root.locator(".assist-chat-suggestion summary").click();
-  await root.locator("[data-assist-use]").click();
-  for (let attempt = 0; !releaseConfig && attempt < 200; attempt += 1) await page.waitForTimeout(25);
-  assert(Boolean(releaseConfig), "Suggestion handoff did not check current authority");
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+    writeText: text => new Promise(resolve => {
+      globalThis.__assistanceCopiedWording = text;
+      globalThis.__assistanceReleaseCopy = resolve;
+    })
+  } }));
+  await suggestion.hover();
+  await copy.click();
+  await page.waitForFunction(() => typeof globalThis.__assistanceReleaseCopy === "function");
   await clear.click();
-  await releaseConfig();
-  await page.getByText("The rule or assistance context changed. Ask for an updated suggestion before using this wording.", { exact: true }).waitFor();
-  assert(await editor.inputValue() === setup.text, "A cleared suggestion changed the editor after its authority check");
-  await page.unroute("**/runtime-config");
+  await page.evaluate(() => { globalThis.__assistanceReleaseCopy(); delete globalThis.__assistanceReleaseCopy; });
+  assert(await editor.inputValue() === setup.text && await copy.count() === 0
+    && await page.evaluate(session => JSON.stringify(state.session) === session, setup.session), "Completing a cleared copy mutated the editor, draft or conversation");
   await input.fill("Keep this unsent text.");
 
   holdNext = true;
@@ -574,64 +646,82 @@ async function run({ page, baseUrl, assert }) {
     "Cancellation accepted a late reply or discarded the request text");
   assert(!await root.locator(".assist-chat-operation-message .shimmer-heading").count(), "Cancellation retained animated waiting text");
 
-  const disclosure = root.locator("[data-assist-toggle]");
+  const disclosure = page.locator("#assist-panel-toggle");
   const headerCancel = root.locator("[data-assist-header-cancel]");
-  const headerError = root.locator("[data-assist-error]");
   const navigationDialog = page.locator("[data-assist-navigation-dialog]");
   const otherKey = await page.evaluate((key) => state.candidates.find((candidate) => candidate.key !== key).key, setup.key);
   const savedBeforeNavigation = await page.evaluate(() => JSON.stringify(state.session));
   const headerGeometry = () => disclosure.evaluate((node) => ({ left: node.getBoundingClientRect().left, width: node.getBoundingClientRect().width }));
-  const initialHeaderGeometry = await headerGeometry();
   await disclosure.click();
-  assert(!await root.locator("[data-assist-body]").isVisible() && !await headerCancel.isVisible()
-    && !await headerError.isVisible(), "Collapsed idle assistance displayed stale summary controls");
+  assert(!await sidebar.isVisible() && await disclosure.getAttribute("data-workbench-tooltip") === "Show AI assistance"
+    && await disclosure.locator("use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-layout-sidebar-right-off",
+  "Hiding assistance did not hide the shared sidebar and update its tab-row icon and tooltip");
+  const initialCollapsedGeometry = await headerGeometry();
   await disclosure.click();
   assert(await input.inputValue() === "Keep this unsent text." && await editor.inputValue() === setup.text,
-    "Disclosure toggling discarded unsent request or proposed rule text");
+    "Sidebar visibility toggling discarded unsent request or proposed rule text");
 
   holdNext = true;
   await send.click();
   await waitForHeldReply();
   await disclosure.click();
-  assert(await headerCancel.isVisible() && await root.locator(".assist-header-working").isVisible()
-    && !await root.locator("[data-assist-body]").isVisible(), "Running collapsed assistance lost working or cancellation controls");
+  assert(!await sidebar.isVisible() && await page.evaluate(() => Boolean(ruleAssistance.active)),
+    "Hiding the sidebar cancelled its running request");
   const collapsedGeometry = await headerGeometry();
-  assert(collapsedGeometry.left === initialHeaderGeometry.left && collapsedGeometry.width === 24,
-    "Request activity shifted the assistance chevron");
+  assert(collapsedGeometry.left === initialCollapsedGeometry.left && collapsedGeometry.width === initialCollapsedGeometry.width,
+    "Request activity shifted the shared tab-row toggle");
+  await disclosure.click();
+  assert(await headerCancel.isVisible() && await root.locator(".assist-header-working").isVisible(),
+    "Showing active assistance lost its activity or cancellation control");
   await page.emulateMedia({ reducedMotion: "reduce" });
   assert(await root.locator(".assist-header-working .waiting-panel-spinner").evaluate((node) => getComputedStyle(node).animationName) === "none",
-    "Collapsed activity spinner ignored reduced motion");
+    "Sidebar activity spinner ignored reduced motion");
   await page.emulateMedia({ reducedMotion: "no-preference" });
   assert(await root.locator(".assist-header-working .waiting-panel-spinner").evaluate((node) => getComputedStyle(node).animationName) === "waiting-panel-spin",
-    "Collapsed activity did not reuse the shared spinner animation");
-  await disclosure.click();
-  assert(!await headerCancel.isVisible() && !await root.locator(".assist-header-working").isVisible()
-    && await page.evaluate(() => Boolean(ruleAssistance.active)), "Expanding cancelled the request or retained duplicate header controls");
-  await disclosure.click();
+    "Sidebar activity did not reuse the shared spinner animation");
   await headerCancel.click();
-  assert(!await headerCancel.isVisible() && !await headerError.isVisible()
+  assert(!await headerCancel.isVisible()
     && !await root.locator(".assist-header-working").isVisible(), "Header cancellation retained activity or showed an error");
   await pending();
-  await disclosure.click();
   assert(!await root.locator(".assist-chat-ai-message").count(), "Header cancellation accepted a late reply");
 
   failNext = true;
   await send.click();
   await page.waitForFunction(() => !ruleAssistance.active && ruleAssistance.turns.at(-1)?.failed);
   await disclosure.click();
-  assert(await headerError.isVisible() && !await headerCancel.isVisible(), "Failure did not replace the cancel slot with an error summary");
-  assert(await headerError.evaluate((node) => getComputedStyle(node).color) === await getCssTokenColor(page, "--error-border"),
-    "The error summary did not retain the shared red error color");
-  await headerError.click();
-  assert(await root.locator("[data-assist-body]").isVisible() && !await headerError.isVisible(),
-    "Error summary did not open assistance or remained duplicated while expanded");
+  assert(!await sidebar.isVisible(), "Failure prevented the sidebar from being hidden");
   await disclosure.click();
-  assert(await headerError.isVisible(), "Disclosure cleared the current request error");
-  await disclosure.click();
+  assert(await root.locator(".assist-chat-error").isVisible() && !await headerCancel.isVisible(),
+    "Reopening the sidebar discarded its failure or retained a stale cancellation control");
   await clear.click();
-  await disclosure.click();
-  assert(!await headerError.isVisible(), "Clearing conversation retained a stale error summary");
-  await disclosure.click();
+  assert(!await root.locator(".assist-chat-error").count(), "Clearing conversation retained a stale failure");
+  const sharedNavigation = await page.evaluate(() => {
+    const chat = ruleAssistance;
+    const node = document.querySelector("[data-rule-assistance]");
+    const panel = document.getElementById("rule-assistance-panel");
+    const toggle = document.getElementById("assist-panel-toggle");
+    showCandidatePane("candidates");
+    const onList = node.isConnected && ruleAssistance === chat && panel.hidden && toggle.disabled && toggle.getBoundingClientRect().width > 0;
+    showCandidatePane("details");
+    setRuleAssistanceExpanded(false);
+    showCandidatePane("candidates");
+    showCandidatePane("details");
+    const collapsedRetained = panel.hidden && !toggle.disabled && !ruleAssistanceExpanded;
+    setRuleAssistanceExpanded(true);
+    switchView("plan");
+    const onPlan = panel.hidden && toggle.disabled;
+    switchView("preview");
+    const onPreview = panel.hidden && toggle.disabled;
+    switchView("catalog");
+    setWorkspaceTab("rule-issues");
+    const onIssues = panel.hidden && toggle.disabled;
+    setWorkspaceTab("assessment-results");
+    const onAssessment = node.isConnected && ruleAssistance === chat && panel.hidden && toggle.disabled && toggle.parentElement.id === "assessment-assistance-controls";
+    setWorkspaceTab("candidate-sources");
+    return { onList, onAssessment, onPlan, onPreview, onIssues, collapsedRetained, retained: ruleAssistance === chat && document.querySelectorAll("[data-rule-assistance]").length === 1 && document.querySelectorAll("#assist-panel-toggle").length === 1 && !panel.hidden && !toggle.disabled };
+  });
+  assert(Object.values(sharedNavigation).every(Boolean),
+    `Contextual sidebar navigation lost control availability, expansion preference, or the shared conversation: ${JSON.stringify(sharedNavigation)}`);
 
   async function startHeldRequest(question) {
     await input.fill(question);
@@ -721,6 +811,41 @@ async function run({ page, baseUrl, assert }) {
   await pending();
   assert(await page.evaluate((session) => JSON.stringify(state.session) === session, savedBeforeNavigation),
     "Disclosure, confirmation, or request completion changed saved decisions");
+  const excluded = await page.evaluate(() => {
+    const candidate = state.assessedCandidates.find(item => !item.assessment.hostedApplicable && getDecision(item).proposedText?.trim());
+    return candidate ? { key: candidate.key, text: getDecision(candidate).proposedText } : null;
+  });
+  assert(Boolean(excluded), "The fixture has no complete excluded assessment for sidebar context checks");
+  await startHeldRequest("Keep the current context while reviewing assessments.");
+  await page.evaluate(() => setWorkspaceTab("assessment-results"));
+  assert(!await sidebar.isVisible() && await disclosure.isDisabled() && await page.evaluate(() => Boolean(ruleAssistance.active)),
+    "Entering the assessment list exposed assistance or cancelled the current request");
+  await page.evaluate(key => selectAssessmentResult(key), excluded.key);
+  await navigationDialog.waitFor({ state: "visible" });
+  assert(await page.evaluate(key => getRuleAssistanceCandidate().key === key && Boolean(ruleAssistance.active), setup.key),
+    "Selecting an assessment silently replaced an in-flight sidebar context");
+  await allowNavigation.click();
+  await pending();
+  await page.waitForFunction(() => !ruleAssistance.active);
+  await page.evaluate(key => { selectAssessmentResult(key); showAssessmentPane("details"); }, excluded.key);
+  assert(await page.evaluate(key => getRuleAssistanceCandidate().key === key, excluded.key)
+    && await clear.isDisabled() && await input.inputValue() === ""
+    && await page.locator("#assessment-assistance-controls #assist-panel-toggle").isEnabled(), "Assessment Details did not enable its control or retained another rule's conversation");
+  await input.fill("Review this excluded assessment without editing its outcome.");
+  await send.click();
+  await page.waitForFunction(() => !ruleAssistance.active && Boolean(ruleAssistance.turns[0]?.answer));
+  assert(requests.at(-1).candidateKey === excluded.key && requests.at(-1).proposedText === excluded.text,
+    "Assessment assistance used the hidden Details editor or another candidate's identity");
+  assert(await page.evaluate(session => JSON.stringify(state.session) === session, savedBeforeNavigation),
+    "Assessment chat changed its applicability, saved decisions or Plan membership");
+  await page.evaluate(() => { setWorkspaceTab("candidate-sources"); selectProtectedRule(state.protectedRules[0].id); });
+  assert(await page.evaluate(() => ruleAssistance === null) && !await root.count(),
+    "Protected-rule selection retained an editable chat target");
+  await page.evaluate(key => { setWorkspaceTab("assessment-results"); selectAssessmentResult(key); }, excluded.key);
+  await page.evaluate(() => setWorkspaceTab("candidate-sources"));
+  assert(await page.evaluate(() => ruleAssistance === null) && !await root.count(),
+    "Returning to a protected-rule view retained an assessment chat target");
+  await page.evaluate(key => selectCandidate(key), setup.key);
   const categories = await page.evaluate(() => Array.from(new Map(state.candidates.map((candidate) => [candidate.recommendation.category, candidate.key])).entries()));
   for (const [category, key] of categories) {
     await page.evaluate((key) => selectCandidate(key), key);

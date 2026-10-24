@@ -248,8 +248,8 @@ $workbenchIconSource = Join-Path $workbenchSource 'icons'
 $catalogRoot = Join-Path $PSScriptRoot '../copilot-rule-catalog'
 $hostedCatalogPath = Join-Path $catalogRoot 'instruction-catalog.json'
 $protectedRulesPath = Join-Path $catalogRoot 'protected-rules.json'
-$displaySchemaPath = Join-Path $catalogRoot 'assessment-reconciliation/workbench-display-v4.schema.json'
-$ruleIssuesSchemaPath = Join-Path $catalogRoot 'assessment-reconciliation/workbench-rule-issues-v4.schema.json'
+$displaySchemaPath = Join-Path $catalogRoot '../contracts/workbench/workbench-display-v4.schema.json'
+$ruleIssuesSchemaPath = Join-Path $catalogRoot '../contracts/workbench/workbench-rule-issues-v4.schema.json'
 $sourceDefinitionSetPath = Join-Path $catalogRoot 'source-definitions/source-definition-set.json'
 $inventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-SourceInventory.ps1'
 $sourceAssessmentPath = Join-Path $PSScriptRoot 'internal/assessment/Invoke-SourceAssessment.ps1'
@@ -832,6 +832,11 @@ try {
             $requestHost = [string]$requestHeaders['Host']
             if ([string]::IsNullOrWhiteSpace($requestHost) -or $requestHost.Trim() -notin $allowedHosts) {
                 Write-HttpResponse -Stream $stream -StatusCode 421 -StatusText 'Misdirected Request' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Misdirected Request')) -IncludeBody $true
+                continue
+            }
+            if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/shutdown-config') {
+                $shutdownConfigBytes = [Text.Encoding]::UTF8.GetBytes((@{ shutdownToken = $shutdownToken } | ConvertTo-Json -Compress))
+                Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $shutdownConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
             }
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {

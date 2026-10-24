@@ -203,23 +203,25 @@ hosted_copilot/
         SKILL.md
   copilot-rule-catalog/
     instruction-catalog.json
-    instruction-catalog.schema.json
     interactive-intake-ledger.json
-    interactive-intake-ledger.schema.json
     maintainer-rules/
       documentation.rules.md
       implementation.rules.md
       testing.rules.md
-    rule-intake-review.schema.json
-    promotion-plan.schema.json
-    promotion-receipt.schema.json
     rule-assessments/
       assessment-baseline.json
-      assessment-baseline.schema.json
+  contracts/
+    README.md
+    assessment/
+    catalog/
+    parsers/
+    reconciliation/
+    review/
+    sources/
+    workbench/
   regression/
     README.md
     cases/
-    schema/
     raw/
     results/
   tools/
@@ -246,8 +248,9 @@ hosted_copilot/
 ```
 
 - `.github/` is the hosted runtime customization exactly as it must appear in the target repository.
-- `copilot-rule-catalog/` owns normalized rules, source-only Maintainer Proposals, shared rule assessments, intake decisions, and promotion schemas. Append-only promotion receipts remain a possible future extension.
-- `regression/` owns controlled cases, schemas, and local comparison artifacts. Cases, schemas, and operating guidance are checked in; generated `raw/` captures and `results/` records remain local and Git-ignored.
+- `copilot-rule-catalog/` owns normalized rules and source configuration or assessment data, not schema definitions. Append-only promotion receipts remain a possible future extension.
+- `contracts/` owns behavior descriptors and JSON validation schemas, grouped by task and separate from prompts, configuration, and generated artifacts. Runtime and retained-snapshot consumers resolve these source paths explicitly; stable schema identifiers and bounded evaluator filenames remain unchanged.
+- `regression/` owns controlled cases and local comparison artifacts. Cases and operating guidance are checked in; generated `raw/` captures and `results/` records remain local and Git-ignored. Regression schemas live in `contracts/`.
 - `tools/Invoke-HostedReview.ps1` is the only maintainer entry point for controlled review comparison. Scripts beneath `tools/internal/review/` are implementation stages, not separate maintainer commands.
 - `tools/` also owns assessment, generation, validation, evidence capture, and deployment support. Repository-writing promotion remains unimplemented.
 - `workbench/` owns the interactive local review interface built from static browser assets. It is maintainer tooling and is not deployed into the target provider repository.

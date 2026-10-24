@@ -26,8 +26,9 @@ $metrics = [ordered]@{
     bytes = [Text.Encoding]::UTF8.GetByteCount($prompt)
     ruleIds = @($context.catalog.id); messageCount = @($context.messages).Count
     sourceCount = @($context.sources).Count; workingDirectory = (Get-Location).Path
+    guidanceCapacity = $context.guidanceCapacity
 }
-[IO.File]::AppendAllText((Join-Path $control 'metrics.jsonl'), (($metrics | ConvertTo-Json -Compress) + "`n"))
+[IO.File]::AppendAllText((Join-Path $control 'metrics.jsonl'), (($metrics | ConvertTo-Json -Depth 100 -Compress) + "`n"))
 if ($question -ceq 'hold') {
     $childInfo = [Diagnostics.ProcessStartInfo]::new('pwsh')
     $childInfo.UseShellExecute = $false

@@ -73,7 +73,7 @@ function Format-ValidationDuration {
         [double]$DurationSeconds
     )
 
-    return ("{0}s" -f $DurationSeconds)
+    return ("{0:0.##}s" -f $DurationSeconds)
 }
 
 function Write-ValidationSummary {

@@ -19,14 +19,14 @@ function Get-SavedRuleAuthoritySha256 {
     $llmProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
     $Model = $llmProfile.model
     $ReasoningEffort = $llmProfile.reasoningEffort
-    $contractPath = Join-Path $RepositoryRoot 'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-v4.json'
+    $contractPath = Join-Path $RepositoryRoot 'hosted_copilot/contracts/reconciliation/rule-issue-adjudication-v4.json'
     $contract = Get-Content -LiteralPath $contractPath -Raw | ConvertFrom-Json
     $paths = @($contract.behaviorFiles) + @(
         'hosted_copilot/copilot-rule-catalog/instruction-catalog.json',
         'hosted_copilot/copilot-rule-catalog/protected-rules.json',
-        'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/manual-rule-relationship.schema.json',
-        'hosted_copilot/copilot-rule-catalog/assessment-reconciliation/saved-rule-evaluation.schema.json',
-        'hosted_copilot/tools/assessment-reconciliation-prompts/ManualRuleRelationship-v4.md',
+        'hosted_copilot/contracts/reconciliation/manual-rule-relationship.schema.json',
+        'hosted_copilot/contracts/reconciliation/saved-rule-evaluation.schema.json',
+        'hosted_copilot/tools/prompts/reconciliation/ManualRuleRelationship-v4.md',
         'hosted_copilot/tools/internal/reconciliation/Invoke-ManualRuleRelationship.ps1',
         'hosted_copilot/tools/internal/reconciliation/Invoke-SavedRuleEvaluation.ps1',
         'hosted_copilot/tools/modules/workbench/SavedRuleEvaluation.psm1'

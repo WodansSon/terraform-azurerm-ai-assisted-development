@@ -3,15 +3,15 @@ param(
     [string]$RepositoryRoot = (Join-Path $PSScriptRoot '../../../..'),
     [Parameter(Mandatory = $true)][string[]]$ComponentPaths,
     [Parameter(Mandatory = $true)][string]$OutputPath,
-    [string]$InputSchemaPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-input-v4.schema.json'),
-    [string]$DraftSchemaPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-draft-v4.schema.json'),
-    [string]$ContractSchemaPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-contract.schema.json'),
-    [string]$AdjudicationContractPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/rule-issue-adjudication-v4.json'),
-    [string]$PromptPath = (Join-Path $PSScriptRoot '../../assessment-reconciliation-prompts/RuleIssueAdjudication-v4.md'),
+    [string]$InputSchemaPath = (Join-Path $PSScriptRoot '../../../contracts/reconciliation/rule-issue-adjudication-input-v4.schema.json'),
+    [string]$DraftSchemaPath = (Join-Path $PSScriptRoot '../../../contracts/reconciliation/rule-issue-adjudication-draft-v4.schema.json'),
+    [string]$ContractSchemaPath = (Join-Path $PSScriptRoot '../../../contracts/reconciliation/rule-issue-adjudication-contract.schema.json'),
+    [string]$AdjudicationContractPath = (Join-Path $PSScriptRoot '../../../contracts/reconciliation/rule-issue-adjudication-v4.json'),
+    [string]$PromptPath = (Join-Path $PSScriptRoot '../../prompts/reconciliation/RuleIssueAdjudication-v4.md'),
     [string]$CatalogPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/instruction-catalog.json'),
     [string]$ProtectedRulesPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/protected-rules.json'),
-    [string]$CacheSchemaPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/hierarchical-reconciliation-cache.schema.json'),
-    [string]$RunSchemaPath = (Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/hierarchical-reconciliation-run.schema.json'),
+    [string]$CacheSchemaPath = (Join-Path $PSScriptRoot '../../../contracts/reconciliation/hierarchical-reconciliation-cache.schema.json'),
+    [string]$RunSchemaPath = (Join-Path $PSScriptRoot '../../../contracts/reconciliation/hierarchical-reconciliation-run.schema.json'),
     [string]$CacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/hierarchical-rule-issue-adjudication-cache'),
     [string]$ResumeRunDirectory,
     [string]$EvaluatorCommand = 'copilot',
@@ -69,7 +69,7 @@ $requiredPaths = [ordered]@{
     ProtectedRulesPath = [IO.Path]::GetFullPath($ProtectedRulesPath)
     CacheSchemaPath = [IO.Path]::GetFullPath($CacheSchemaPath)
     RunSchemaPath = [IO.Path]::GetFullPath($RunSchemaPath)
-    SavedAssessmentSchemaPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../copilot-rule-catalog/assessment-reconciliation/saved-rule-assessment.schema.json'))
+    SavedAssessmentSchemaPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../contracts/reconciliation/saved-rule-assessment.schema.json'))
 }
 foreach ($requiredPath in $requiredPaths.Values) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -154,9 +154,15 @@ $evaluatorSourcePath = if ([string]::IsNullOrWhiteSpace($EvaluatorScriptPath)) {
 if (-not (Test-Path -LiteralPath $evaluatorSourcePath -PathType Leaf)) {
     throw "Rule Issue adjudication evaluator was not found: $evaluatorSourcePath"
 }
-$evaluatorSnapshot = Get-FileSnapshot -Path $evaluatorSourcePath
-$runEvaluatorPath = Join-Path $runDirectory 'evaluator.ps1'
-[IO.File]::WriteAllBytes($runEvaluatorPath, $evaluatorSnapshot.Bytes)
+if ([IO.Path]::GetFullPath($evaluatorSourcePath) -eq [IO.Path]::GetFullPath($defaultEvaluatorScriptPath)) {
+    $runEvaluatorPath = Join-Path $runRepositoryRoot 'hosted_copilot/tools/internal/reconciliation/Invoke-CopilotReconciliationStage.ps1'
+    $evaluatorSnapshot = Get-FileSnapshot -Path $runEvaluatorPath
+}
+else {
+    $evaluatorSnapshot = Get-FileSnapshot -Path $evaluatorSourcePath
+    $runEvaluatorPath = Join-Path $runDirectory 'evaluator.ps1'
+    [IO.File]::WriteAllBytes($runEvaluatorPath, $evaluatorSnapshot.Bytes)
+}
 $catalogSnapshot = Get-FileSnapshot -Path $requiredPaths.CatalogPath
 $protectedRulesSnapshot = Get-FileSnapshot -Path $requiredPaths.ProtectedRulesPath
 $contractSnapshot = Get-FileSnapshot -Path $requiredPaths.AdjudicationContractPath

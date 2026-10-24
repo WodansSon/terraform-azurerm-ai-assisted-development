@@ -48,7 +48,7 @@ function Assert-RelationshipOwnership {
 }
 
 $catalogRoot = Join-Path $RepositoryRoot 'hosted_copilot/copilot-rule-catalog'
-$schemaRoot = Join-Path $catalogRoot 'assessment-reconciliation'
+$schemaRoot = Join-Path $catalogRoot '../contracts/reconciliation'
 $request = Get-Content -LiteralPath $RequestPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
 Assert-Properties $request @('schemaVersion', 'requestId', 'authoritySha256', 'candidateKey', 'ruleTextBase64', 'sourceFiles', 'proposals', 'priorRelationships')
 if ($request.schemaVersion -ne 2 -or [string]$request.requestId -cnotmatch '^[0-9a-f-]{36}$' -or [string]$request.authoritySha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Saved-rule request identity is invalid' }
@@ -61,7 +61,7 @@ $authority = Get-SavedRuleAuthoritySha256 @authorityParameters
 if ([string]$request.authoritySha256 -cne $authority) { throw 'Saved-rule authority changed; reload the current Workbench before checking again' }
 $displayJson = Get-Content -LiteralPath $DisplayPath -Raw
 $issuesJson = Get-Content -LiteralPath $RuleIssuesPath -Raw
-if (-not ($displayJson | Test-Json -SchemaFile (Join-Path $schemaRoot 'workbench-display-v4.schema.json') -ErrorAction Stop) -or -not ($issuesJson | Test-Json -SchemaFile (Join-Path $schemaRoot 'workbench-rule-issues-v4.schema.json') -ErrorAction Stop)) { throw 'Saved-rule source snapshots are invalid' }
+if (-not ($displayJson | Test-Json -SchemaFile (Join-Path $schemaRoot '../workbench/workbench-display-v4.schema.json') -ErrorAction Stop) -or -not ($issuesJson | Test-Json -SchemaFile (Join-Path $schemaRoot '../workbench/workbench-rule-issues-v4.schema.json') -ErrorAction Stop)) { throw 'Saved-rule source snapshots are invalid' }
 $display = $displayJson | ConvertFrom-Json -Depth 100 -DateKind String
 $originalIssues = $issuesJson | ConvertFrom-Json -Depth 100 -DateKind String
 $sourceIdentity = { param($files) @($files | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive) -join "`n" }
@@ -265,7 +265,7 @@ try {
         '$schema' = 'workbench-rule-issues-v4.schema.json'; schemaVersion = 4; kind = 'hosted-rule-workbench-rule-issues'
         generatedAt = ConvertTo-UtcTimestamp -Value ([DateTime]::UtcNow); readOnly = $true; sourceFiles = @($display.sourceFiles); issues = $finalIssues
     }
-    if (-not (($artifact | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile (Join-Path $schemaRoot 'workbench-rule-issues-v4.schema.json') -ErrorAction Stop)) { throw 'Saved-rule issues do not satisfy the shared display contract' }
+    if (-not (($artifact | ConvertTo-Json -Depth 100) | Test-Json -SchemaFile (Join-Path $schemaRoot '../workbench/workbench-rule-issues-v4.schema.json') -ErrorAction Stop)) { throw 'Saved-rule issues do not satisfy the shared display contract' }
     $result = [ordered]@{
         schemaVersion = 4; candidateKey = $edited.key; requestId = [string]$request.requestId
         ruleTextSha256 = Get-Sha256 -Content $editedText; authoritySha256 = $authority; evaluationContextSha256 = $contextHash

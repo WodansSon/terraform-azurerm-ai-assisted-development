@@ -15,6 +15,8 @@ The pinned `debug-restart` glyph represents restoring the original assessed rule
 
 The inventory includes all 17 `edit`, `terminal`, and `tools` family glyphs at the pinned commit, including compact and terminal-platform variants. Compact variants retain native 12px viewBoxes, `terminal` retains its native 24px viewBox, and the remaining family members retain native 16px viewBoxes. Their source geometry is preserved without rescaling.
 
+The inventory includes all 21 `layout` family glyphs at the pinned commit, including `layout-sidebar-right`, `layout-sidebar-right-off`, and the docking variants. Their native 16px viewBoxes and source geometry are preserved without rescaling.
+
 `discard-all.svg` is a local derivative of `discard.svg`, rotated 45 degrees clockwise to represent the Workbench's Undo All action.
 
 `collection-issues-compact.svg` is a local derivative of `collection.svg`, retaining the 16px collection silhouette with a clear cutout around a Workbench-authored filled circular exclamation badge at the lower-right. It represents Rule Issues and is not an upstream Codicon.
