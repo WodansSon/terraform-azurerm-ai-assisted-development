@@ -22,7 +22,7 @@ function ConvertTo-RuleAssistanceError {
     $exception = $ErrorRecord.Exception.GetBaseException()
     $known = $exception.Data['RuleAssistancePublicError'] -eq $true
     $code = if ($known) { [string]$exception.Data['RuleAssistanceCode'] } else { 'rule-assistance-failed' }
-    $message = if ($known) { $exception.Message } else { 'Rule assistance could not complete. No changes were applied by this request.' }
+    $message = if ($known) { $exception.Message } else { 'The AI chat request could not be completed.' }
     $Diagnostic['code'] = $code
     $Diagnostic['message'] = $message
     $reference = [string]$Diagnostic['diagnosticId']
@@ -114,6 +114,7 @@ function Get-RuleAssistanceRuntime {
     $files = @(
         'hosted_copilot/tools/prompts/chat/RuleAssistance.md',
         'hosted_copilot/contracts/workbench/rule-assistance-result.schema.json',
+        'hosted_copilot/contracts/workbench/workbench-display-v4.schema.json',
         'hosted_copilot/tools/modules/workbench/RuleAssistance.psm1',
         'hosted_copilot/tools/internal/workbench/Invoke-RuleAssistance.ps1'
         'hosted_copilot/tools/modules/shared/HostedCli.psm1'

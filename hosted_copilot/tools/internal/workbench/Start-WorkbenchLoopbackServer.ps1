@@ -5,15 +5,9 @@ param(
     [Parameter(Mandatory = $true)][string]$ShutdownToken,
     [Parameter(Mandatory = $true)][string]$OperationToken,
     [Parameter(Mandatory = $true)][string]$RepositoryRoot,
-    [Parameter(Mandatory = $true)][string]$ManualRelationshipPath,
-    [Parameter(Mandatory = $true)][string]$ManualRelationshipCacheDirectory,
     [string]$EvaluatorCommand = 'copilot',
-    [ValidateNotNullOrEmpty()][string]$Model,
-    [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$ReasoningEffort,
     [ValidateNotNullOrEmpty()][string]$AssistanceModel,
     [ValidateSet('low', 'medium', 'high', 'xhigh')][string]$AssistanceReasoningEffort,
-    [string]$RelationshipEvaluatorScriptPath,
-    [string]$AdjudicationEvaluatorScriptPath,
     [ValidateRange(1, 2147483647)][int]$OwnerProcessId,
     [switch]$NoLaunch
 )
@@ -23,27 +17,15 @@ $ErrorActionPreference = 'Stop'
 
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/SavedRuleEvaluation.psm1')
-Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/RuleAssistance.psm1')
+Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/RuleAssistance.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1')
-$savedProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
-$Model = $savedProfile.model
-$ReasoningEffort = $savedProfile.reasoningEffort
 $normalProfile = Resolve-HostedLlmProfile -Profile normal -Model $AssistanceModel -ReasoningEffort $AssistanceReasoningEffort
 $AssistanceModel = $normalProfile.model
 $AssistanceReasoningEffort = $normalProfile.reasoningEffort
 $cliLaunch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
-$null = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ normal = $normalProfile; savedRuleEvaluation = $savedProfile })
+$null = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ normal = $normalProfile })
 $EvaluatorCommand = $cliLaunch.commandPath
-$savedRuleEvaluationPath = Join-Path $PSScriptRoot '../reconciliation/Invoke-SavedRuleEvaluation.ps1'
-$savedAuthorityParameters = @{
-    RepositoryRoot = $RepositoryRoot
-    DisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
-    RuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
-    EvaluatorCommand = $EvaluatorCommand; Model = $Model; ReasoningEffort = $ReasoningEffort
-    RelationshipEvaluatorScriptPath = $RelationshipEvaluatorScriptPath
-    AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
-}
 $assistanceParameters = @{
     RepositoryRoot = $RepositoryRoot; DisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
     EvaluatorCommand = $EvaluatorCommand; Model = $AssistanceModel; ReasoningEffort = $AssistanceReasoningEffort
@@ -197,7 +179,6 @@ try {
                 continue
             }
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
-                $runtimeConfig | Add-Member -NotePropertyName savedRuleAuthoritySha256 -NotePropertyValue (Get-SavedRuleAuthoritySha256 @savedAuthorityParameters) -Force
                 $runtimeConfig | Add-Member -NotePropertyName ruleAssistance -NotePropertyValue (Get-RuleAssistanceRuntime @assistanceParameters) -Force
                 $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
@@ -231,61 +212,6 @@ try {
                     Write-Warning "Rule assistance could not start: $($failure.code). Diagnostic reference: $($failure.diagnosticId)"
                     $failureBody = @{ error = $failure } | ConvertTo-Json -Depth 5 -Compress
                     Write-HttpResponse -Stream $stream -StatusCode 400 -StatusText 'Bad Request' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
-                }
-                continue
-            }
-
-            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/reconcile-rule') {
-                $providedToken = [string]$requestHeaders['X-Workbench-Operation-Token']
-                if (-not (Test-RequestToken -Candidate $providedToken -Expected $OperationToken)) {
-                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
-                    continue
-                }
-                $requestPath = Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-request-$([Guid]::NewGuid().ToString('N')).json"
-                $outputPath = Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-result-$([Guid]::NewGuid().ToString('N')).json"
-                try {
-                    $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders
-                    $requestEnvelope = $requestBody | ConvertFrom-Json
-                    if (Compare-Object -ReferenceObject @('payloadBase64') -DifferenceObject @($requestEnvelope.PSObject.Properties.Name)) {
-                        throw 'Request envelope has an unexpected property set'
-                    }
-                    $requestBytes = [Convert]::FromBase64String([string]$requestEnvelope.payloadBase64)
-                    if ($requestBytes.Length -lt 1 -or $requestBytes.Length -gt 8388608) {
-                        throw 'Decoded request payload length is invalid'
-                    }
-                    $null = [Text.UTF8Encoding]::new($false, $true).GetString($requestBytes)
-                    [IO.File]::WriteAllBytes($requestPath, $requestBytes)
-                    $relationshipParameters = @{
-                        RequestPath = $requestPath
-                        OutputPath = $outputPath
-                        RepositoryRoot = $RepositoryRoot
-                        CacheDirectory = $ManualRelationshipCacheDirectory
-                        EvaluatorCommand = $EvaluatorCommand
-                        Model = $Model
-                        ReasoningEffort = $ReasoningEffort
-                        DisplayPath = $savedAuthorityParameters.DisplayPath
-                        RuleIssuesPath = $savedAuthorityParameters.RuleIssuesPath
-                        AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
-                    }
-                    if (-not [string]::IsNullOrWhiteSpace($RelationshipEvaluatorScriptPath)) {
-                        $relationshipParameters.EvaluatorScriptPath = $RelationshipEvaluatorScriptPath
-                    }
-                    $evaluationRequest = Start-SavedRuleEvaluationRequest -RunspacePool $evaluationPool -ScriptPath $savedRuleEvaluationPath -Parameters $relationshipParameters -Client $client
-                    $evaluationRequests.Add($evaluationRequest)
-                    $deferredResponse = $true
-                }
-                catch [OperationCanceledException] {
-                    Write-Verbose $_.Exception.Message
-                }
-                catch {
-                    Write-Warning "Scoped relationship check failed: $($_.Exception.Message)"
-                    $failureBody = [ordered]@{ error = [string]$_.Exception.Message } | ConvertTo-Json -Compress
-                    Write-HttpResponse -Stream $stream -StatusCode 500 -StatusText 'Internal Server Error' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
-                }
-                finally {
-                    if (-not $deferredResponse) {
-                        Remove-Item -LiteralPath $requestPath, $outputPath -Force -ErrorAction SilentlyContinue
-                    }
                 }
                 continue
             }

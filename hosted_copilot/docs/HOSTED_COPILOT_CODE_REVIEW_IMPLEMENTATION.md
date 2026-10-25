@@ -12,7 +12,19 @@ Prior experiments are evidence about prompt limits, review behavior, and evaluat
 
 All Hosted Toolkit files must be authored beneath `hosted_copilot/`. Nothing in this guide changes the Interactive Toolkit runtime, installer manifest, release bundle, or validation ownership.
 
-## Current Workbench Checkpoint:
+## V1 Saved-Edit Boundary
+
+The 2026-10-25 v1 decision supersedes the saved-edit relationship-checking and resolution requirements below. AI Assistance remains available for drafting and refining wording. Saving wording, applying published Rule Issue recommendations, and opening promotion preview perform no relationship discovery, adjudication, scope review, or reassessment.
+
+- Preserve the original rebuild assessment as read-only evidence, and identify edited wording as maintainer-edited rather than freshly assessed.
+- Keep full-rebuild relationship analysis and the published Rule Issues artifact. Edits do not dynamically replace or certify that snapshot.
+- Retain deterministic schema, identity, lifecycle, protected-rule, rationale, resource-type, mutation-target, and unsaved-wording checks. Published unresolved Rule Issues still gate approval.
+- Drop retired saved-edit check metadata when loading local sessions without discarding wording, decisions, or maintainer overrides.
+- Verify direct saving, original evidence, and AI Assistance under `WB-UX-EDITING-001`; legacy-check cleanup under `WB-UX-EDITING-002`; and promotion preview without relationship certification under `WB-UX-EDITING-003`.
+
+The [Workbench UI specification](HOSTED_RULE_WORKBENCH_UI_SPEC.md) owns the current titlebar sidebar preference, independent view/rule chats, request-owned busy state, shared scroll controls, saved-only wording status, and atomic wording-only Reset. Its current behavior supersedes the historical inline controls, navigation-cancellation dialog, and broad proposal-reset descriptions below. These UI changes do not establish catalog publication or cross-run decision durability.
+
+## Historical Workbench Checkpoint:
 
 The 2026-10-16 checkpoint contains the implemented reusable waiting-panel UX and unfinished saved-edit integration. It is a progress checkpoint, not merge readiness or approval to refresh the live Workbench. The [saved-edit checkpoint and required repairs](#saved-edit-checkpoint-and-required-repairs-2026-10-16) owns the remaining defects, correction requirements, and validation limits. Requirements elsewhere in this guide do not establish that those unfinished guarantees have been implemented.
 
@@ -553,7 +565,7 @@ The shared conversation retains one fixed bordered Copilot identity chip, native
 
 The local [waiting-phrase catalog](../workbench/assistance-waiting-phrases.json) contains the approved geeky messages. Startup validates it as a required static asset. Each assistance request chooses one phrase randomly and keeps it through rerenders, using the existing shared shimmer and reduced-motion treatment rather than timed phrase rotation. Waiting messages remain UI-only and cannot enter model context or replace real completion, cancellation, or failure output.
 
-Both loopback server entry points expose authenticated `POST /assist-rule` through `modules/workbench/RuleAssistance.psm1` and `internal/workbench/Invoke-RuleAssistance.ps1`. The worker obtains source requirements and every active or protected Hosted rule from the validated server-owned display snapshot. Candidate identity, source hash, exact wording, evaluator authority, model, and catalog snapshot bind the answer. It never trusts a browser-selected related-rule subset as catalog-wide coverage.
+Both loopback server entry points expose authenticated `POST /assist-rule` through `modules/workbench/RuleAssistance.psm1` and `internal/workbench/Invoke-RuleAssistance.ps1`. The worker obtains source requirements, recorded parent and member assessments, contribution rationales, mappings, the original recommendation, and every active or protected Hosted rule from the validated server-owned display snapshot. It binds historical assessment evidence to the original proposal's text hash, identifies edited wording explicitly, and supplies scoring definitions from the display schema. The prompt distinguishes recorded explanations from new advisory analysis, source confidence from parent reconciliation scores, and claimed preservation from actual wording coverage; missing evidence must not become an invented historical justification. Candidate identity, source hash, exact wording, evaluator authority, model, and catalog snapshot bind the answer, and the display schema participates in runtime freshness. It never trusts client-supplied assessment evidence or a browser-selected related-rule subset as catalog-wide coverage.
 
 The `normal` profile in [the central LLM configuration](../tools/llm.json) owns assistance model and reasoning-effort defaults. The launcher's `-Model` and `-AssessmentReasoningEffort` settings are explicit overrides, not competing defaults. Saved-rule evaluation resolves the independent `savedRuleEvaluation` profile from the same file. Both server entrypoints resolve profiles before constructing runtime authority and expose the effective assistance profile to the UI. Assistance uses stdin, separate stdout/stderr, non-streaming JSONL, no tools, and a dedicated strict response schema; it does not weaken the reconciliation adapter's contracts. Every new evaluator prompt is registered through the assistance runtime authority and checked for quoted-data injection boundaries.
 

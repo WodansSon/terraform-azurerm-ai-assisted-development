@@ -253,6 +253,15 @@ async function run({ page, baseUrl, assert, playback }) {
     const detailContent = page.locator("#assessment-panel > .assessment-content");
     const backToTop = page.locator("#assessment-panel [data-detail-back-to-top]");
     assert(await backToTop.isDisabled(), "Back to top is enabled before the Details pane is scrolled");
+    const scrollControl = await backToTop.evaluate(button => {
+      const style = getComputedStyle(button);
+      const glyph = button.querySelector("svg");
+      return button.classList.contains("scroll-edge-button") && style.width === "28px" && style.height === "28px"
+        && style.borderRadius === "50%" && style.cursor === "default"
+        && getComputedStyle(glyph).width === "16px" && getComputedStyle(glyph).transform === "none"
+        && glyph.querySelector("use").getAttribute("href").endsWith("#codicon-chevron-up");
+    });
+    assert(scrollControl, "Back to Top lost the shared AI circular design, disabled cursor, or approved chevron alignment");
     await detailContent.evaluate((content) => { content.scrollTop = content.scrollHeight; });
     await page.waitForFunction(() => !document.querySelector("#assessment-panel [data-detail-back-to-top]").disabled);
     assert((await detailContent.evaluate((content) => content.scrollTop)) > 1, "Details pane did not accept real scrolling");

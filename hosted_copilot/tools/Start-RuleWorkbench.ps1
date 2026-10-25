@@ -23,9 +23,6 @@ Specifies the external directory that stores validated source-assessment cache e
 .PARAMETER ReconciliationCacheDirectory
 Specifies the external directory that stores validated hierarchical reconciliation cache entries. Defaults to `%LOCALAPPDATA%\hosted-workbench\reconciliation-cache`.
 
-.PARAMETER ManualRelationshipCacheDirectory
-Specifies the external directory that stores manual relationship-evaluation cache entries. Defaults to `%LOCALAPPDATA%\hosted-workbench\manual-relationship-cache`.
-
 .PARAMETER AssessmentResumeDirectory
 Specifies an exact-authority retained source-assessment run to resume during an ordinary rebuild.
 
@@ -35,12 +32,6 @@ Overrides the normal model profile in hosted_copilot/tools/llm.json for source a
 .PARAMETER AssessmentReasoningEffort
 Overrides the normal reasoning-effort profile in hosted_copilot/tools/llm.json for source assessment, reconciliation, and AI Assistance.
 
-.PARAMETER SavedRuleEvaluationModel
-Overrides only the savedRuleEvaluation model profile in hosted_copilot/tools/llm.json for saved-rule discovery, adjudication, and reassessment.
-
-.PARAMETER SavedRuleEvaluationReasoningEffort
-Overrides only the savedRuleEvaluation reasoning-effort profile in hosted_copilot/tools/llm.json, independently of AssessmentReasoningEffort.
-
 .PARAMETER MaxRetries
 Specifies how many times a failed evaluator batch may be retried.
 
@@ -49,12 +40,6 @@ Specifies the maximum number of evaluator batches or shards that may run concurr
 
 .PARAMETER EvaluatorCommand
 Specifies the Copilot evaluator executable.
-
-.PARAMETER RelationshipEvaluatorScriptPath
-Specifies an optional evaluator adapter used for manual relationship checks.
-
-.PARAMETER AdjudicationEvaluatorScriptPath
-Specifies an optional evaluator adapter used for saved-rule group adjudication.
 
 .PARAMETER Rebuild
 Collects current sources and rebuilds the staged Workbench artifacts while reusing compatible cache entries.
@@ -127,10 +112,6 @@ param(
     [string]$ReconciliationCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/reconciliation-cache'),
 
     [Parameter(ParameterSetName = 'Default')]
-    [Parameter(ParameterSetName = 'Force')]
-    [string]$ManualRelationshipCacheDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/manual-relationship-cache'),
-
-    [Parameter(ParameterSetName = 'Default')]
     [string]$AssessmentResumeDirectory,
 
     [Parameter(ParameterSetName = 'Default')]
@@ -141,15 +122,6 @@ param(
     [Parameter(ParameterSetName = 'Force')]
     [ValidateSet('low', 'medium', 'high', 'xhigh')]
     [string]$AssessmentReasoningEffort,
-
-    [Parameter(ParameterSetName = 'Default')]
-    [Parameter(ParameterSetName = 'Force')]
-    [ValidateNotNullOrEmpty()][string]$SavedRuleEvaluationModel,
-
-    [Parameter(ParameterSetName = 'Default')]
-    [Parameter(ParameterSetName = 'Force')]
-    [ValidateSet('low', 'medium', 'high', 'xhigh')]
-    [string]$SavedRuleEvaluationReasoningEffort,
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
@@ -164,14 +136,6 @@ param(
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
     [string]$EvaluatorCommand = 'copilot',
-
-    [Parameter(ParameterSetName = 'Default')]
-    [Parameter(ParameterSetName = 'Force')]
-    [string]$RelationshipEvaluatorScriptPath,
-
-    [Parameter(ParameterSetName = 'Default')]
-    [Parameter(ParameterSetName = 'Force')]
-    [string]$AdjudicationEvaluatorScriptPath,
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
@@ -214,8 +178,8 @@ if ($Help -or $Detailed) {
     $helpParameterGroups = [ordered]@{
         'Workflow Options' = @('Rebuild', 'Force', 'StageOnly', 'NoLaunch')
         'Server And Output' = @('Port', 'OwnerProcessId', 'OutputFormat')
-        'Evaluation' = @('Model', 'AssessmentReasoningEffort', 'SavedRuleEvaluationModel', 'SavedRuleEvaluationReasoningEffort', 'MaxRetries', 'MaxParallelBatches', 'EvaluatorCommand', 'RelationshipEvaluatorScriptPath', 'AdjudicationEvaluatorScriptPath')
-        'Storage And Recovery' = @('SiteDirectory', 'InventoryDirectory', 'AssessmentCacheDirectory', 'ReconciliationCacheDirectory', 'ManualRelationshipCacheDirectory', 'AssessmentResumeDirectory')
+        'Evaluation' = @('Model', 'AssessmentReasoningEffort', 'MaxRetries', 'MaxParallelBatches', 'EvaluatorCommand')
+        'Storage And Recovery' = @('SiteDirectory', 'InventoryDirectory', 'AssessmentCacheDirectory', 'ReconciliationCacheDirectory', 'AssessmentResumeDirectory')
         'Authorization' = @('SkipGitHubAuthorization')
     }
     Show-HostedCommandHelp -ScriptPath $PSCommandPath -DisplayName 'Hosted Rule Workbench Help' -ParameterGroups $helpParameterGroups
@@ -238,10 +202,6 @@ Import-Module (Join-Path $PSScriptRoot 'modules/shared/HostedCli.psm1') -Force
 $normalProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $AssessmentReasoningEffort
 $Model = $normalProfile.model
 $AssessmentReasoningEffort = $normalProfile.reasoningEffort
-$savedProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $SavedRuleEvaluationModel -ReasoningEffort $SavedRuleEvaluationReasoningEffort
-$SavedRuleEvaluationModel = $savedProfile.model
-$SavedRuleEvaluationReasoningEffort = $savedProfile.reasoningEffort
-
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
 $workbenchIconSource = Join-Path $workbenchSource 'icons'
@@ -255,22 +215,25 @@ $inventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-Sourc
 $sourceAssessmentPath = Join-Path $PSScriptRoot 'internal/assessment/Invoke-SourceAssessment.ps1'
 $assessmentReconciliationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-AssessmentReconciliation.ps1'
 $ruleIssuesExporterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
-$manualRelationshipPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-ManualRuleRelationship.ps1'
-$savedRuleEvaluationPath = Join-Path $PSScriptRoot 'internal/reconciliation/Invoke-SavedRuleEvaluation.ps1'
 Import-Module (Join-Path $PSScriptRoot 'modules/workbench/SavedRuleEvaluation.psm1')
-Import-Module (Join-Path $PSScriptRoot 'modules/workbench/RuleAssistance.psm1')
+Import-Module (Join-Path $PSScriptRoot 'modules/workbench/RuleAssistance.psm1') -Force
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $resolvedAssessmentCacheDirectory = [IO.Path]::GetFullPath($AssessmentCacheDirectory)
 $resolvedReconciliationCacheDirectory = [IO.Path]::GetFullPath($ReconciliationCacheDirectory)
-$resolvedManualRelationshipCacheDirectory = [IO.Path]::GetFullPath($ManualRelationshipCacheDirectory)
-$resolvedRelationshipEvaluatorScriptPath = if ([string]::IsNullOrWhiteSpace($RelationshipEvaluatorScriptPath)) { $null } else { [IO.Path]::GetFullPath($RelationshipEvaluatorScriptPath) }
 $resolvedAssessmentResumeDirectory = if ([string]::IsNullOrWhiteSpace($AssessmentResumeDirectory)) { $null } else { [IO.Path]::GetFullPath($AssessmentResumeDirectory) }
 $assessmentRecoveryMode = if ($null -eq $resolvedAssessmentResumeDirectory) { 'NONE' } else { 'EXPLICIT' }
 $cacheMode = if ($Force) { 'FORCE-REFRESH' } else { 'REUSE' }
 $repositoryPrefix = $repositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-if ($resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+if ($resolvedSiteDirectory.Equals($repositoryRoot, [StringComparison]::OrdinalIgnoreCase) -or $resolvedSiteDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'SiteDirectory must be outside the source repository'
+}
+$siteAncestor = [IO.DirectoryInfo]::new($resolvedSiteDirectory)
+while ($null -ne $siteAncestor) {
+    if ($siteAncestor.Exists -and ($siteAncestor.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw 'SiteDirectory must not use links or junctions'
+    }
+    $siteAncestor = $siteAncestor.Parent
 }
 if ($resolvedAssessmentCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'AssessmentCacheDirectory must be outside the source repository'
@@ -278,14 +241,7 @@ if ($resolvedAssessmentCacheDirectory.StartsWith($repositoryPrefix, [StringCompa
 if ($resolvedReconciliationCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'ReconciliationCacheDirectory must be outside the source repository'
 }
-if ($resolvedManualRelationshipCacheDirectory.StartsWith($repositoryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'ManualRelationshipCacheDirectory must be outside the source repository'
-}
-if ($null -ne $resolvedRelationshipEvaluatorScriptPath -and -not (Test-Path -LiteralPath $resolvedRelationshipEvaluatorScriptPath -PathType Leaf)) {
-    throw "RelationshipEvaluatorScriptPath was not found: $resolvedRelationshipEvaluatorScriptPath"
-}
-
-foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $hostedCatalogPath, $protectedRulesPath, $displaySchemaPath, $ruleIssuesSchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $ruleIssuesExporterPath, $manualRelationshipPath, $guidanceCapacityPath)) {
+foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $hostedCatalogPath, $protectedRulesPath, $displaySchemaPath, $ruleIssuesSchemaPath, $sourceDefinitionSetPath, $inventoryCollectorPath, $sourceAssessmentPath, $assessmentReconciliationPath, $ruleIssuesExporterPath, $guidanceCapacityPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required Workbench source was not found: $requiredPath"
     }
@@ -293,7 +249,7 @@ foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $hostedCatal
 
 if ($OutputFormat -eq 'Text') { Write-ValidationSectionHeader -Title 'LLM Availability' | Write-Host }
 $cliLaunch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
-$cliAvailability = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ normal = $normalProfile; savedRuleEvaluation = $savedProfile })
+$cliAvailability = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ normal = $normalProfile })
 $EvaluatorCommand = $cliLaunch.commandPath
 if ($OutputFormat -eq 'Text') {
     foreach ($profile in $cliAvailability.profiles) {
@@ -309,7 +265,32 @@ $ownedAssetNames = @('index.html', 'app.js', 'assistance-waiting-phrases.json', 
 foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
-Copy-Item -LiteralPath $workbenchIconSource -Destination $resolvedSiteDirectory -Recurse -Force
+$runtimeIconAssetNames = @(
+    'codicons/sprite.svg', 'codicons/LICENSE.txt', 'codicons/ATTRIBUTION.md',
+    'fluent/sprite.svg', 'fluent/ATTRIBUTION.md',
+    'llms/sprite.svg', 'llms/LICENSE.txt', 'llms/ATTRIBUTION.md',
+    'octicons/sprite.svg', 'octicons/LICENSE.txt', 'octicons/ATTRIBUTION.md'
+)
+foreach ($assetName in $runtimeIconAssetNames) {
+    if (-not (Test-Path -LiteralPath (Join-Path $workbenchIconSource $assetName) -PathType Leaf)) {
+        throw "Required Workbench runtime icon asset was not found: $assetName"
+    }
+}
+$stagedIconDirectory = Join-Path $resolvedSiteDirectory 'icons'
+if (Test-Path -LiteralPath $stagedIconDirectory) {
+    if ((Get-Item -LiteralPath $stagedIconDirectory -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw 'The staged Workbench icon directory must not be a link or junction'
+    }
+    if (@(Get-ChildItem -LiteralPath $stagedIconDirectory -Recurse -Force -Attributes ReparsePoint).Count) {
+        throw 'The staged Workbench icon directory must not contain links or junctions'
+    }
+    Remove-Item -LiteralPath $stagedIconDirectory -Recurse -Force
+}
+foreach ($assetName in $runtimeIconAssetNames) {
+    $destination = Join-Path $stagedIconDirectory $assetName
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $workbenchIconSource $assetName) -Destination $destination -Force
+}
 
 $shutdownTokenBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($shutdownTokenBytes)
@@ -331,12 +312,6 @@ $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes($shutdownConfig)
 
 $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $stagedRuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
-$savedAuthorityParameters = @{
-    RepositoryRoot = $repositoryRoot; DisplayPath = $stagedDisplayPath; RuleIssuesPath = $stagedRuleIssuesPath
-    EvaluatorCommand = $EvaluatorCommand; Model = $SavedRuleEvaluationModel; ReasoningEffort = $SavedRuleEvaluationReasoningEffort
-    RelationshipEvaluatorScriptPath = $resolvedRelationshipEvaluatorScriptPath
-    AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
-}
 $assistanceParameters = @{
     RepositoryRoot = $repositoryRoot; DisplayPath = $stagedDisplayPath
     EvaluatorCommand = $EvaluatorCommand; Model = $Model; ReasoningEffort = $AssessmentReasoningEffort
@@ -841,7 +816,6 @@ try {
             }
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
                 $runtimeConfig = $shutdownConfig | ConvertFrom-Json
-                $runtimeConfig | Add-Member -NotePropertyName savedRuleAuthoritySha256 -NotePropertyValue (Get-SavedRuleAuthoritySha256 @savedAuthorityParameters)
                 $runtimeConfig | Add-Member -NotePropertyName ruleAssistance -NotePropertyValue (Get-RuleAssistanceRuntime @assistanceParameters)
                 $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
@@ -873,61 +847,6 @@ try {
                     Write-Warning "Rule assistance could not start: $($_.Exception.Message)"
                     $failureBody = @{ error = [string]$_.Exception.Message } | ConvertTo-Json -Compress
                     Write-HttpResponse -Stream $stream -StatusCode 400 -StatusText 'Bad Request' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
-                }
-                continue
-            }
-
-            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/reconcile-rule') {
-                $providedToken = [string]$requestHeaders['X-Workbench-Operation-Token']
-                if (-not (Test-ShutdownToken -Candidate $providedToken -Expected $operationToken)) {
-                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
-                    continue
-                }
-                $requestPath = Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-request-$([Guid]::NewGuid().ToString('N')).json"
-                $outputPath = Join-Path ([IO.Path]::GetTempPath()) "hosted-rule-result-$([Guid]::NewGuid().ToString('N')).json"
-                try {
-                    $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders
-                    $requestEnvelope = $requestBody | ConvertFrom-Json
-                    if (Compare-Object -ReferenceObject @('payloadBase64') -DifferenceObject @($requestEnvelope.PSObject.Properties.Name)) {
-                        throw 'Request envelope has an unexpected property set'
-                    }
-                    $requestBytes = [Convert]::FromBase64String([string]$requestEnvelope.payloadBase64)
-                    if ($requestBytes.Length -lt 1 -or $requestBytes.Length -gt 8388608) {
-                        throw 'Decoded request payload length is invalid'
-                    }
-                    $null = [Text.UTF8Encoding]::new($false, $true).GetString($requestBytes)
-                    [IO.File]::WriteAllBytes($requestPath, $requestBytes)
-                    $relationshipParameters = @{
-                        RequestPath = $requestPath
-                        OutputPath = $outputPath
-                        RepositoryRoot = $repositoryRoot
-                        CacheDirectory = $resolvedManualRelationshipCacheDirectory
-                        EvaluatorCommand = $EvaluatorCommand
-                        Model = $SavedRuleEvaluationModel
-                        ReasoningEffort = $SavedRuleEvaluationReasoningEffort
-                        DisplayPath = $stagedDisplayPath
-                        RuleIssuesPath = $stagedRuleIssuesPath
-                        AdjudicationEvaluatorScriptPath = $AdjudicationEvaluatorScriptPath
-                    }
-                    if ($null -ne $resolvedRelationshipEvaluatorScriptPath) {
-                        $relationshipParameters.EvaluatorScriptPath = $resolvedRelationshipEvaluatorScriptPath
-                    }
-                    $evaluationRequest = Start-SavedRuleEvaluationRequest -RunspacePool $evaluationPool -ScriptPath $savedRuleEvaluationPath -Parameters $relationshipParameters -Client $client
-                    $evaluationRequests.Add($evaluationRequest)
-                    $deferredResponse = $true
-                }
-                catch [OperationCanceledException] {
-                    Write-Verbose $_.Exception.Message
-                }
-                catch {
-                    Write-Warning "Scoped relationship check failed: $($_.Exception.Message)"
-                    $failureBody = [ordered]@{ error = [string]$_.Exception.Message } | ConvertTo-Json -Compress
-                    Write-HttpResponse -Stream $stream -StatusCode 500 -StatusText 'Internal Server Error' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
-                }
-                finally {
-                    if (-not $deferredResponse) {
-                        Remove-Item -LiteralPath $requestPath, $outputPath -Force -ErrorAction SilentlyContinue
-                    }
                 }
                 continue
             }

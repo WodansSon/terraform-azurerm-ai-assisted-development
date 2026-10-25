@@ -84,7 +84,6 @@ $staticTestNames = @(
     'saved-rule-wording-review',
     'saved-rule-consolidation',
     'relationship-check-cancellation',
-    'relationship-check-responsiveness',
     'fixture-display-valid',
     'assessment-factor-range',
     'local-icon-family-sprites',
@@ -937,9 +936,9 @@ try {
     $codiconContractValid = $codiconContractValid -and $spriteContent -match '1c47ab36a4bb845c437866405c2fa67b8ca0fe36' -and $attributionContent -match 'Creative Commons Attribution 4\.0 International'
     $codiconContractValid = $codiconContractValid -and $iconGeneratorContent -match '\.\./\.\./\.\./workbench/icons' -and $iconGeneratorContent -match 'Get-Content -LiteralPath \$sourcePath -Raw' -and $iconGeneratorContent -match "'fold-up'" -and $iconGeneratorContent -match "'diff-modified'" -and $iconGeneratorContent -match "'arrow-circle-up'" -and $iconGeneratorContent -match "'arrow-circle-up-sparkle'" -and $iconGeneratorContent -match "'remote'" -and $iconGeneratorContent -match "'remote-compact'" -and $iconGeneratorContent -match "'warning-compact'" -and $iconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw'
     $codiconContractValid = $codiconContractValid -and (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $codiconRoot 'warning-compact.svg')).Hash -ceq 'D007D0454B990CEA5CA463B5FFA60B8BCD475636B72C654311B09193C1A1E0CD'
-    $codiconContractValid = $codiconContractValid -and $launcherContent -match 'workbenchIconSource' -and $launcherContent -match 'Copy-Item -LiteralPath \$workbenchIconSource -Destination \$resolvedSiteDirectory -Recurse -Force'
-    $codiconContractValid = $codiconContractValid -and $indexContent -notmatch 'cdn\.jsdelivr|data-lucide|lucide\.min\.js' -and $appContent -notmatch 'data-lucide|window\.lucide|refreshIcons' -and $appContent -match 'function icon\(name\)' -and $appContent -match 'icons/codicons/sprite\.svg#codicon-\$\{name\}' -and $appContent -match 'data-detail-back-to-top[\s\S]*?icon\("arrow-circle-up"\)'
-    $codiconContractValid = $codiconContractValid -and $stylesContent -match '\.detail-back-to-top\s*\{[^}]*width:\s*26px;[^}]*height:\s*26px;[^}]*color:\s*var\(--accent-bright\);[^}]*background:\s*transparent;[^}]*border:\s*0;[^}]*border-radius:\s*0' -and $stylesContent -match '\.detail-back-to-top > \.codicon\s*\{[^}]*width:\s*26px;[^}]*height:\s*26px'
+    $codiconContractValid = $codiconContractValid -and $launcherContent -match 'workbenchIconSource' -and $launcherContent -match '\$runtimeIconAssetNames = @\(' -and $launcherContent -notmatch 'Copy-Item -LiteralPath \$workbenchIconSource -Destination \$resolvedSiteDirectory -Recurse -Force'
+    $codiconContractValid = $codiconContractValid -and $indexContent -notmatch 'cdn\.jsdelivr|data-lucide|lucide\.min\.js' -and $appContent -notmatch 'data-lucide|window\.lucide|refreshIcons' -and $appContent -match 'function icon\(name\)' -and $appContent -match 'icons/codicons/sprite\.svg#codicon-\$\{name\}' -and $appContent -match 'data-detail-back-to-top[\s\S]*?icon\("chevron-up"\)'
+    $codiconContractValid = $codiconContractValid -and $stylesContent -match '\.scroll-edge-button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*border-radius:\s*50%' -and $stylesContent -match '\.scroll-edge-button\.detail-back-to-top > \.codicon\s*\{\s*transform:\s*none' -and $stylesContent -match '\.scroll-edge-button \.codicon\s*\{[^}]*width:\s*16px;[^}]*height:\s*16px'
     $codiconContractValid = $codiconContractValid -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-json' -and $statusbarContent -match 'icon: "git-branch-compact"' -and $statusbarContent -match 'icon: "check-compact"' -and $statusbarContent -match 'icon: "collection"' -and $statusbarContent -match 'icon: "circle-slash-compact"' -and $statusbarContent -match 'icon: "new-session"' -and $statusbarContent -match 'icon: "shield-compact"'
     $codiconContractValid = $codiconContractValid -and $appContent -match 'octicon\("copy"\)' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $indexContent -match 'data-view="catalog"[\s\S]*?codicon-collection' -and $indexContent -match 'data-view="plan"[\s\S]*?codicon-new-session' -and $indexContent -match 'data-view="preview"[\s\S]*?codicon-open-preview' -and $appContent -match 'icon\("discard"\)'
     $chatSparkleErrorContractValid = (Test-Path -LiteralPath (Join-Path $codiconRoot 'chat-sparkle-error.svg') -PathType Leaf) -and $generatedSpriteContent -match 'id="codicon-chat-sparkle-error"' -and $iconGeneratorContent -match "'chat-sparkle-error'"
@@ -1570,14 +1569,12 @@ try {
     $ruleIssueRecommendationStagingValid = $appContent -match 'const activeRuleIssueRecommendations = new Set\(\)' -and
         $appContent -match 'async function stageRuleIssueRecommendation\(issue\)' -and
         $appContent -match 'activeRuleIssueRecommendations\.add\(issue\.id\)' -and
-        $appContent -match 'for \(const \{ candidate, operation \} of candidateOperations\)' -and
-        $appContent -match 'notify: false, commit: false, proposals' -and
-        $appContent -match 'evaluations\.push\(evaluation\)' -and
+        $appContent -notmatch 'reconcileRuleTextRelationships|requiresManualRelationshipCheck' -and
         $appContent -match 'const nextSession = structuredClone\(state\.session\)' -and
         $appContent -match 'await persistSession\(nextSession, assertCurrent\)' -and
-        $appContent -match 'const label = checking \? "Checking Relationships"' -and
+        $appContent -match 'const label = checking \? "Applying Recommended Actions"' -and
         $appContent -match 'activeRuleIssueRecommendations\.delete\(issue\.id\)'
-    Add-TestResult -Name 'rule-issue-recommendation-staging' -Passed $ruleIssueRecommendationStagingValid -Detail 'Rule Issue recommendations disable their action while every changed proposed text is reconciled and commit decisions only after all exact-text checks succeed.'
+    Add-TestResult -Name 'rule-issue-recommendation-staging' -Passed $ruleIssueRecommendationStagingValid -Detail 'Published Rule Issue recommendations commit the complete explicit maintainer selection atomically without saved-edit AI relationship checks.'
 
     $planDetailValid = $appContent -match 'data-plan-detail=' -and $appContent -match 'Complete required fields for' -and $appContent -match 'function openPlanCandidate\(' -and $appContent -match 'selectCandidate\(key, "plan"\)' -and $appContent -match 'row\.closest\("details\.candidate-category"\)' -and $appContent -match 'row\.closest\("details\.candidate-source-root"\)' -and $appContent -match 'row\.scrollIntoView' -and $appContent -match 'field\?\.focus'
     $planDetailValid = $planDetailValid -and $appContent -match 'data-rationale-save' -and $appContent -notmatch '<span>Save</span>' -and $appContent -match 'Save decision rationale and return to Promotion Plan' -and $appContent -match 'Save and return to Promotion Plan' -and $appContent -match 'save\.disabled = !value\.trim\(\)' -and $appContent -match 'await persistencePromise' -and $appContent -match 'if \(returnToPlan\)[\s\S]*?switchView\("plan"\)' -and $stylesContent -match '\.plan-detail-link:focus-visible' -and $stylesContent -match '\.rationale-heading'
@@ -1672,11 +1669,76 @@ try {
     $null = New-Item -ItemType Directory -Path $reuseSiteDirectory -Force
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $reuseSiteDirectory 'workbench-display.json')
     Copy-Item -LiteralPath $ruleIssuesPath -Destination (Join-Path $reuseSiteDirectory 'workbench-rule-issues.json')
+    $sourceIconDirectory = Join-Path $workbenchRoot 'icons'
+    $sourceIconSnapshot = @(Get-ChildItem -LiteralPath $sourceIconDirectory -Recurse -File | Sort-Object FullName | ForEach-Object {
+        [ordered]@{ path = [IO.Path]::GetRelativePath($sourceIconDirectory, $_.FullName); sha256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
+    }) | ConvertTo-Json -Depth 5 -Compress
     $reuseStopwatch = [Diagnostics.Stopwatch]::StartNew()
     $reuseOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $reuseExitCode = $LASTEXITCODE
     $reuseStopwatch.Stop()
     $reuseResult = if ($reuseExitCode -eq 0) { ($reuseOutput | Out-String) | ConvertFrom-Json } else { $null }
+
+    $expectedRuntimeIcons = @(
+        'codicons/sprite.svg', 'codicons/LICENSE.txt', 'codicons/ATTRIBUTION.md',
+        'fluent/sprite.svg', 'fluent/ATTRIBUTION.md',
+        'llms/sprite.svg', 'llms/LICENSE.txt', 'llms/ATTRIBUTION.md',
+        'octicons/sprite.svg', 'octicons/LICENSE.txt', 'octicons/ATTRIBUTION.md'
+    )
+    $stagedIconDirectory = Join-Path $reuseSiteDirectory 'icons'
+    $firstRuntimeIcons = @(Get-ChildItem -LiteralPath $stagedIconDirectory -Recurse -File | ForEach-Object {
+        [IO.Path]::GetRelativePath($stagedIconDirectory, $_.FullName).Replace('\', '/')
+    })
+    $runtimeIconStagingValid = $reuseExitCode -eq 0 -and
+        @((Compare-Object -ReferenceObject $expectedRuntimeIcons -DifferenceObject $firstRuntimeIcons -CaseSensitive)).Count -eq 0
+    Copy-Item -LiteralPath $sourceIconDirectory -Destination $reuseSiteDirectory -Recurse -Force
+    $null = New-Item -ItemType Directory -Path (Join-Path $stagedIconDirectory 'obsolete-family')
+    [IO.File]::WriteAllText((Join-Path $stagedIconDirectory 'obsolete-family/preview.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>')
+    $siteSentinelPath = Join-Path $reuseSiteDirectory 'unrelated-site-data.txt'
+    [IO.File]::WriteAllText($siteSentinelPath, 'Synthetic unrelated site data')
+    $iconRestageOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+    $iconRestageExitCode = $LASTEXITCODE
+    $restagedRuntimeIcons = @(Get-ChildItem -LiteralPath $stagedIconDirectory -Recurse -File | ForEach-Object {
+        [IO.Path]::GetRelativePath($stagedIconDirectory, $_.FullName).Replace('\', '/')
+    })
+    $runtimeIconStagingValid = $runtimeIconStagingValid -and $iconRestageExitCode -eq 0 -and
+        @((Compare-Object -ReferenceObject $expectedRuntimeIcons -DifferenceObject $restagedRuntimeIcons -CaseSensitive)).Count -eq 0 -and
+        [IO.File]::ReadAllText($siteSentinelPath) -ceq 'Synthetic unrelated site data' -and
+        (Get-FileHash -LiteralPath (Join-Path $reuseSiteDirectory 'workbench-display.json')).Hash -ceq (Get-FileHash -LiteralPath $displayPath).Hash -and
+        (Get-FileHash -LiteralPath (Join-Path $reuseSiteDirectory 'workbench-rule-issues.json')).Hash -ceq (Get-FileHash -LiteralPath $ruleIssuesPath).Hash
+    foreach ($assetName in $expectedRuntimeIcons) {
+        $runtimeIconStagingValid = $runtimeIconStagingValid -and
+            (Get-FileHash -LiteralPath (Join-Path $stagedIconDirectory $assetName)).Hash -ceq (Get-FileHash -LiteralPath (Join-Path $sourceIconDirectory $assetName)).Hash
+    }
+    $sourceIconSnapshotAfter = @(Get-ChildItem -LiteralPath $sourceIconDirectory -Recurse -File | Sort-Object FullName | ForEach-Object {
+        [ordered]@{ path = [IO.Path]::GetRelativePath($sourceIconDirectory, $_.FullName); sha256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
+    }) | ConvertTo-Json -Depth 5 -Compress
+    $runtimeIconStagingValid = $runtimeIconStagingValid -and $sourceIconSnapshot -ceq $sourceIconSnapshotAfter
+
+    $linkTargetDirectory = Join-Path $tempRoot 'icon-cleanup-protected-target'
+    $null = New-Item -ItemType Directory -Path $linkTargetDirectory
+    $linkSentinelPath = Join-Path $linkTargetDirectory 'preserve.txt'
+    [IO.File]::WriteAllText($linkSentinelPath, 'Synthetic protected link target')
+    $linkType = if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }
+    $stagedIconLink = Join-Path $stagedIconDirectory 'linked-source'
+    $null = New-Item -ItemType $linkType -Path $stagedIconLink -Target $linkTargetDirectory
+    try {
+        $linkedIconOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+        $runtimeIconStagingValid = $runtimeIconStagingValid -and $LASTEXITCODE -ne 0 -and
+            ($linkedIconOutput | Out-String) -match 'must not contain links or junctions' -and
+            [IO.File]::ReadAllText($linkSentinelPath) -ceq 'Synthetic protected link target'
+    }
+    finally { Remove-Item -LiteralPath $stagedIconLink -Force }
+    $linkedSiteDirectory = Join-Path $tempRoot 'linked-icon-site'
+    $null = New-Item -ItemType $linkType -Path $linkedSiteDirectory -Target $linkTargetDirectory
+    try {
+        $linkedSiteOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $linkedSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
+        $runtimeIconStagingValid = $runtimeIconStagingValid -and $LASTEXITCODE -ne 0 -and
+            ($linkedSiteOutput | Out-String) -match 'SiteDirectory must not use links or junctions' -and
+            @(Get-ChildItem -LiteralPath $linkTargetDirectory -Recurse -File).Count -eq 1 -and
+            [IO.File]::ReadAllText($linkSentinelPath) -ceq 'Synthetic protected link target'
+    }
+    finally { Remove-Item -LiteralPath $linkedSiteDirectory -Force }
 
     $invalidForceOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -Force -OutputFormat Json 2>&1)
     $invalidForceExitCode = $LASTEXITCODE
@@ -1755,6 +1817,7 @@ try {
     $assessmentLaunchValid = $assessmentLaunchValid -and $launcherContent -match "SiteDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/site'\)" -and $launcherContent -match "ReconciliationCacheDirectory = \(Join-Path \(\[Environment\]::GetFolderPath\('LocalApplicationData'\)\) 'hosted-workbench/reconciliation-cache'\)" -and $launcherContent -match 'CacheDirectory = \$resolvedReconciliationCacheDirectory'
     $assessmentLaunchValid = $assessmentLaunchValid -and
         $reuseExitCode -eq 0 -and
+        $runtimeIconStagingValid -and
         [string]$reuseResult.displayBuildMode -ceq 'REUSED_VALIDATED_DISPLAY' -and
         [int]$reuseResult.discoveredCandidateCount -eq @($display.candidates).Count -and
         $reuseStopwatch.Elapsed.TotalSeconds -lt 30 -and
@@ -1764,7 +1827,7 @@ try {
         ($mismatchOutput | Out-String) -match 'display and Rule Issues source files do not match' -and
         $incompleteExitCode -ne 0 -and
         ($incompleteOutput | Out-String) -match 'Run Start-RuleWorkbench\.ps1 -Rebuild to create one'
-    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch reuses the staged display, Rebuild reuses exact semantic caches, and Rebuild with Force bypasses cache reads while preserving atomic publication.'
+    Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch reuses validated artifacts and stages only runtime sprites/legal notices, removes stale icon inventory without touching source or other site data, and preserves rebuild/cache publication contracts.'
     $waitingPhraseStagingValid = $reuseExitCode -eq 0 -and
         [string]$reuseResult.displayBuildMode -ceq 'REUSED_VALIDATED_DISPLAY' -and
         (Test-Path -LiteralPath (Join-Path $reuseSiteDirectory 'assistance-waiting-phrases.json')) -and
@@ -1773,8 +1836,24 @@ try {
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
         $serverEntryPointContents = @($launcherContent, (Get-Content -LiteralPath $loopbackServerPath -Raw))
-        $serverContractValid = $launcherContent -match '\[Net\.IPAddress\]::Loopback' -and $launcherContent -match '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -and $launcherContent -match "StatusCode 421 -StatusText 'Misdirected Request'" -and $launcherContent -match 'RandomNumberGenerator.*Fill' -and $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/runtime-config''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -and $launcherContent.Contains('$requestUri.AbsolutePath -eq ''/reconcile-rule''') -and $launcherContent -match 'X-Workbench-Shutdown-Token' -and $launcherContent -match 'X-Workbench-Operation-Token' -and $appContent -match 'fetch\("/runtime-config", \{ cache: "no-store", signal \}\)' -and $launcherContent -match "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -and (@($serverEntryPointContents | Where-Object { -not $_.Contains('-ClientSocket $client.Client') -or -not $_.Contains('catch [OperationCanceledException]') }).Count -eq 0)
-        Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'The loopback server remains repository-read-only, rejects misdirected requests, serves server-owned runtime authority, and exposes only token-authenticated shutdown and scoped relationship operations.'
+        $serverContractValid = $launcherContent -match 'RandomNumberGenerator.*Fill' -and
+            $launcherContent -match 'CryptographicOperations.*FixedTimeEquals' -and
+            $appContent -match 'fetch\("/runtime-config", \{ cache: "no-store", signal \}\)' -and
+            @($serverEntryPointContents | Where-Object {
+                $_ -notmatch '\[Net\.IPAddress\]::Loopback' -or
+                $_ -notmatch '\$allowedHosts = @\("127\.0\.0\.1:\$Port", "localhost:\$Port"\)' -or
+                $_ -notmatch "StatusCode 421 -StatusText 'Misdirected Request'" -or
+                -not $_.Contains('$requestUri.AbsolutePath -eq ''/runtime-config''') -or
+                -not $_.Contains('$requestUri.AbsolutePath -eq ''/shutdown''') -or
+                -not $_.Contains('$requestUri.AbsolutePath -eq ''/assist-rule''') -or
+                $_.Contains('/reconcile-rule') -or
+                $_ -notmatch 'X-Workbench-Shutdown-Token' -or
+                $_ -notmatch 'X-Workbench-Operation-Token' -or
+                $_ -notmatch "script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'" -or
+                $_ -notmatch 'Start-RuleAssistanceRequest' -or
+                $_ -notmatch 'Stop-SavedRuleEvaluationRequests'
+            }).Count -eq 0
+        Add-TestResult -Name 'loopback-read-only-server' -Passed $serverContractValid -Detail 'Both loopback entrypoints preserve host validation, CSP, launch authority, assistance, and worker cleanup without a saved-edit relationship endpoint.'
     }
 
     if (Test-ShouldRun -Name 'internal-stage-status-boundary') {
@@ -1860,11 +1939,6 @@ try {
                 }
             }
         }
-    }
-    if (Test-ShouldRun -Name 'relationship-check-responsiveness') {
-        Start-TestResult -Name 'relationship-check-responsiveness' -RunningDetail 'Checking assets, authorization, evaluator serialization, cancellation, and shutdown during real HTTP validation'
-        & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Test-WorkbenchServerResponsiveness.ps1') -DisplayPath $displayPath -RuleIssuesPath $ruleIssuesPath -TemporaryDirectory (Join-Path $tempRoot 'responsive-server') -Quiet:($OutputFormat -eq 'Json') -IndentLevel 1
-        Add-TestResult -Name 'relationship-check-responsiveness' -Passed ($LASTEXITCODE -eq 0) -Detail 'Production and internal launchers serve GET/HEAD during held, production-shaped saved-rule requests while preserving serialized evaluators, validated responses, error reporting, disconnect cancellation, and shutdown cleanup.'
     }
     if (Test-ShouldRun -Name 'saved-rule-wording-review') {
         Start-TestResult -Name 'saved-rule-wording-review' -RunningDetail 'Checking independent wording acceptance, strict output, phase preservation, and registered prompt boundaries'
@@ -2345,9 +2419,9 @@ try {
     } | ConvertTo-Json -Compress
     [IO.File]::WriteAllText((Join-Path $shutdownSiteDirectory 'shutdown-config.js'), "globalThis.__HOSTED_RULE_WORKBENCH__ = $shutdownConfig;`n", [Text.UTF8Encoding]::new($false))
     $serverJob = Start-Job -ScriptBlock {
-        param($ServerPath, $SiteDirectory, $Port, $ShutdownToken, $OperationToken, $RepositoryRoot, $ManualRelationshipPath, $RelationshipEvaluatorScriptPath, $ManualRelationshipCacheDirectory, $AdjudicationEvaluatorScriptPath, $MetadataEvaluatorPath)
-        & pwsh -NoProfile -File $ServerPath -SiteDirectory $SiteDirectory -Port $Port -ShutdownToken $ShutdownToken -OperationToken $OperationToken -RepositoryRoot $RepositoryRoot -ManualRelationshipPath $ManualRelationshipPath -ManualRelationshipCacheDirectory $ManualRelationshipCacheDirectory -RelationshipEvaluatorScriptPath $RelationshipEvaluatorScriptPath -AdjudicationEvaluatorScriptPath $AdjudicationEvaluatorScriptPath -EvaluatorCommand $MetadataEvaluatorPath -NoLaunch
-    } -ArgumentList $loopbackServerPath, $shutdownSiteDirectory, $shutdownPort, $shutdownToken, $operationToken, $repositoryRoot, $manualRelationshipPath, $manualRelationshipEvaluatorPath, (Join-Path $tempRoot 'manual-relationship-cache'), $adjudicationEvaluatorPath, $metadataEvaluatorPath
+        param($ServerPath, $SiteDirectory, $Port, $ShutdownToken, $OperationToken, $RepositoryRoot, $MetadataEvaluatorPath)
+        & pwsh -NoProfile -File $ServerPath -SiteDirectory $SiteDirectory -Port $Port -ShutdownToken $ShutdownToken -OperationToken $OperationToken -RepositoryRoot $RepositoryRoot -EvaluatorCommand $MetadataEvaluatorPath -NoLaunch
+    } -ArgumentList $loopbackServerPath, $shutdownSiteDirectory, $shutdownPort, $shutdownToken, $operationToken, $repositoryRoot, $metadataEvaluatorPath
     try {
         $shutdownUrl = "http://127.0.0.1:$shutdownPort"
         $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
@@ -2483,8 +2557,8 @@ try {
             $shutdownComplete = $authorizedShutdown.StatusCode -eq 200 -and $null -ne $completedJob -and $serverJob.State -eq 'Completed'
         }
         if (Test-ShouldRun -Name 'authenticated-server-shutdown') {
-            $shutdownLifecycleValid = $unauthorizedShutdown.StatusCode -eq 403 -and $unauthorizedRelationship.StatusCode -eq 403 -and $unrelatedPost.StatusCode -eq 405 -and $shutdownComplete
-            Add-TestResult -Name 'authenticated-server-shutdown' -Passed $shutdownLifecycleValid -Detail 'Per-launch tokens protect shutdown and scoped relationship operations; unauthorized and unrelated POST requests remain rejected.'
+            $shutdownLifecycleValid = $unauthorizedShutdown.StatusCode -eq 403 -and $unauthorizedRelationship.StatusCode -eq 405 -and $unrelatedPost.StatusCode -eq 405 -and $shutdownComplete
+            Add-TestResult -Name 'authenticated-server-shutdown' -Passed $shutdownLifecycleValid -Detail 'Per-launch tokens protect shutdown; the removed relationship endpoint and unrelated POST requests remain rejected.'
         }
         elseif (-not $shutdownComplete) {
             throw 'Focused Workbench validation could not stop its owned server cleanly'

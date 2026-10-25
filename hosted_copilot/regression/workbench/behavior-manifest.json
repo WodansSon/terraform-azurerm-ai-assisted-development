@@ -6,33 +6,13 @@
   "behaviors": [
     {
       "id": "WB-UX-ASSISTANCE-001",
-      "title": "Rule-scoped transient assistance preserves accepted chat geometry, catalog context, explicit proposal review, cancellation, and conversation reset",
+      "title": "Independent view and rule chats preserve geometry, catalog context, isolated requests and busy state, explicit cancellation, and reload reset",
       "journey": "playwright/journeys/rule-assistance.journey.cjs"
     },
     {
       "id": "WB-UX-CONSOLIDATION-001",
-      "title": "Maintainer-directed corrected wording and retirements remain advisory until complete projected validation and atomic explicit acceptance",
+      "title": "Published recommendations stage exact wording and retirements atomically without another AI check",
       "journey": "playwright/journeys/maintainer-consolidation.journey.cjs"
-    },
-    {
-      "id": "WB-UX-VALIDATION-009",
-      "title": "Within-scope wording concerns block readiness through the shared warning without rewriting text, and older receipts require revalidation",
-      "journey": "playwright/journeys/validation-status.journey.cjs"
-    },
-    {
-      "id": "WB-UX-RELATIONSHIP-006",
-      "title": "Undo cancels affected validation and resets its draft without accepting late results, stopping replacement checks, or clearing unrelated warnings",
-      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
-    },
-    {
-      "id": "WB-UX-RELATIONSHIP-005",
-      "title": "Pending Plan checks retain a compact search pill, painted controls, contained readiness, and navigation to the same running validation",
-      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
-    },
-    {
-      "id": "WB-UX-VALIDATION-008",
-      "title": "Completed wording concerns share one warning and reason-aware plan/status navigation without changing evaluation authority",
-      "journey": "playwright/journeys/validation-status.journey.cjs"
     },
     {
       "id": "WB-UX-TREE-001",
@@ -330,49 +310,24 @@
       "journey": "playwright/journeys/portable-review-state.journey.cjs"
     },
     {
+      "id": "WB-UX-EDITING-001",
+      "title": "Saving maintainer wording preserves rebuild evidence and AI Assistance without relationship evaluation",
+      "journey": "playwright/journeys/manual-rule-editing.journey.cjs"
+    },
+    {
+      "id": "WB-UX-EDITING-002",
+      "title": "Reload drops retired relationship metadata without losing saved wording or published Rule Issues",
+      "journey": "playwright/journeys/manual-rule-editing.journey.cjs"
+    },
+    {
+      "id": "WB-UX-EDITING-003",
+      "title": "Promotion preview retains deterministic gates but requires no saved-edit relationship certification",
+      "journey": "playwright/journeys/manual-rule-editing.journey.cjs"
+    },
+    {
       "id": "WB-UX-DETAILS-001",
       "title": "Both detail views share evidence disclosures, assessment info, bordered inline metrics, and editor surfaces; Candidate Details retains unboxed action controls",
       "journey": "playwright/journeys/saved-rule-assessment.journey.cjs"
-    },
-    {
-      "id": "WB-UX-DETAILS-002",
-      "title": "Saved wording projects one complete refreshed assessment into Details, Assessment Results, persistence, and approval",
-      "journey": "playwright/journeys/saved-rule-assessment.journey.cjs"
-    },
-    {
-      "id": "WB-UX-DETAILS-003",
-      "title": "Unsaved, inflight, failed, legacy, stale, and malformed saved assessments cannot present current scoring or permit promotion",
-      "journey": "playwright/journeys/saved-rule-assessment.journey.cjs"
-    },
-    {
-      "id": "WB-UX-RELATIONSHIP-001",
-      "title": "Saved edits share adjudicator-owned grouped results without browser consolidation",
-      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
-    },
-    {
-      "id": "WB-UX-RELATIONSHIP-002",
-      "title": "Transparent waiting panels preserve accessible text, four painted chase edges, pixel alignment, reduced motion, elapsed time, compact blue cancellation, and results and retry",
-      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
-    },
-    {
-      "id": "WB-UX-RELATIONSHIP-003",
-      "title": "Relationship reviews match saved wording and require source-bound validation after restoration",
-      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
-    },
-    {
-      "id": "WB-UX-RELATIONSHIP-004",
-      "title": "Late and incorrect-hash responses cannot become current saved-edit validation",
-      "journey": "playwright/journeys/relationship-check-progress.journey.cjs"
-    },
-    {
-      "id": "WB-UX-VALIDATION-001",
-      "title": "Saved-edit validation counts required checks, distinct current unresolved relationships, and scope guidance independently from catalog Rule Issues",
-      "journey": "playwright/journeys/validation-status.journey.cjs"
-    },
-    {
-      "id": "WB-UX-VALIDATION-002",
-      "title": "Validation failures use compact dismiss-only error banners without dismissal clearing persisted failures or global counts",
-      "journey": "playwright/journeys/validation-status.journey.cjs"
     },
     {
       "id": "WB-UX-VALIDATION-003",
@@ -382,21 +337,6 @@
     {
       "id": "WB-UX-VALIDATION-004",
       "title": "Saved status follows completed persistence transactions, exposes failures, survives rendering, and recovers on a later save",
-      "journey": "playwright/journeys/validation-status.journey.cjs"
-    },
-    {
-      "id": "WB-UX-VALIDATION-005",
-      "title": "Cached validation persists its current state and explicit discard or draft import clears obsolete validation metadata",
-      "journey": "playwright/journeys/validation-status.journey.cjs"
-    },
-    {
-      "id": "WB-UX-VALIDATION-006",
-      "title": "Unchanged restored legacy or stale-authority drafts expose revalidation warnings and enabled checks without advancing edit or saved timestamps",
-      "journey": "playwright/journeys/validation-status.journey.cjs"
-    },
-    {
-      "id": "WB-UX-VALIDATION-007",
-      "title": "Browser Save and unchanged-wording rechecks complete through the real HTTP checker and adjudicator pipeline with baseline self-coverage",
       "journey": "playwright/journeys/validation-status.journey.cjs"
     },
     {

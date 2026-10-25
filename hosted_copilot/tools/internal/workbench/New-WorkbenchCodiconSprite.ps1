@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $commit = '1c47ab36a4bb845c437866405c2fa67b8ca0fe36'
 $iconNames = @(
+    'add',
     'arrow-circle-down',
     'arrow-circle-left',
     'arrow-circle-right',
@@ -137,6 +138,7 @@ $iconNames = @(
     'terminal-tmux',
     'terminal-ubuntu',
     'tools',
+    'trash',
     'warning',
     'warning-compact',
     'workspace-unknown',

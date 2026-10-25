@@ -112,7 +112,7 @@ function Invoke-SavedRuleEvaluationProcess {
                     }
                 )
                 $failure = if ($failures.Count -eq 1) { $failures[0] } else {
-                    [pscustomobject]@{ code = 'rule-assistance-failed'; message = 'Rule assistance could not complete. No changes were applied by this request.'; diagnosticId = $null }
+                    [pscustomobject]@{ code = 'rule-assistance-failed'; message = 'The AI chat request could not be completed.'; diagnosticId = $null }
                 }
                 $exception = [InvalidOperationException]::new($failure.message)
                 $exception.Data['RuleAssistanceError'] = $failure
@@ -209,7 +209,7 @@ function Receive-SavedRuleEvaluationRequests {
                 else {
                     if ($request.OperationName -ceq 'Rule assistance') {
                         $failure = $exception.Data['RuleAssistanceError']
-                        if ($null -eq $failure) { $failure = [ordered]@{ code = 'rule-assistance-failed'; message = 'Rule assistance could not complete. No changes were applied by this request.'; diagnosticId = $null } }
+                        if ($null -eq $failure) { $failure = [ordered]@{ code = 'rule-assistance-failed'; message = 'The AI chat request could not be completed.'; diagnosticId = $null } }
                         Write-Warning "Rule assistance failed: $($failure.code). Diagnostic reference: $($failure.diagnosticId)"
                         $failureBody = [ordered]@{ error = $failure } | ConvertTo-Json -Depth 5 -Compress
                     }

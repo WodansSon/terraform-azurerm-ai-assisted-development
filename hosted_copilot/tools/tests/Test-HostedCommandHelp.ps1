@@ -173,8 +173,8 @@ try {
 
     Write-TestProgress -Name 'workbench-model-profiles' -Detail 'Checking centralized normal and saved-rule profile resolution'
     $profileCases = @(
-        @{ Path = $workbenchLauncherPath; Parameters = @('Model', 'AssessmentReasoningEffort', 'SavedRuleEvaluationModel', 'SavedRuleEvaluationReasoningEffort'); Profiles = @('normal', 'savedRuleEvaluation') },
-        @{ Path = (Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'); Parameters = @('Model', 'ReasoningEffort', 'AssistanceModel', 'AssistanceReasoningEffort'); Profiles = @('normal', 'savedRuleEvaluation') },
+        @{ Path = $workbenchLauncherPath; Parameters = @('Model', 'AssessmentReasoningEffort'); Profiles = @('normal') },
+        @{ Path = (Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'); Parameters = @('AssistanceModel', 'AssistanceReasoningEffort'); Profiles = @('normal') },
         @{ Path = (Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-SavedRuleEvaluation.ps1'); Parameters = @('Model', 'ReasoningEffort'); Profiles = @('savedRuleEvaluation') }
     )
     foreach ($relativePath in @(

@@ -45,6 +45,9 @@
             <input id="import-input" type="file" accept="application/json" hidden>
           </div>
         </details>
+        <button class="titlebar-icon clickable" id="assist-panel-toggle" type="button" data-workbench-tooltip="Show AI assistance" aria-label="Show AI assistance" aria-controls="rule-assistance-panel" aria-expanded="false" aria-pressed="false">
+          <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-layout-sidebar-right-off"></use></svg>
+        </button>
         <button class="titlebar-icon clickable" id="close-button" type="button" data-workbench-tooltip="Close Workbench" aria-label="Close Workbench">
           <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-sign-out"></use></svg>
           <span class="sr-only">Close Workbench</span>
@@ -94,11 +97,6 @@
                 <span>Details</span>
               </button>
             </div>
-            <div class="candidate-pane-controls" id="candidate-assistance-controls">
-              <button class="titlebar-icon clickable" id="assist-panel-toggle" type="button" data-workbench-tooltip="Show AI assistance" aria-label="Show AI assistance" aria-controls="rule-assistance-panel" aria-expanded="false" aria-pressed="false" disabled>
-                <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-layout-sidebar-right-off"></use></svg>
-              </button>
-            </div>
           </div>
           <div class="catalog-layout">
             <section class="candidate-panel" id="candidate-panel" role="tabpanel" aria-labelledby="candidate-pane-candidates candidate-heading">
@@ -122,7 +120,7 @@
               <div class="candidate-list scroll-surface type-ui" id="candidate-list"></div>
             </section>
 
-            <section class="assessment-panel scroll-surface" id="assessment-panel" role="tabpanel" aria-labelledby="candidate-pane-details" aria-live="polite" hidden>
+            <section class="assessment-panel scroll-surface" id="assessment-panel" role="tabpanel" aria-labelledby="candidate-pane-details" data-sidebar-enabled="true" aria-live="polite" hidden>
               <div class="empty-state">
                 <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-tasklist"></use></svg>
                 <h2>Select a Candidate</h2>
@@ -142,7 +140,6 @@
                 <span>Details</span>
               </button>
             </div>
-            <div class="candidate-pane-controls" id="assessment-assistance-controls"></div>
           </div>
           <div class="catalog-layout">
             <section class="candidate-panel" id="assessment-results-list-panel" role="tabpanel" aria-labelledby="assessment-pane-assessments assessment-results-heading">
@@ -153,7 +150,7 @@
               <div class="candidate-list scroll-surface type-ui" id="assessment-results-list"></div>
             </section>
 
-            <section class="assessment-panel scroll-surface" id="assessment-results-detail" role="tabpanel" aria-labelledby="assessment-pane-details" aria-live="polite" hidden>
+            <section class="assessment-panel scroll-surface" id="assessment-results-detail" role="tabpanel" aria-labelledby="assessment-pane-details" data-sidebar-enabled="true" aria-live="polite" hidden>
               <div class="empty-state">
                 <svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-checklist"></use></svg>
                 <h2>Select an Assessment Result</h2>

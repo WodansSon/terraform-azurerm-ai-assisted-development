@@ -66,6 +66,7 @@ for ($index = 0; $index -lt $messages.Count; $index++) {
 $displayJson = Get-Content -LiteralPath $DisplayPath -Raw
 $schemaPath = Join-Path $RepositoryRoot 'hosted_copilot/contracts/workbench/workbench-display-v4.schema.json'
 if (-not ($displayJson | Test-Json -SchemaFile $schemaPath -ErrorAction Stop)) { throw (New-RuleAssistanceException -Message 'Rule assistance display snapshot is invalid') }
+$displaySchema = Get-Content -LiteralPath $schemaPath -Raw | ConvertFrom-Json -Depth 100
 $display = $displayJson | ConvertFrom-Json -Depth 100 -DateKind String
 $candidates = @($display.candidates | Where-Object { "$($_.source.lane):$($_.source.id):$($_.assessment.id)" -ceq $request.candidateKey })
 if ($candidates.Count -ne 1 -or $candidates[0].source.contentSha256 -cne $request.sourceHash) { throw (New-RuleAssistanceException -Message 'Rule assistance candidate identity is unknown or stale') }
@@ -79,7 +80,25 @@ $catalog = @($display.catalog.rules | Where-Object status -CEQ 'active' | ForEac
 if ([string]::IsNullOrWhiteSpace($ruleId) -or $ruleId -cin @($display.catalog.protectedRules.id)) { throw (New-RuleAssistanceException -Message 'Rule assistance requires a non-protected candidate target') }
 $context = [ordered]@{
     currentRule = [ordered]@{ id = $ruleId; baselineText = $candidate.recommendation.ruleText; proposedText = $request.proposedText }
-    sources = @($candidate.members | ForEach-Object { [ordered]@{ id = $_.source.id; text = $_.source.text; provenance = $_.source.provenance } })
+    recordedAssessment = [ordered]@{
+        assessedTextSha256 = Get-Sha256 -Content $candidate.recommendation.ruleText
+        matchesCurrentWording = $request.proposedText -ceq $candidate.recommendation.ruleText
+        assessment = $candidate.assessment
+        recommendation = $candidate.recommendation
+    }
+    scoringDefinitions = [ordered]@{
+        selectionFactors = $displaySchema.'$defs'.selectionFactors
+        existingCoverage = $displaySchema.'$defs'.coverage
+    }
+    sources = @($candidate.members | ForEach-Object {
+        [ordered]@{
+            id = $_.source.id; lane = $_.source.lane; text = $_.source.text
+            contentSha256 = $_.source.contentSha256; provenance = $_.source.provenance
+            assessment = $_.assessment
+            meaningCoverageRationale = $_.meaningCoverageRationale
+            catalogMapping = $_.catalogMapping
+        }
+    })
     catalog = $catalog
     guidanceCapacity = $display.guidanceCapacity
     messages = $messages

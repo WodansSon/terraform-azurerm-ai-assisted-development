@@ -6,6 +6,8 @@ if ('--headless' -cin @($args)) {
     return
 }
 
+Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
+
 $arguments = @($args)
 $modelIndex = [Array]::IndexOf($arguments, '--model')
 $effortIndex = [Array]::IndexOf($arguments, '--reasoning-effort')
@@ -17,7 +19,7 @@ $prompt = [Console]::In.ReadToEnd()
 $marker = "`n## Supplied Context`n"
 $offset = $prompt.LastIndexOf($marker, [StringComparison]::Ordinal)
 if ($offset -lt 0 -or -not $prompt.Contains('## Boundaries', [StringComparison]::Ordinal)) { throw 'Assistance prompt boundaries are missing' }
-$context = $prompt.Substring($offset + $marker.Length) | ConvertFrom-Json -Depth 100
+$context = $prompt.Substring($offset + $marker.Length) | ConvertFrom-Json -Depth 100 -DateKind String
 $question = [string]$context.messages[-1].content
 $control = [Environment]::GetEnvironmentVariable('HOSTED_ASSISTANCE_TEST_CONTROL')
 if ([string]::IsNullOrWhiteSpace($control)) { throw 'Synthetic assistance requires an isolated test control directory' }
@@ -27,6 +29,15 @@ $metrics = [ordered]@{
     ruleIds = @($context.catalog.id); messageCount = @($context.messages).Count
     sourceCount = @($context.sources).Count; workingDirectory = (Get-Location).Path
     guidanceCapacity = $context.guidanceCapacity
+    parentAssessmentSha256 = Get-JsonSnapshotSha256 -Value $context.recordedAssessment.assessment -Depth 100
+    recommendationSha256 = Get-JsonSnapshotSha256 -Value $context.recordedAssessment.recommendation -Depth 100
+    sourceEvidenceSha256 = Get-JsonSnapshotSha256 -Value @($context.sources) -Depth 100
+    selectionDefinitionsSha256 = Get-JsonSnapshotSha256 -Value $context.scoringDefinitions.selectionFactors -Depth 100
+    coverageDefinitionsSha256 = Get-JsonSnapshotSha256 -Value $context.scoringDefinitions.existingCoverage -Depth 100
+    assessedTextSha256 = $context.recordedAssessment.assessedTextSha256
+    baselineTextSha256 = Get-Sha256 -Content $context.currentRule.baselineText
+    proposedTextSha256 = Get-Sha256 -Content $context.currentRule.proposedText
+    matchesCurrentWording = $context.recordedAssessment.matchesCurrentWording
 }
 [IO.File]::AppendAllText((Join-Path $control 'metrics.jsonl'), (($metrics | ConvertTo-Json -Depth 100 -Compress) + "`n"))
 if ($question -ceq 'hold') {
