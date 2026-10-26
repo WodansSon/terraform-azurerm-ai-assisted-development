@@ -14,11 +14,87 @@ const behaviorIds = [
   "WB-UX-PREVIEW-011",
   "WB-UX-PREVIEW-012",
   "WB-UX-PREVIEW-013",
-  "WB-UX-PREVIEW-014"
+  "WB-UX-PREVIEW-014",
+  "WB-UX-PREVIEW-015",
+  "WB-UX-PREVIEW-016"
 ];
 
+async function inspectApprovalRequirements(page) {
+  return page.evaluate(() => {
+    const metadata = globalThis.__HOSTED_RULE_WORKBENCH__;
+    const originalIdentity = metadata.maintainerIdentity;
+    const originalName = state.session.approverName;
+    const originalDecision = getDecision;
+    const originalSort = state.planSort;
+    try {
+      state.session.approverName = "Synthetic unrelated typed name";
+      const baseline = getPreviewReadiness();
+      const approvedBy = buildApprovedRules().approvedBy;
+      const failures = [
+        { status: "unavailable", login: null, isCodeOwner: false, reason: "Synthetic missing identity" },
+        { status: "validated", login: "fixture-nonowner", isCodeOwner: false, reason: "Synthetic non-owner" },
+        { status: "unavailable", login: "fixture-codeowner", isCodeOwner: true, reason: "Synthetic unverified identity" }
+      ].map((identity) => {
+        metadata.maintainerIdentity = identity;
+        const readiness = getPreviewReadiness();
+        return !readiness.ready && !readiness.approvalIdentity && buildApprovedRules() === null
+          && getApprovalRequirements(readiness).find((item) => item.id === "identity").status === "failed";
+      });
+      metadata.maintainerIdentity = originalIdentity;
+      const missing = { ...baseline, missingAssessmentCount: 1, ready: false };
+      const missingRequirement = getApprovalRequirements(missing).find((item) => item.id === "assessments");
+      const emptyRequirement = getApprovalRequirements({ ...baseline, planCandidates: [], missingAssessmentCount: 0 })
+        .find((item) => item.id === "assessments");
+      renderApprovalRequirements(missing);
+      const error = document.querySelector('[data-approval-requirement="assessments"]');
+      const description = document.getElementById(error.getAttribute("aria-describedby"));
+      const fakeMissing = getApprovalRepairTarget("assessments", missing);
+      const identity = document.querySelector('[data-approval-requirement="identity"]');
+      const result = {
+        noEditor: !document.getElementById("approver-name"),
+        verifiedAttribution: approvedBy.type === "github-authenticated"
+          && approvedBy.id === originalIdentity.login && approvedBy.displayName === originalIdentity.login,
+        typedNameIgnored: baseline.approvalIdentity.login === originalIdentity.login,
+        unauthorizedBlocked: failures.every(Boolean),
+        rebuildHardError: missingRequirement.status === "failed" && missingRequirement.value === "Not available",
+        emptyPlanNotHardError: emptyRequirement.status === "passed",
+        rebuildNotNavigation: error.tagName !== "BUTTON" && !error.hasAttribute("data-approval-target") && fakeMissing === null,
+        errorRed: getComputedStyle(error.querySelector("strong")).color === "rgb(255, 107, 107)"
+          && getComputedStyle(error.querySelector("svg")).color === "rgb(255, 107, 107)",
+        circledError: error.querySelector("use").getAttribute("href").endsWith("#codicon-error"),
+        accessibleRecovery: error.tabIndex === 0 && description.textContent.includes("-Rebuild")
+          && error.dataset.workbenchTooltip === description.textContent,
+        identityWithoutAt: identity.querySelector("strong").textContent === originalIdentity.login,
+        warningButtons: [...document.querySelectorAll("#approval-requirements .pending")]
+          .every((row) => row.tagName === "BUTTON" && row.hasAttribute("data-approval-target")),
+        passedNoninteractive: !document.querySelector("#approval-requirements button.passed")
+      };
+      state.planSort = { field: "candidate", direction: "ascending" };
+      const ordered = sortPlanCandidates(baseline.planCandidates, state.planSort);
+      if (ordered.length < 2) throw new Error("Readiness navigation fixture requires two complete Plan candidates");
+      const overrides = new Map(ordered.slice(0, 2).map((candidate) => [candidate.key, { ...originalDecision(candidate), rationale: "" }]));
+      getDecision = (candidate) => overrides.get(candidate.key) || originalDecision(candidate);
+      const rationales = getApprovalRepairTarget("rationales", { ...baseline, planCandidates: [...ordered].reverse() });
+      result.firstMissingRationale = rationales.candidate.key === ordered[0].key && rationales.selector.includes("rationale");
+      overrides.forEach((decision) => { decision.action = ""; });
+      const actions = getApprovalRepairTarget("rule-actions", { ...baseline, planCandidates: [...ordered].reverse() });
+      result.firstMissingAction = actions.candidate.key === ordered[0].key && actions.selector.includes("action-options");
+      result.noIdentityRepairShortcut = getApprovalRepairTarget("identity", baseline) === null;
+      return result;
+    } finally {
+      getDecision = originalDecision;
+      state.planSort = originalSort;
+      metadata.maintainerIdentity = originalIdentity;
+      state.session.approverName = originalName;
+      renderPreview();
+    }
+  });
+}
+
 async function run({ page, baseUrl, assert }) {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await openWorkbench(page, baseUrl);
+  assert(await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches), "Preview journey requires normal motion");
   const pairedLines = await page.evaluate(() => {
     const file = createPreviewFile("paired-lines.txt", "Paired line changes", ["Before", "", "Old tail"], ["After", "", "New tail"]);
     const unchanged = createPreviewFile("unchanged.txt", "Unchanged", ["Same", ""], ["Same", ""]);
@@ -75,6 +151,7 @@ async function run({ page, baseUrl, assert }) {
   const approvalStatus = await page.evaluate(() => {
     let owner = document.querySelector("#preview-status").closest(".status-item");
     const originalRuleIssueBundle = state.ruleIssueBundle;
+    const originalRuleIssues = state.ruleIssues;
     const blockedColor = getComputedStyle(owner).color;
     const blockedWidth = owner.getBoundingClientRect().width;
     const expectedBlockedColor = getComputedStyle(document.documentElement).getPropertyValue("--red").trim();
@@ -95,6 +172,7 @@ async function run({ page, baseUrl, assert }) {
     };
     state.ruleIssueBundle = { ...originalRuleIssueBundle, issues: [] };
     validateRuleIssueBundle(state.ruleIssueBundle);
+    state.ruleIssues = structuredClone(state.ruleIssueBundle.issues);
     renderPreview();
     owner = document.querySelector("#preview-status").closest(".status-item");
     const readyColor = getComputedStyle(owner).color;
@@ -104,16 +182,19 @@ async function run({ page, baseUrl, assert }) {
       && document.querySelector("#preview-status").textContent === "Ready"
       && !document.querySelector("#approve-export-button").disabled;
     const readyDetails = getPreviewReadiness();
-    const approverName = state.session.approverName;
-    state.session.approverName = "";
+    const approvalIdentity = globalThis.__HOSTED_RULE_WORKBENCH__.maintainerIdentity;
+    globalThis.__HOSTED_RULE_WORKBENCH__.maintainerIdentity = {
+      status: "unavailable", login: null, isCodeOwner: false, reason: "Synthetic unavailable identity"
+    };
     renderPreview();
     owner = document.querySelector("#preview-status").closest(".status-item");
     const draftColor = getComputedStyle(owner).color;
     const draftWidth = owner.getBoundingClientRect().width;
     const expectedDraftColor = getComputedStyle(document.documentElement).getPropertyValue("--warning-foreground").trim();
     const draftValid = owner.classList.contains("warning-kind") && document.querySelector("#preview-status").textContent === "Draft";
-    state.session.approverName = approverName;
+    globalThis.__HOSTED_RULE_WORKBENCH__.maintainerIdentity = approvalIdentity;
     state.ruleIssueBundle = originalRuleIssueBundle;
+    state.ruleIssues = originalRuleIssues;
     renderPreview();
     return {
       blockedValid,
@@ -137,6 +218,44 @@ async function run({ page, baseUrl, assert }) {
   assert(approvalStatus.readyValid && approvalStatus.readyColor === "rgb(97, 226, 148)" && approvalStatus.expectedReadyColor === "#61e294", `Ready Preview status is not green (${JSON.stringify(approvalStatus)})`);
   assert(approvalStatus.draftValid && approvalStatus.draftColor === "rgb(229, 186, 125)" && approvalStatus.expectedDraftColor === "#e5ba7d", `Draft Preview status is not amber (${JSON.stringify(approvalStatus)})`);
   assert(approvalStatus.expectedWidth === 72 && [approvalStatus.blockedWidth, approvalStatus.readyWidth, approvalStatus.draftWidth].every((width) => width === approvalStatus.expectedWidth), `Promotion approval status geometry changed between Blocked, Ready, and Draft (${JSON.stringify(approvalStatus)})`);
+
+  const approvalRequirements = await inspectApprovalRequirements(page);
+  assert(Object.values(approvalRequirements).every(Boolean), `Approval identity or three-state requirements regressed: ${JSON.stringify(approvalRequirements)}`);
+
+  const expectedIssue = await page.evaluate(() => getApprovalRepairTarget("rule-issues").issue.id);
+  await page.locator("#preview-review-toggle").click();
+  await page.locator('[data-approval-target="rule-issues"]').focus();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction((id) => state.workspaceTab === "rule-issues" && state.activeRuleIssueKey === id
+    && document.activeElement?.dataset.ruleIssueKey === id, expectedIssue);
+  assert(await page.locator("#preview-review-popover").isHidden(), "Warning navigation did not close Review Changes");
+  await page.locator('[data-view="preview"]').click();
+  await page.locator("#preview-review-toggle").click();
+  assert(await page.locator('[data-approval-target="rule-issues"]').isVisible(), "Correction buttons did not survive view navigation");
+  await page.locator("#preview-review-close").click();
+
+  const wordingProbe = await page.evaluate(() => {
+    const candidate = sortPlanCandidates(getPlanCandidates(), state.planSort)[0];
+    setWorkspaceTab("candidate-sources");
+    selectCandidate(candidate.key);
+    switchView("catalog");
+    showCandidatePane("details");
+    return { key: candidate.key, original: getDecision(candidate).proposedText, session: JSON.stringify(state.session) };
+  });
+  const draftWording = `${wordingProbe.original} Synthetic unsaved wording for navigation coverage.`;
+  await page.locator('#assessment-panel [data-decision-field="proposedText"]').fill(draftWording);
+  await page.locator('[data-view="preview"]').click();
+  await page.locator("#preview-review-toggle").click();
+  await page.locator('[data-approval-target="rule-issues"]').click();
+  assert(await page.locator("#preview-review-popover").isVisible(), "A different warning discarded unsaved wording or navigated without guarding it");
+  await page.locator('[data-approval-target="wording"]').click();
+  assert(await page.locator('#assessment-panel [data-decision-field="proposedText"]').inputValue() === draftWording,
+    "Unsaved-wording correction navigation lost the editor buffer");
+  const wordingPreserved = await page.evaluate((probe) => state.activeKey === probe.key
+    && document.activeElement?.dataset.decisionField === "proposedText" && JSON.stringify(state.session) === probe.session, wordingProbe);
+  assert(wordingPreserved, "Correction navigation changed saved decisions or failed to focus the unsaved editor");
+  await page.locator('#assessment-panel [data-decision-field="proposedText"]').fill(wordingProbe.original);
+  await page.locator('[data-view="preview"]').click();
 
   const reviewModel = await page.evaluate(() => {
     const layout = document.querySelector("#preview-view .preview-layout");
@@ -238,8 +357,11 @@ async function run({ page, baseUrl, assert }) {
   assert(reviewModel.fileHierarchy.every((item) => item.children.join(",") === "preview-file-heading-wrapper,preview-file-body" && !item.bodyInsideHeader), "Preview file cards do not own sibling sticky-header and diff-body containers");
   assert(reviewModel.viewChildren.join(",") === "page-heading,preview-review-toolbar,preview-layout" && reviewModel.layoutChildren.join(",") === "preview-summary scroll-surface type-ui,preview-tree-resizer,preview-code scroll-surface type-editor" && !reviewModel.codeChildren.includes("preview-review-toolbar"), "Preview toolbar, tree, and diff scroller do not retain independent layer ownership");
   assert(reviewModel.codeOverflow === "auto" && reviewModel.codeContainment === "paint", "Preview diff flow is not isolated inside its owned scroll surface");
-  assert(reviewModel.toolbarHeight === 60 && reviewModel.fileHeaderHeights.length === 1 && reviewModel.fileHeaderHeights[0] === 42, "Preview toolbar or sticky file headers do not match authenticated GitHub geometry");
-  assert(reviewModel.codeownerShields === 10 && reviewModel.viewedControls.length === 9 && reviewModel.viewedControls.every((control) => control.width === 77 && control.height === 28), "Preview file headers do not retain changed-file CODEOWNERS controls and the protected reference shield");
+  assert(Math.abs(reviewModel.toolbarHeight - 60) < 0.001 && reviewModel.fileHeaderHeights.length > 0
+    && reviewModel.fileHeaderHeights.every(height => Math.abs(height - 42) < 0.001),
+    `Preview toolbar or sticky file headers do not match authenticated GitHub geometry (toolbar=${reviewModel.toolbarHeight}, headers=${JSON.stringify(reviewModel.fileHeaderHeights)})`);
+  assert(reviewModel.codeownerShields === 10 && reviewModel.viewedControls.length === 9 && reviewModel.viewedControls.every((control) => control.width === 77 && control.height === 28),
+    `Preview file headers do not retain changed-file CODEOWNERS controls and the protected reference shield (shields=${reviewModel.codeownerShields}, controls=${JSON.stringify(reviewModel.viewedControls)})`);
   const expectedInitialExpansion = { proposed: true, payload: true, raw: true, protected: true };
   assert(reviewModel.toolbarText === reviewModel.expectedToolbarText && reviewModel.toolbarDiffstat.length === 5 && reviewModel.toolbarDiffstat.includes("add") && reviewModel.toolbarDiffstat.includes("neutral") && JSON.stringify(reviewModel.initialExpansion) === JSON.stringify(expectedInitialExpansion), `Preview toolbar totals, diffstat, or initial tree expansion are not synchronized to changed and protected files (${JSON.stringify(reviewModel)})`);
   assert(reviewModel.splitter.role === "slider" && reviewModel.splitter.orientation === "vertical" && reviewModel.splitter.minimum === "296" && Number(reviewModel.splitter.maximum) >= Number(reviewModel.splitter.current) && reviewModel.splitter.width === 5, "Preview changed-file tree does not expose an accessible five-pixel splitter");
@@ -405,10 +527,105 @@ async function run({ page, baseUrl, assert }) {
   const review = await page.evaluate(() => ({
     visible: !document.querySelector("#preview-review-popover").hidden,
     approval: Boolean(document.querySelector("#preview-review-popover #approve-export-button")),
-    approver: Boolean(document.querySelector("#preview-review-popover #approver-name"))
+    approver: Boolean(document.querySelector("#preview-review-popover #approver-name")),
+    identity: document.querySelector('[data-approval-requirement="identity"] strong')?.textContent
   }));
-  assert(review.visible && review.approval && review.approver, "Review changes does not expose the existing approval workflow");
+  assert(review.visible && review.approval && !review.approver && review.identity === "fixture-codeowner", "Review changes does not expose the verified-identity approval workflow");
+  const reviewLayout = await page.evaluate(() => {
+    const popover = document.getElementById("preview-review-popover");
+    const header = popover.querySelector(".preview-review-popover-heading");
+    const requirements = document.getElementById("approval-requirements");
+    const footer = popover.querySelector(".preview-approval-actions");
+    const button = document.getElementById("approve-export-button");
+    const popoverBounds = popover.getBoundingClientRect();
+    const headerBounds = header.getBoundingClientRect();
+    const title = header.querySelector("strong").getBoundingClientRect();
+    const close = header.querySelector("button").getBoundingClientRect();
+    const balanced = (bounds) => Math.abs((bounds.top - popoverBounds.top) - (headerBounds.bottom - bounds.bottom)) < 1;
+    const ownsDivider = () => {
+      const style = getComputedStyle(footer);
+      return style.borderTopStyle === "solid" && parseFloat(style.borderTopWidth) > 0
+        && style.borderTopColor === getComputedStyle(requirements.lastElementChild).borderTopColor
+        && parseFloat(getComputedStyle(requirements.lastElementChild).borderBottomWidth) === 0;
+    };
+    const originalGap = footer.getBoundingClientRect().top - requirements.getBoundingClientRect().bottom;
+    const originalWidth = button.getBoundingClientRect().width;
+    const originalDisabled = button.disabled;
+    const extraRequirement = requirements.lastElementChild.cloneNode(true);
+    let independentOfRowCount;
+    requirements.appendChild(extraRequirement);
+    try {
+      independentOfRowCount = ownsDivider()
+        && Math.abs((footer.getBoundingClientRect().top - requirements.getBoundingClientRect().bottom) - originalGap) < 1;
+    } finally {
+      extraRequirement.remove();
+    }
+    return {
+      titleBalanced: balanced(title),
+      closeBalanced: balanced(close),
+      commonCenter: Math.abs((title.top + title.bottom) / 2 - (close.top + close.bottom) / 2) < 1,
+      footerOwnsButton: footer.contains(button) && requirements.nextElementSibling === footer,
+      footerOwnsDivider: ownsDivider(),
+      independentOfRowCount,
+      restoredGap: Math.abs((footer.getBoundingClientRect().top - requirements.getBoundingClientRect().bottom) - originalGap) < 1,
+      buttonUnchanged: button.disabled === originalDisabled && Math.abs(button.getBoundingClientRect().width - originalWidth) < 1
+    };
+  });
+  assert(reviewLayout.titleBalanced && reviewLayout.closeBalanced && reviewLayout.commonCenter,
+    "Review Changes title and close icon do not have balanced vertical spacing");
+  assert(reviewLayout.footerOwnsButton && reviewLayout.footerOwnsDivider && reviewLayout.independentOfRowCount
+    && reviewLayout.restoredGap && reviewLayout.buttonUnchanged,
+    "Approval action footer does not own a stable top divider independently of the requirement rows");
+  await page.evaluate(() => renderPreview());
+  assert(await page.locator("#preview-review-popover").isVisible(), "Ordinary Preview rendering dismissed Review Changes");
+  await page.locator(".preview-review-popover-heading strong").click();
+  assert(await page.locator("#preview-review-popover").isVisible(), "An inside click dismissed Review Changes");
+  await page.mouse.move(8, 8);
+  assert(await page.locator("#preview-review-popover").isVisible(), "Pointer leave dismissed Review Changes");
+  await page.locator(".preview-review-popover-heading").hover();
+  await page.mouse.wheel(0, 80);
+  assert(await page.locator("#preview-review-popover").isVisible(), "Scrolling inside Review Changes dismissed it");
+  await page.evaluate(async () => {
+    document.getElementById("preview-code").scrollTop = 0;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  assert(await page.locator("#preview-review-popover").isVisible(), "Programmatic diff scrolling dismissed Review Changes");
+  const outsideCollapse = page.locator("#preview-code [data-preview-file-collapse]").first();
+  const originalExpanded = await outsideCollapse.getAttribute("aria-expanded");
+  await outsideCollapse.click();
+  assert(await page.locator("#preview-review-popover").isHidden(), "An outside click did not dismiss Review Changes");
+  assert(await outsideCollapse.getAttribute("aria-expanded") !== originalExpanded,
+    "Outside dismissal swallowed the diff collapse action");
+  await outsideCollapse.click();
+  assert(await outsideCollapse.getAttribute("aria-expanded") === originalExpanded,
+    "The outside-click regression did not restore the original diff state");
+  await page.locator("#preview-review-toggle").click();
+  const scrollPoint = await page.evaluate(() => {
+    const scroller = document.getElementById("preview-code");
+    scroller.scrollTop = 0;
+    const bounds = scroller.getBoundingClientRect();
+    return { x: bounds.left + 20, y: Math.min(bounds.bottom - 24, innerHeight - 40) };
+  });
+  await page.mouse.move(scrollPoint.x, scrollPoint.y);
+  assert(await page.locator("#preview-review-popover").isVisible(), "Pointer movement outside dismissed Review Changes");
+  await page.mouse.wheel(0, 180);
+  await page.waitForFunction(() => document.getElementById("preview-code").scrollTop > 0);
+  assert(await page.locator("#preview-review-popover").isHidden(), "Outside wheel scrolling did not dismiss Review Changes");
+  await page.locator("#preview-review-toggle").click();
+  const originalTabIndex = await page.locator("#preview-code").getAttribute("tabindex");
+  await page.locator("#preview-code").evaluate((node) => { node.tabIndex = 0; node.focus({ preventScroll: true }); });
+  await page.keyboard.press("PageDown");
+  assert(await page.locator("#preview-review-popover").isHidden(), "Outside keyboard scrolling did not dismiss Review Changes");
+  await page.locator("#preview-code").evaluate((node, value) => {
+    if (value === null) node.removeAttribute("tabindex");
+    else node.setAttribute("tabindex", value);
+  }, originalTabIndex);
+  await page.locator("#preview-review-toggle").click();
+  await page.keyboard.press("Escape");
+  assert(await page.locator("#preview-review-popover").isHidden(), "Escape did not dismiss Review Changes");
+  await page.locator("#preview-review-toggle").click();
   await page.locator("#preview-review-close").click();
+  assert(await page.locator("#preview-review-popover").isHidden(), "The close icon did not dismiss Review Changes");
 
   const virtualization = await page.evaluate(async () => {
     disconnectPreviewBodyVirtualizer();
@@ -435,8 +652,9 @@ async function run({ page, baseUrl, assert }) {
     const mountedNodeCount = scroller.querySelectorAll("*").length;
     const farPath = previewFilesByScope.payload.at(-1).path;
     elements["preview-summary"].querySelector(`[data-preview-file-jump="${CSS.escape(farPath)}"]`).click();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const farFile = scroller.querySelector(`[data-preview-file-path="${CSS.escape(farPath)}"]`);
+    const farHydratedImmediately = farFile.querySelector(".preview-file-body").dataset.previewVirtualized !== "true";
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const farHydrated = farFile.querySelector(".preview-file-body").dataset.previewVirtualized !== "true";
     const scrollHeightAfterNavigation = scroller.scrollHeight;
     elements["preview-tree-resizer"].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
@@ -453,12 +671,14 @@ async function run({ page, baseUrl, assert }) {
       fullNodeCount,
       mountedNodeCount,
       virtualizedCount,
+      farHydratedImmediately,
       farHydrated,
       virtualizedAfterResize
     };
   });
   assert(virtualization.renderedFileCount === virtualization.fileCount && virtualization.virtualizedCount > 0 && virtualization.mountedNodeCount < virtualization.fullNodeCount, `Large Preview did not virtualize off-screen file bodies (${JSON.stringify(virtualization)})`);
-  assert(virtualization.virtualizedScrollHeight === virtualization.fullScrollHeight && virtualization.farHydrated, `Virtualized Preview did not preserve exact scroll geometry or hydrate file navigation (${JSON.stringify(virtualization)})`);
+  assert(virtualization.virtualizedScrollHeight === virtualization.fullScrollHeight && virtualization.farHydratedImmediately
+    && virtualization.farHydrated, `Virtualized Preview did not preserve exact scroll geometry or hydrate file navigation (${JSON.stringify(virtualization)})`);
   assert(virtualization.virtualizedAfterResize > 0, `Preview virtualization did not recover after keyboard splitter resizing (${JSON.stringify(virtualization)})`);
 
   await page.setViewportSize({ width: 768, height: 900 });

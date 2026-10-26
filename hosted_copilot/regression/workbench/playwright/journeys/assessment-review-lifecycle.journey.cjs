@@ -63,7 +63,46 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(await details.locator(".detail-identity span").last().textContent() === initialHostedId, "Assessment Details opened the wrong result");
     assert((await details.locator(".evidence-box").first().textContent()).includes("explicit override rationale"), "Assessment Details omitted the source evidence");
     assert((await details.getByText("Excluded behavior remains available for maintainer audit.", { exact: true }).count()) === 1, "Assessment Details omitted the AI evaluation evidence");
-    assert((await details.getByText("No Hosted rule is required for this excluded behavior.", { exact: true }).count()) === 1, "Assessment Details omitted related Hosted coverage");
+    const assessmentPresentation = await page.evaluate(() => {
+      const root = document.getElementById("assessment-results-detail");
+      const candidate = state.assessedCandidates.find((item) => item.key === state.assessmentActiveKey);
+      const assessment = getAssessment(candidate, getDecision(candidate));
+      const heading = root.querySelector(".proposed-rule-heading");
+      const bounds = heading.getBoundingClientRect();
+      const label = heading.querySelector(":scope > .section-label").getBoundingClientRect();
+      const recommendation = heading.lastElementChild.getBoundingClientRect();
+      const coverage = root.querySelector('[data-evidence-kind="coverage"]');
+      const explanation = root.querySelector("[data-assessment-explanation] p");
+      const relatedAssessment = {
+        ...assessment,
+        relatedHostedCoverage: [{
+          hostedRuleId: state.bundle.catalog.rules[0].id,
+          relationship: "related",
+          rationale: "Synthetic related-rule comparison remains visible."
+        }]
+      };
+      const probe = document.createElement("div");
+      probe.innerHTML = renderRelatedHostedCoverage(candidate, relatedAssessment, "results");
+      return {
+        labelLeft: Math.abs(label.left - bounds.left) < 1,
+        recommendationRight: Math.abs(recommendation.right - bounds.right) < 1,
+        titleBeforePill: label.right < recommendation.left,
+        rationaleRetained: explanation.textContent.endsWith(assessment.selectionRationale),
+        noCoverageSummary: !coverage?.querySelector(".coverage-summary"),
+        coverageVisibilityMatchesEvidence: Boolean(coverage) === (assessment.relatedHostedCoverage.length > 0),
+        emptyCoverageOmitted: renderRelatedHostedCoverage(candidate, { ...assessment, relatedHostedCoverage: [] }, "results") === "",
+        noGeneralRationale: !probe.textContent.includes(assessment.selectionRationale)
+          && !probe.textContent.includes(assessment.existingCoverage.rationale),
+        comparisonRetained: probe.querySelector(".related-hosted-coverage p").textContent
+          === `${relatedAssessment.relatedHostedCoverage[0].hostedRuleId} Synthetic related-rule comparison remains visible.`
+      };
+    });
+    assert(assessmentPresentation.labelLeft && assessmentPresentation.recommendationRight && assessmentPresentation.titleBeforePill,
+      "Assessment Details did not keep the proposed-rule title left and recommendation pill right");
+    assert(assessmentPresentation.rationaleRetained && assessmentPresentation.noCoverageSummary
+      && assessmentPresentation.coverageVisibilityMatchesEvidence && assessmentPresentation.emptyCoverageOmitted
+      && assessmentPresentation.noGeneralRationale && assessmentPresentation.comparisonRetained,
+      "Assessment Details rendered empty coverage, duplicated general rationale, or lost the assessment rationale/related-rule comparison");
     await page.locator('[data-assessment-pane="assessments"]').click();
     assert(await page.locator("#assessment-results-list-panel").isVisible() && await details.isHidden(), "Assessment Details return navigation did not restore the results list");
 

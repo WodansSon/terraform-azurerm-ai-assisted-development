@@ -45,7 +45,9 @@ async function openCandidate(page, query) {
 }
 
 async function run({ page, baseUrl, assert, playback }) {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await openWorkbench(page, baseUrl);
+  assert(await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches), "Portable review journey requires normal motion");
   const sessionSnapshot = await page.evaluate(() => structuredClone(state.session));
   const candidateId = "resource-identity-list-resource";
   const candidateSearchId = "REVIEW-REPO-001";
@@ -269,8 +271,7 @@ async function run({ page, baseUrl, assert, playback }) {
     await playback.show(page, "Approval export · exact payload bytes and attribution");
     await page.locator('[data-view="preview"]').click();
     await page.locator("#preview-review-toggle").click();
-    await page.locator("#approver-name").fill("Phase Zero Maintainer");
-    await page.locator("#preview-review-toggle").click();
+    assert(await page.locator("#approver-name").count() === 0, "Approval still exposes an editable attribution identity");
     assert(!await page.locator("#approve-export-button").isDisabled(), "UI-complete decision did not reach approval readiness");
     const expectedPayloadBytes = await page.evaluate(() => `${JSON.stringify(buildApprovedRules(), null, 2)}\n`);
     const [approvalDownload] = await Promise.all([
@@ -284,7 +285,7 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(approvalBytes.toString("utf8") === expectedPayloadBytes, "Downloaded approved rules differ from the exact Preview object");
     assert(approvedRules.schemaVersion === 4 && approvedRules.kind === "hosted-approved-rules", "Approved rules have the wrong contract identity");
     assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$/.test(approvedRules.approvedAt), "Approval timestamp is not canonical UTC");
-    assert(approvedRules.approvedBy.type === "github-authenticated" && approvedRules.approvedBy.id === "fixture-codeowner" && approvedRules.approvedBy.displayName === "Phase Zero Maintainer", "Approved rules lost exact maintainer attribution");
+    assert(approvedRules.approvedBy.type === "github-authenticated" && approvedRules.approvedBy.id === "fixture-codeowner" && approvedRules.approvedBy.displayName === "fixture-codeowner", "Approved rules lost verified maintainer attribution");
     assert(approvedMutation.action === "add" && approvedMutation.rule.id === proposedId && approvedMutation.rule.status === "active", "Approved mutation changed the selected identity or action");
     assert(approvedMutation.rationale === rationale && approvedMutation.placements.length === 1 && approvedMutation.sourceRelationships.length > 0, "Approved mutation is incomplete");
 

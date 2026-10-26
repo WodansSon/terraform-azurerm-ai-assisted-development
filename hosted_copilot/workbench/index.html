@@ -253,13 +253,13 @@
               </button>
             </div>
             <div class="approval-controls">
-              <label for="approver-name">Approver Name</label>
-              <input class="editable-text" id="approver-name" type="text" autocomplete="name" maxlength="120" placeholder="Maintainer name">
               <section class="approval-requirements" id="approval-requirements" aria-label="Approval Requirements"></section>
-              <button class="button primary clickable" id="approve-export-button" type="button" disabled>
-                <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
-                Approve &amp; Export
-              </button>
+              <div class="preview-approval-actions" role="group" aria-label="Approval actions">
+                <button class="button primary clickable" id="approve-export-button" type="button" disabled>
+                  <svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-shield-check-16"></use></svg>
+                  Approve &amp; Export
+                </button>
+              </div>
               <p>Exports a frozen approval handoff. The repository remains unchanged.</p>
             </div>
           </div>

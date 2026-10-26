@@ -6,7 +6,10 @@ const expectedNormalProfile = require("../../../../tools/llm.json").normal;
 const behaviorIds = ["WB-UX-ASSISTANCE-001"];
 
 async function run({ page, baseUrl, assert }) {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await openWorkbench(page, baseUrl);
+  assert(await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches),
+    "Assistance journey requires normal motion");
   const startup = await page.evaluate(() => {
     const toggle = document.getElementById("assist-panel-toggle");
     return {
@@ -442,10 +445,18 @@ async function run({ page, baseUrl, assert }) {
   await page.evaluate(() => { Math.random = () => 0.999999; syncRuleAssistance(); });
   await page.waitForTimeout(5200);
   assert(await waiting.locator(".sr-only").textContent() === phrases[0], "A waiting phrase changed during rerender or rotated during a request");
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  assert(await waiting.locator(".shimmer-character").first().evaluate((node) => getComputedStyle(node).animationName) === "none"
-    && await waiting.locator(".sr-only").textContent() === phrases[0], "Reduced motion removed the phrase or retained animated text");
-  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const shimmerMotion = await waiting.locator(".shimmer-character").first().evaluate(async (node) => {
+    const animations = node.getAnimations();
+    const initialTimes = animations.map((animation) => animation.currentTime);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      normalMotion: !matchMedia("(prefers-reduced-motion: reduce)").matches,
+      advancing: animations.some((animation, index) => animation.playState === "running"
+        && typeof initialTimes[index] === "number" && animation.currentTime > initialTimes[index])
+    };
+  });
+  assert(shimmerMotion.normalMotion && shimmerMotion.advancing
+    && await waiting.locator(".sr-only").textContent() === phrases[0], "Waiting text stopped animating or lost its phrase during normal motion");
   await pending();
   await page.waitForFunction(() => !ruleAssistance?.active && Boolean(ruleAssistance?.turns[0]?.answer));
   assert(!await root.locator(".assist-chat-operation-message .shimmer-heading").count(), "Completed assistance retained animated waiting text");
@@ -763,12 +774,19 @@ async function run({ page, baseUrl, assert }) {
   await disclosure.click();
   assert(!await root.locator("[data-assist-header-cancel],.assist-header-working").count()
     && await send.getAttribute("aria-label") === "Cancel operation", "Sidebar retained duplicate header controls or lost composer cancellation");
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  assert(await root.locator(".waiting-panel").evaluate((node) => getComputedStyle(node).animationName) === "none",
-    "Sidebar request border ignored reduced motion");
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  assert(await root.locator(".waiting-panel").evaluate((node) => getComputedStyle(node).animationName) === "waiting-panel-chase",
-    "Sidebar activity did not reuse the shared border animation");
+  const borderMotion = await root.locator(".waiting-panel").evaluate(async (node) => {
+    const animations = node.getAnimations().filter((animation) => animation.animationName === "waiting-panel-chase");
+    const initialTimes = animations.map((animation) => animation.currentTime);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return {
+      normalMotion: !matchMedia("(prefers-reduced-motion: reduce)").matches,
+      name: getComputedStyle(node).animationName,
+      advancing: animations.some((animation, index) => animation.playState === "running"
+        && typeof initialTimes[index] === "number" && animation.currentTime > initialTimes[index])
+    };
+  });
+  assert(borderMotion.normalMotion && borderMotion.name === "waiting-panel-chase" && borderMotion.advancing,
+    "Sidebar activity stopped advancing the shared border animation during normal motion");
   await send.click();
   assert(!await root.locator(".assist-chat-animation-layer").count(), "Cancellation retained the busy border");
   await pending();

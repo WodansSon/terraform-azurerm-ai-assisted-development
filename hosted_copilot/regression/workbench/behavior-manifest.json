@@ -135,6 +135,16 @@
       "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
     },
     {
+      "id": "WB-UX-PREVIEW-015",
+      "title": "Review Changes uses verified CODEOWNER identity and accessible hard-error, warning, and success states",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
+      "id": "WB-UX-PREVIEW-016",
+      "title": "Readiness warnings navigate to the first exact correction target without discarding unsaved wording",
+      "journey": "playwright/journeys/promotion-preview-review.journey.cjs"
+    },
+    {
       "id": "WB-UX-STICKY-001",
       "title": "Candidate tree preserves sticky source category and column context",
       "journey": "playwright/journeys/candidate-sticky-context.journey.cjs"

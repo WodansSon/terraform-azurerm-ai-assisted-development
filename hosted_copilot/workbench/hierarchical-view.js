@@ -43,8 +43,10 @@
     }
   }
 
-  function normalizeNodes(nodes, parent = null, depth = 0, result = []) {
+  function normalizeNodes(nodes, defaultRowHeight, parent = null, depth = 0, result = []) {
     nodes.forEach((source, childIndex) => {
+      const rowHeight = source.rowHeight ?? defaultRowHeight;
+      if (!Number.isFinite(rowHeight) || rowHeight <= 0) throw new Error(`Invalid row height for hierarchical node: ${source.id}`);
       const node = {
         ...source,
         children: [],
@@ -53,23 +55,24 @@
         expanded: source.expanded !== false,
         parent,
         parentId: parent?.id || null,
-        rowHeight: source.rowHeight || 40,
+        rowHeight,
         stickyEligible: source.stickyEligible !== false && source.kind !== "leaf" && source.kind !== "detail"
       };
       result.push(node);
-      node.children = normalizeNodes(source.children || [], node, depth + 1, result);
+      node.children = normalizeNodes(source.children || [], defaultRowHeight, node, depth + 1, result);
     });
     return nodes.map((source) => result.find((node) => node.id === source.id));
   }
 
   class HierarchicalViewModel {
-    constructor(nodes = []) {
+    constructor(nodes = [], defaultRowHeight) {
+      this.defaultRowHeight = defaultRowHeight;
       this.setNodes(nodes);
     }
 
     setNodes(nodes) {
       const allNodes = [];
-      this.roots = normalizeNodes(nodes, null, 0, allNodes);
+      this.roots = normalizeNodes(nodes, this.defaultRowHeight, null, 0, allNodes);
       this.nodes = allNodes;
       this.nodesById = new Map(allNodes.map((node) => [node.id, node]));
       this.flatten();
@@ -310,7 +313,7 @@
 
     setInput(input, { preserveScroll = true } = {}) {
       const scrollTop = preserveScroll ? this.viewport.scrollTop : 0;
-      this.model = new HierarchicalViewModel(this.adapter.buildNodes(input));
+      this.model = new HierarchicalViewModel(this.adapter.buildNodes(input), this.adapter.getDefaultRowHeight());
       this.layout = new HierarchicalViewLayout(this.model);
       this.renderNaturalRows();
       this.viewport.scrollTop = scrollTop;

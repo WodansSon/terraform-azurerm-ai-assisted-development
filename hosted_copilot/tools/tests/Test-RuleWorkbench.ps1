@@ -1502,7 +1502,7 @@ try {
         $stylesContent -match '\.clickable:disabled,[\s\S]*?cursor:\s*default !important' -and
         $indexContent -match '<body class="static-surface">' -and
         $indexContent -match 'class="editable-text" id="search-input"' -and
-        $indexContent -match 'class="editable-text" id="approver-name"' -and
+        $indexContent -notmatch 'id="approver-name"' -and
         $appContent -match '<input class="editable-text" type="search" placeholder="Filter preview files"' -and
         $stylesContent -match '\.static-surface\s*\{\s*cursor:\s*default' -and
         $stylesContent -match '\.editable-text:not\(\[readonly\]\):not\(:disabled\),[\s\S]*?\.static-surface textarea:not\(\[readonly\]\):not\(:disabled\),[\s\S]*?cursor:\s*text' -and
@@ -1595,8 +1595,27 @@ try {
     $planTokenDeltaValid = $appContent -match 'function getAssessmentTokenValue\(' -and $appContent -match '!getApplicabilityOverride\(candidate\) \|\| assessment\.guardedTokenDelta !== 0' -and $appContent -match 'function getActionTokenDelta\(' -and $appContent -match 'if \(!isPromotionAction\(action\)\) return 0' -and $appContent -match 'if \(action === "retire"\) return -estimateGuardedTokens\(getCurrentHostedText\(candidate\)\)' -and $appContent -match 'if \(action === "update"\) return proposedTokens - estimateGuardedTokens\(getCurrentHostedText\(candidate\)\)' -and $appContent -match 'function getCandidateTokenValue\(' -and $appContent -match 'function getPlanTokenValue\(' -and $appContent -match 'function getPlanTokenDisplay\(' -and $appContent -match 'return formatSignedNumber\(getPlanTokenValue\(candidate\)\)' -and $appContent -match 'function getPlanTokenDelta\(' -and $appContent -match 'return getActionTokenDelta\(candidate, decision\.action, decision\)' -and $appContent -match 'function getActionCapacityBucketNames\(' -and $appContent -match '<td class="mono">\$\{cost\}</td>' -and $appContent -match 'token\.textContent = formatCandidateTokenValue\(candidate, assessment\)' -and $appContent -match 'draftDeltaTokens: deltasByName\[bucket\.reportName\]'
     Add-TestResult -Name 'promotion-plan-token-deltas' -Passed $planTokenDeltaValid -Detail 'Token displays and Draft Item Estimate reuse signed action-aware values, including maintained proposed-text estimates for unresolved overrides, while capacity projections wait for an explicit action and Retire retains negative savings.'
 
-    $approvalExportValid = $indexContent -match 'id="approver-name"' -and $indexContent -match 'id="approval-requirements"[^>]*aria-label="Approval Requirements"' -and $indexContent -match 'id="approve-export-button"[^>]*disabled' -and $indexContent -match 'Approve &amp; Export' -and $appContent -match 'function autofillApproverName\(' -and $appContent -match '__HOSTED_RULE_WORKBENCH__\?\.maintainerIdentity\?\.login' -and $appContent -match 'function renderApprovalRequirements\(' -and $appContent -match '\["Decision rationales"' -and $appContent -match '\["Catalog mutations"' -and $appContent -match '\["GitHub identity"' -and $appContent -match 'function getPreviewReadiness' -and $appContent -match 'mutationCount > 0' -and $appContent -match 'status = "no catalog mutations"' -and $appContent -match 'function buildApprovedRules' -and $appContent -match 'function buildApprovedMutation' -and $appContent -match 'function approveAndExport' -and $appContent -match '\$schema: "approved-rules-v4\.schema\.json"' -and $appContent -match 'kind: "hosted-approved-rules"' -and $appContent -match 'catalogContentSha256: state\.bundle\.catalog\.contentSha256' -and $appContent -notmatch 'hosted-rule-workbench-approval-handoff|sha256-payload-bytes-v1|crypto\.subtle\.digest\("SHA-256"' -and $stylesContent -match '\.approval-requirements'
-    $approvalExportValid = $approvalExportValid -and $appContent -match '\["Rule actions", readiness\.missingActionCount' -and $appContent -match 'missingActionCount === 0' -and $appContent -match 'status = "needs action"'
+    $approvalBuilder = [regex]::Match($appContent, '(?s)function buildApprovedRules\(\).*?(?=\r?\nfunction exportDraft\()')
+    $approvalExportValid = $indexContent -notmatch 'id="approver-name"' -and
+        $indexContent -match 'id="approval-requirements"[^>]*aria-label="Approval Requirements"' -and
+        $indexContent -match 'id="approve-export-button"[^>]*disabled' -and $indexContent -match 'Approve &amp; Export' -and
+        $appContent -match 'const approvalIdentity = getValidatedCodeOwnerIdentity\(' -and
+        $appContent -match 'Boolean\(approvalIdentity\)' -and $appContent -match 'if \(!identity\) return null' -and
+        $appContent -match 'type: "github-authenticated"' -and $appContent -match 'displayName: identity\.login' -and
+        $appContent -match 'function getApprovalRequirements\(' -and $appContent -match 'function renderApprovalRequirements\(' -and
+        $appContent -match 'label: "Decision rationales"' -and $appContent -match 'label: "Catalog mutations"' -and
+        $appContent -match 'label: "GitHub identity"' -and $appContent -match 'function navigateApprovalRequirement\(' -and
+        $appContent -match 'data-approval-target' -and $appContent -match 'aria-describedby' -and $appContent -match 'relaunch with -Rebuild' -and
+        $stylesContent -match '\.approval-requirement\.failed' -and $stylesContent -match 'button\.approval-requirement:focus-visible' -and
+        $appContent -match 'function getPreviewReadiness' -and $appContent -match 'mutationCount > 0' -and
+        $appContent -match 'status = "no catalog mutations"' -and $appContent -match 'function buildApprovedRules' -and
+        $appContent -match 'function buildApprovedMutation' -and $appContent -match 'function approveAndExport' -and
+        $appContent -match '\$schema: "approved-rules-v4\.schema\.json"' -and $appContent -match 'kind: "hosted-approved-rules"' -and
+        $appContent -match 'catalogContentSha256: state\.bundle\.catalog\.contentSha256' -and
+        $appContent -notmatch 'hosted-rule-workbench-approval-handoff|sha256-payload-bytes-v1' -and
+        $approvalBuilder.Success -and $approvalBuilder.Value -notmatch 'crypto\.subtle\.digest\("SHA-256"' -and
+        $stylesContent -match '\.approval-requirements'
+    $approvalExportValid = $approvalExportValid -and $appContent -match 'label: "Rule actions"' -and $appContent -match 'missingActionCount === 0' -and $appContent -match 'status = "needs action"'
     $approvalExportValid = $approvalExportValid -and $appContent -match 'APPROVED_RULES_SCHEMA_VERSION = 4'
     Add-TestResult -Name 'preview-approval-export' -Passed $approvalExportValid -Detail 'Preview explains plan, action, rationale, catalog mutation, and identity gates and blocks export until the approval contains at least one schema-valid catalog mutation.'
 

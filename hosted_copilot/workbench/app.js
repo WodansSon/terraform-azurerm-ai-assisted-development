@@ -11,6 +11,7 @@ const APPROVED_RULES_SCHEMA_VERSION = 4;
 const DECISION_RATIONALE_MAX_LENGTH = 500;
 const OVERRIDE_RATIONALE_MAX_LENGTH = 500;
 const WORKBENCH_TOOLTIP_DELAY_MS = 500;
+const WORKBENCH_TOOLTIP_HIDE_DELAY_MS = 150;
 const PREVIEW_CONTEXT_LINE_COUNT = 2;
 const PREVIEW_DIRECTIONAL_EXPAND_COUNT = 10;
 const PREVIEW_TREE_DEFAULT_WIDTH = 380;
@@ -140,6 +141,7 @@ let waitingPanelGeometryFrame = 0;
 const workbenchTooltip = {
   anchorX: 0,
   owner: null,
+  hideTimer: 0,
   showTimer: 0,
   suppressedOwner: null
 };
@@ -514,7 +516,7 @@ function captureElements() {
     "return-catalog-button", "plan-attention-filter", "plan-attention-count", "plan-undo-menu", "plan-undo-trigger", "plan-undo-all-count", "plan-undo-manual-count", "plan-undo-bulk-count", "plan-undo-override-count", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-tree-resizer", "preview-diff", "preview-payload-diff", "preview-json", "preview-protected", "preview-protected-section", "preview-code",
     "preview-review-toolbar",
-    "preview-review-context", "preview-review-toggle", "preview-review-popover", "preview-review-close", "approver-name", "approval-requirements",
+    "preview-review-context", "preview-review-toggle", "preview-review-popover", "preview-review-close", "approval-requirements",
     "approve-export-button", "workspace", "toast", "toast-message", "toast-close"
   ]) {
     elements[id] = document.getElementById(id);
@@ -696,12 +698,20 @@ function bindEvents() {
   elements["preview-tree-resizer"].addEventListener("keydown", handlePreviewTreeResizeKeyboard);
   setPreviewTreeWidth(PREVIEW_TREE_DEFAULT_WIDTH);
   elements["preview-review-toolbar"].addEventListener("click", handlePreviewReviewClick);
+  document.addEventListener("click", handlePreviewReviewOutsideInteraction, true);
+  document.addEventListener("pointerdown", handlePreviewReviewOutsideInteraction, { passive: true, capture: true });
+  document.addEventListener("wheel", handlePreviewReviewOutsideInteraction, { passive: true, capture: true });
+  document.addEventListener("touchmove", handlePreviewReviewOutsideInteraction, { passive: true, capture: true });
+  document.addEventListener("keydown", handlePreviewReviewOutsideInteraction, true);
   elements["preview-code"].addEventListener("click", handlePreviewReviewClick);
   elements["preview-code"].addEventListener("change", handlePreviewReviewChange);
-  elements["approver-name"].addEventListener("input", handleApproverInput);
   elements["approve-export-button"].addEventListener("click", approveAndExport);
   elements["toast-close"].addEventListener("click", dismissNotification);
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && workbenchTooltip.owner) {
+      workbenchTooltip.suppressedOwner = workbenchTooltip.owner;
+      hideStatusTooltip();
+    }
     const scoringLegendDialog = elements["assessment-panel"].querySelector("[data-scoring-legend-dialog]");
     if (event.key === "Escape" && scoringLegendDialog?.open) {
       scoringLegendDialog.close();
@@ -725,28 +735,44 @@ function isWorkbenchTooltipDisabled(owner) {
   return Boolean(owner?.closest(":disabled, [aria-disabled='true'], .disabled"));
 }
 
+function getWorkbenchPixelMetric(name) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const pixels = Number.parseFloat(value);
+  if (!value.endsWith("px") || !Number.isFinite(pixels) || pixels <= 0) throw new Error(`Invalid Workbench pixel metric: ${name}`);
+  return pixels;
+}
+
 function showWorkbenchTooltip(item, anchorX = item.getBoundingClientRect().left + item.getBoundingClientRect().width / 2) {
   if (isWorkbenchTooltipDisabled(item)) {
     hideStatusTooltip();
     return;
   }
+  if (workbenchTooltip.suppressedOwner === item) return;
   const value = item.dataset.workbenchTooltip || (item.hasAttribute("data-truncation-tooltip") ? item.textContent.trim() : "");
   if (!value) return;
 
+  cancelWorkbenchTooltipShow();
+  cancelWorkbenchTooltipHide();
+  workbenchTooltip.owner = item;
   const tooltip = elements["status-surface-tooltip"];
+  const inset = getWorkbenchPixelMetric("--tooltip-viewport-inset");
+  const gap = getWorkbenchPixelMetric("--tooltip-gap");
   tooltip.textContent = value;
-  tooltip.style.left = "8px";
-  tooltip.style.top = "8px";
+  tooltip.style.left = `${inset}px`;
+  tooltip.style.top = `${inset}px`;
   tooltip.classList.add("visible");
   tooltip.setAttribute("aria-hidden", "false");
 
   const itemRect = item.getBoundingClientRect();
   const tooltipRect = tooltip.getBoundingClientRect();
-  const left = Math.floor(Math.min(Math.max(8, anchorX - tooltipRect.width / 2), Math.max(8, window.innerWidth - tooltipRect.width - 8)));
-  const below = itemRect.bottom + 6;
-  const top = below + tooltipRect.height + 8 <= window.innerHeight
+  const preferredLeft = anchorX - tooltipRect.width / 2;
+  const left = Math.floor(Math.min(Math.max(inset, preferredLeft), Math.max(inset, window.innerWidth - tooltipRect.width - inset)));
+  const below = itemRect.bottom + gap;
+  const above = itemRect.top - tooltipRect.height - gap;
+  const preferredTop = below + tooltipRect.height + inset <= window.innerHeight
     ? below
-    : Math.max(8, itemRect.top - tooltipRect.height - 6);
+    : above;
+  const top = Math.floor(Math.min(Math.max(inset, preferredTop), Math.max(inset, window.innerHeight - tooltipRect.height - inset)));
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${top}px`;
 }
@@ -761,37 +787,74 @@ function cancelWorkbenchTooltipShow() {
   workbenchTooltip.showTimer = 0;
 }
 
-function scheduleWorkbenchTooltip(owner, anchorX) {
+function cancelWorkbenchTooltipHide() {
+  if (workbenchTooltip.hideTimer) window.clearTimeout(workbenchTooltip.hideTimer);
+  workbenchTooltip.hideTimer = 0;
+}
+
+function isWorkbenchTooltipActive() {
+  const owner = workbenchTooltip.owner;
+  return Boolean(owner?.isConnected && !isWorkbenchTooltipDisabled(owner)
+    && (owner.matches(":hover, :focus-within") || elements["status-surface-tooltip"].matches(":hover")));
+}
+
+function scheduleWorkbenchTooltipHide() {
+  if (isWorkbenchTooltipActive()) { cancelWorkbenchTooltipHide(); return; }
   cancelWorkbenchTooltipShow();
+  if (!workbenchTooltip.owner || workbenchTooltip.hideTimer) return;
+  workbenchTooltip.hideTimer = window.setTimeout(() => {
+    workbenchTooltip.hideTimer = 0;
+    if (!isWorkbenchTooltipActive()) hideStatusTooltip();
+  }, WORKBENCH_TOOLTIP_HIDE_DELAY_MS);
+}
+
+function scheduleWorkbenchTooltip(owner, anchorX) {
+  hideStatusTooltip();
   workbenchTooltip.owner = owner;
   workbenchTooltip.anchorX = anchorX;
   workbenchTooltip.showTimer = window.setTimeout(() => {
     workbenchTooltip.showTimer = 0;
-    if (workbenchTooltip.owner !== owner || workbenchTooltip.suppressedOwner === owner || !owner.matches(":hover, :focus")) return;
+    if (workbenchTooltip.owner !== owner) return;
+    if (workbenchTooltip.suppressedOwner === owner || !owner.isConnected || !owner.matches(":hover, :focus-within")) {
+      hideStatusTooltip();
+      return;
+    }
     showWorkbenchTooltip(owner, workbenchTooltip.anchorX);
   }, WORKBENCH_TOOLTIP_DELAY_MS);
 }
 
 function handleWorkbenchTooltipPointerOver(event) {
+  if (elements["status-surface-tooltip"].contains(event.target)) { cancelWorkbenchTooltipHide(); return; }
   const owner = getWorkbenchTooltipOwner(event.target);
-  if (!owner) { hideStatusTooltip(); return; }
-  if (owner.contains(event.relatedTarget)) return;
+  if (!owner) { scheduleWorkbenchTooltipHide(); return; }
+  if (workbenchTooltip.owner === owner) { cancelWorkbenchTooltipHide(); return; }
   if (workbenchTooltip.suppressedOwner === owner) return;
   workbenchTooltip.suppressedOwner = null;
   scheduleWorkbenchTooltip(owner, event.clientX);
 }
 
 function handleWorkbenchTooltipPointerMove(event) {
+  if (elements["status-surface-tooltip"].contains(event.target)) { cancelWorkbenchTooltipHide(); return; }
   const owner = getWorkbenchTooltipOwner(event.target);
-  if (!owner) { hideStatusTooltip(); return; }
-  if (owner && workbenchTooltip.owner === owner && workbenchTooltip.showTimer) workbenchTooltip.anchorX = event.clientX;
+  if (!owner) { scheduleWorkbenchTooltipHide(); return; }
+  if (workbenchTooltip.suppressedOwner === owner) return;
+  if (workbenchTooltip.owner === owner) {
+    cancelWorkbenchTooltipHide();
+    return;
+  }
+  scheduleWorkbenchTooltip(owner, event.clientX);
 }
 
 function handleWorkbenchTooltipPointerOut(event) {
+  const tooltip = elements["status-surface-tooltip"];
   const owner = getWorkbenchTooltipOwner(event.target);
   if (owner?.contains(event.relatedTarget)) return;
+  if (tooltip.contains(event.relatedTarget) || workbenchTooltip.owner?.contains(event.relatedTarget)) {
+    cancelWorkbenchTooltipHide();
+    return;
+  }
   if (workbenchTooltip.suppressedOwner === owner) workbenchTooltip.suppressedOwner = null;
-  hideStatusTooltip();
+  scheduleWorkbenchTooltipHide();
 }
 
 function handleWorkbenchTooltipPointerDown(event) {
@@ -803,18 +866,24 @@ function handleWorkbenchTooltipPointerDown(event) {
 
 function handleWorkbenchTooltipFocusIn(event) {
   const owner = getWorkbenchTooltipOwner(event.target);
-  if (!owner) { hideStatusTooltip(); return; }
-  if (workbenchTooltip.suppressedOwner === owner || owner.matches(":hover")) return;
+  if (!owner) { scheduleWorkbenchTooltipHide(); return; }
+  if (workbenchTooltip.suppressedOwner === owner) return;
+  if (workbenchTooltip.owner === owner) { cancelWorkbenchTooltipHide(); return; }
+  workbenchTooltip.suppressedOwner = null;
   const rect = owner.getBoundingClientRect();
   scheduleWorkbenchTooltip(owner, rect.left + rect.width / 2);
 }
 
 function handleWorkbenchTooltipFocusOut(event) {
-  hideStatusTooltip();
+  const owner = getWorkbenchTooltipOwner(event.target);
+  if (owner?.contains(event.relatedTarget)) return;
+  if (workbenchTooltip.suppressedOwner === owner) workbenchTooltip.suppressedOwner = null;
+  scheduleWorkbenchTooltipHide();
 }
 
 function hideStatusTooltip() {
   cancelWorkbenchTooltipShow();
+  cancelWorkbenchTooltipHide();
   workbenchTooltip.owner = null;
   elements["status-surface-tooltip"].classList.remove("visible");
   elements["status-surface-tooltip"].setAttribute("aria-hidden", "true");
@@ -1123,9 +1192,9 @@ function normalizeDisplayCandidates(display) {
   });
 }
 
-function getFilteredRuleIssues() {
-  const query = state.queries["rule-issues"].trim().toLowerCase();
-  const activeFilter = RULE_ISSUE_FILTERS.find((filter) => filter.key === state.ruleIssueFilter);
+function getFilteredRuleIssues(filterKey = state.ruleIssueFilter, search = state.queries["rule-issues"]) {
+  const query = search.trim().toLowerCase();
+  const activeFilter = RULE_ISSUE_FILTERS.find((filter) => filter.key === filterKey);
   return getOpenRuleIssues().filter((issue) => {
     if (!activeFilter?.classifications.includes(issue.classification)) return false;
     if (!query) return true;
@@ -1467,15 +1536,18 @@ async function handleRuleIssueDetailClick(event) {
 }
 
 function renderRuleIssueRule(rule, issue) {
+  const isProtected = rule.status === "protected" || state.protectedRules.some((item) => item.id === rule.id);
   const operation = getRuleIssueOperations(issue).find((item) => item.ruleId === rule.id);
   const action = operation?.action || ({ promote: "add", replace: "update", retire: "retire", exclude: "exclude", defer: "defer" })[rule.disposition];
-  const actionBadge = action
-    ? `<span class="ui-badge status-capsule decision-badge ${escapeHtml(action)}">${escapeHtml(formatRecommendation(action))}</span>`
-    : `<span class="ui-badge status-capsule decision-badge ${rule.disposition === "keep" ? "no-change" : "defer"}">${escapeHtml(capitalize(rule.disposition))}</span>`;
+  const actionBadge = isProtected
+    ? `<span class="ui-badge status-capsule recommendation-badge immutable">Immutable</span>`
+    : action
+      ? `<span class="ui-badge status-capsule decision-badge ${escapeHtml(action)}">${escapeHtml(formatRecommendation(action))}</span>`
+      : `<span class="ui-badge status-capsule decision-badge ${rule.disposition === "keep" ? "no-change" : "defer"}">${escapeHtml(capitalize(rule.disposition))}</span>`;
   return `
-    <section class="rule-issue-rule recommend-${escapeHtml(rule.disposition)}">
-      <h3><span class="rule-reference">${escapeHtml(rule.id)}</span><span class="rule-issue-rule-statuses"><span class="ui-badge status-capsule catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span>${actionBadge}</span></h3>
-      <div class="rule-issue-rule-body"><p>${renderRuleReferences(rule.text, issue.ruleIds)}</p></div>
+    <section class="rule-issue-rule recommend-${escapeHtml(rule.disposition)}${isProtected ? " protected-reference" : ""}"${isProtected ? ` role="group" aria-label="Protected rule ${escapeHtml(rule.id)}"` : ""}>
+      <h3><span class="rule-reference">${escapeHtml(rule.id)}</span><span class="rule-issue-rule-statuses"><span class="ui-badge status-capsule catalog-status ${isProtected ? "protected" : escapeHtml(rule.status)}">${isProtected ? "Protected" : escapeHtml(capitalize(rule.status))}</span>${actionBadge}</span></h3>
+      <div class="rule-issue-rule-body"${isProtected ? ' role="document" aria-label="Protected rule text, read only"' : ""}><p>${renderRuleReferences(rule.text, issue.ruleIds)}</p></div>
     </section>
   `;
 }
@@ -1498,11 +1570,15 @@ function renderRuleIssueResolutionPreview(issue, proposedText) {
 
 function renderRuleIssueContent(issue, { candidateDetails = false, proposedText = null } = {}) {
   const visibleRules = getVisibleRuleIssueRules(issue);
+  const protectedNotice = RULE_ISSUE_FILTERS.find((filter) => filter.key === "protected").classifications.includes(issue.classification)
+    ? renderInformationPanel("<p>Protected rules cannot be changed in the Workbench. Edit the protected source file directly in the repository. Relaunch with <code>-Rebuild</code> to refresh the Workbench snapshot and analysis. Rebuilding refreshes assessments and Rule Issues and may require significant processing time.</p>", { className: "protected-rule-information" })
+    : "";
   const ordinaryRelationship = candidateDetails && !issue.blocking && !issue.classification.includes("conflict") && issue.classification !== "contradiction";
   const banner = state.dismissedRuleIssueBannerKeys.has(issue.id) ? "" : `
     <div class="rule-issue-banner ${escapeHtml(issue.classification)}${ordinaryRelationship ? " relationship-review" : ""}">${icon(ordinaryRelationship ? "info" : issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "chat-sparkle-error" : "warning")}<div><strong>${ordinaryRelationship ? `Rule Relationship Review &middot; ${escapeHtml(formatRuleIssueTitle(issue.classification))}` : escapeHtml(formatRuleIssueTitle(issue.bannerTitle))}</strong><p>${renderRuleReferences(issue.bannerMessage, issue.ruleIds, "rule-issue-banner-reference")}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.id)}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
   return `
     ${banner}
+    ${protectedNotice}
     <div class="rule-issue-comparison">${visibleRules.map((rule) => renderRuleIssueRule(rule, issue)).join("")}</div>
     ${candidateDetails && proposedText !== null ? renderRuleIssueResolutionPreview(issue, proposedText) : ""}
     ${candidateDetails ? "" : `<span class="section-label rule-issue-assessment-label">Assessment:</span>
@@ -1565,7 +1641,7 @@ function renderRuleIssues() {
   if (!state.queries["rule-issues"].trim() && state.activeRuleIssueKey && !remembered) {
     rememberRuleIssueSelection(state.activeRuleIssueKey);
   }
-  elements["rule-issues-list"].querySelector(`[data-rule-issue-key="${CSS.escape(state.activeRuleIssueKey)}"]`)?.scrollIntoView({ block: "nearest" });
+  scrollApprovalTargetIntoView(elements["rule-issues-list"].querySelector(`[data-rule-issue-key="${CSS.escape(state.activeRuleIssueKey)}"]`), elements["rule-issues-list"]);
 }
 
 function getSessionId(display) {
@@ -2511,13 +2587,11 @@ function buildCandidateLeafNodes(sectionKey, candidates, override = false) {
   return [{
     id: headerId,
     kind: "header",
-    rowHeight: 40,
     expanded: true,
     data: { sectionKey, override },
     children: sortCandidates(candidates, getCandidateSort(sectionKey)).map((candidate) => ({
       id: `candidate:leaf:${candidate.key}`,
       kind: "leaf",
-      rowHeight: 40,
       stickyEligible: false,
       data: { candidate, override }
     }))
@@ -2528,7 +2602,6 @@ function buildCandidateFolderNode({ id, label, sourceType, candidates, sectionKe
   return {
     id,
     kind: "folder",
-    rowHeight: 40,
     expanded: getCandidateExpansion(id, expandedByDefault || Boolean(state.queries["candidate-sources"])),
     data: { label, sourceType, candidates, decoration: getCandidateAggregateDecoration(candidates), override, extraClass },
     children: buildCandidateLeafNodes(sectionKey, candidates, override)
@@ -2560,19 +2633,16 @@ function buildCandidateTreeNodes() {
     const protectedFolders = Object.entries(protectedRulesBySurface).sort(([left], [right]) => left.localeCompare(right)).map(([surfaceId, rules]) => ({
       id: `candidate:protected-folder:${surfaceId}`,
       kind: "protected-folder",
-      rowHeight: 40,
       expanded: getCandidateExpansion(`candidate:protected-folder:${surfaceId}`),
       data: { label: capitalize(surfaceId), rules },
       children: [{
         id: `candidate:protected-header:${surfaceId}`,
         kind: "protected-header",
-        rowHeight: 40,
         expanded: true,
         data: { sectionKey: `protected:${surfaceId}` },
         children: sortProtectedRules(rules, getCandidateSort(`protected:${surfaceId}`)).map((rule) => ({
           id: `candidate:protected-leaf:${rule.id}`,
           kind: "protected-leaf",
-          rowHeight: 40,
           stickyEligible: false,
           data: { rule }
         }))
@@ -2581,7 +2651,6 @@ function buildCandidateTreeNodes() {
     nodes.push({
       id: overrideRootId,
       kind: "source",
-      rowHeight: 40,
       expanded: getCandidateExpansion(overrideRootId),
       data: { label: "OVERRIDES", sourceType: "overrides", candidates: overrideCandidates, protectedRuleCount: protectedRules.length, decoration: getCandidateAggregateDecoration(overrideCandidates), override: true },
       children: sources.map(([sourceType, label]) => {
@@ -2594,7 +2663,6 @@ function buildCandidateTreeNodes() {
         return {
           id: sourceId,
           kind: "folder",
-          rowHeight: 40,
           expanded: getCandidateExpansion(sourceId),
           data: { label, sourceType, candidates: sourceCandidates, decoration: getCandidateAggregateDecoration(sourceCandidates), override: true, extraClass: "override-source-folder" },
           children: origins.map(([originKey, originLabel, members]) => buildCandidateFolderNode({
@@ -2618,7 +2686,6 @@ function buildCandidateTreeNodes() {
     nodes.push({
       id: sourceId,
       kind: "source",
-      rowHeight: 40,
       expanded: getCandidateExpansion(sourceId, Boolean(state.queries["candidate-sources"])),
       data: { label, sourceType, candidates, decoration: getCandidateAggregateDecoration(candidates), override: false },
       children: Object.entries(groups).sort(([left], [right]) => left.localeCompare(right)).map(([groupKey, members]) => buildCandidateFolderNode({
@@ -2678,6 +2745,7 @@ function ensureCandidateHierarchicalView() {
       accumulateRoots: true,
       keepLastRowVisible: true,
       buildNodes: buildCandidateTreeNodes,
+      getDefaultRowHeight: () => getWorkbenchPixelMetric("--tree-row-height"),
       getInput: () => state.candidates,
       shouldCascadeTransition: ({ incomingRoot, stickyNodes }) => incomingRoot.data.override === true || stickyNodes.some((node) => node.depth === 0 && node.data.override === true),
       renderRow: renderCandidateHierarchyRow,
@@ -2832,7 +2900,6 @@ function buildAssessmentTreeNodes() {
     return {
       id: sourceId,
       kind: "source",
-      rowHeight: 40,
       expanded: getAssessmentExpansion(sourceId, Boolean(state.queries["assessment-results"])),
       data: { label, sourceType, candidates },
       children: Object.entries(candidates.reduce((groups, candidate) => {
@@ -2847,19 +2914,16 @@ function buildAssessmentTreeNodes() {
           return {
             id: categoryId,
             kind: "category",
-            rowHeight: 40,
             expanded: getAssessmentExpansion(categoryId, Boolean(state.queries["assessment-results"])),
             data: { label: formatHostedCategory(category), candidates: members },
             children: [{
               id: `assessment:header:${sourceType}:${category}`,
               kind: "header",
-              rowHeight: 40,
               expanded: true,
               data: { sectionKey },
               children: sortAssessmentCandidates(members, getAssessmentSort(sectionKey)).map((candidate) => ({
                 id: `assessment:leaf:${candidate.key}`,
                 kind: "leaf",
-                rowHeight: 40,
                 stickyEligible: false,
                 expanded: false,
                 data: { candidate }
@@ -2900,6 +2964,7 @@ function ensureAssessmentHierarchicalView() {
     adapter: {
       accumulateRoots: true,
       buildNodes: buildAssessmentTreeNodes,
+      getDefaultRowHeight: () => getWorkbenchPixelMetric("--tree-row-height"),
       getInput: () => state.assessedCandidates,
       renderRow: renderAssessmentHierarchyRow,
       onExpandedChange: (node, expanded) => assessmentExpansionState.set(node.id, expanded),
@@ -3269,8 +3334,8 @@ function handleEvidenceDisclosureClick(event) {
 function renderRelatedHostedCoverage(candidate, assessment, view = "details") {
   const evidence = assessment || getBaselineAssessment(candidate, getDecision(candidate));
   const coverage = evidence.relatedHostedCoverage;
-  const coverageRationale = evidence.existingCoverage?.rationale ?? evidence.currentHostedCoverage;
-  const content = `${assessment ? "" : '<p class="coverage-summary"><strong>Original assessment coverage:</strong> Edited wording has not yet been reassessed.</p>'}<p class="coverage-summary">${escapeHtml(coverageRationale)}</p>${coverage.length ? `<div class="related-hosted-coverage">${coverage.map((item) => `<p><strong class="rule-reference">${escapeHtml(item.hostedRuleId)}</strong> ${escapeHtml(item.rationale)}</p>`).join("")}</div>` : ""}`;
+  if (!coverage.length) return "";
+  const content = `${assessment ? "" : '<p class="coverage-summary"><strong>Original assessment coverage:</strong> Edited wording has not yet been reassessed.</p>'}${coverage.length ? `<div class="related-hosted-coverage">${coverage.map((item) => `<p><strong class="rule-reference">${escapeHtml(item.hostedRuleId)}</strong> ${escapeHtml(item.rationale)}</p>`).join("")}</div>` : ""}`;
   return renderEvidenceDisclosure(candidate, "coverage", "Related Hosted Coverage", coverage.length, content, view);
 }
 
@@ -4519,9 +4584,6 @@ function renderPreview() {
   elements["approval-badge"].className = `ui-badge status-capsule status-badge ${approvalState.kind}`;
   elements["approval-badge"].textContent = approvalState.badge;
   workbenchStatusBar.update("promotionApproval", { text: approvalState.text, kind: approvalState.kind });
-  if (elements["approver-name"].value !== state.session.approverName) {
-    elements["approver-name"].value = state.session.approverName || "";
-  }
   renderApprovalRequirements(readiness);
   elements["approve-export-button"].disabled = !ready;
   previewFilesByScope = buildPreviewFiles(planCandidates);
@@ -4532,7 +4594,6 @@ function renderPreview() {
     : renderPreviewFiles(previewFilesByScope.raw, "No Resulting Catalog", "Add, update, or retire a Promotion Plan item to review the resulting catalog mutations.");
   elements["preview-protected"].innerHTML = previewFilesByScope.protected.map(renderPreviewFile).join("");
   elements["preview-protected-section"].hidden = previewFilesByScope.protected.length === 0;
-  elements["preview-review-popover"].hidden = true;
   renderPreviewReview();
   initializePreviewBodyVirtualizer();
 }
@@ -5049,6 +5110,7 @@ function handlePreviewFileNavigation(event) {
   const path = button.dataset.previewFileJump;
   const file = elements["preview-code"].querySelector(`[data-preview-file-path="${CSS.escape(path)}"]`);
   if (!file) return;
+  hydratePreviewFileBody(file);
   previewSelectedFilePath = path;
   updatePreviewSelectedFile();
   file.scrollIntoView({ block: "start", behavior: "auto" });
@@ -5139,7 +5201,26 @@ function collapseAllPreviewLines(file) {
   setPreviewLinesExpanded(file, false);
 }
 
+function handlePreviewReviewOutsideInteraction(event) {
+  const popover = elements["preview-review-popover"];
+  if (popover.hidden || popover.contains(event.target) || elements["preview-review-toggle"].contains(event.target)) return;
+  if (event.type === "wheel" && (event.ctrlKey || (!event.deltaX && !event.deltaY))) return;
+  if (event.type === "touchmove" && event.touches.length !== 1) return;
+  if (event.type === "keydown") {
+    const scrollKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End", " "];
+    if (!scrollKeys.includes(event.key) || event.ctrlKey || event.metaKey || event.altKey
+      || event.target.closest("input, textarea, select, button, a, [contenteditable]:not([contenteditable='false'])")) return;
+  }
+  popover.hidden = true;
+  hideStatusTooltip();
+}
+
 async function handlePreviewReviewClick(event) {
+  const requirement = event.target.closest("[data-approval-target]");
+  if (requirement) {
+    await navigateApprovalRequirement(requirement.dataset.approvalTarget);
+    return;
+  }
   if (event.target.closest("#preview-review-toggle")) {
     elements["preview-review-popover"].hidden = !elements["preview-review-popover"].hidden;
     return;
@@ -5245,6 +5326,17 @@ function diffTextLines(beforeText, afterText) {
   return lines;
 }
 
+function getUnsavedApprovalEditor() {
+  const candidate = getActiveCandidate();
+  const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+  return candidate && editor && editor.value !== getDecision(candidate).proposedText ? { candidate, editor } : null;
+}
+
+function getCandidateMutationRuleIds(candidate) {
+  const decision = getDecision(candidate);
+  return [...(isPromotionAction(decision.action) ? [getEffectiveHostedRuleId(candidate)] : []), ...getAncillaryRetirementRules(decision).map((rule) => rule.id)];
+}
+
 function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
   const openRuleIssueCount = getOpenRuleIssues().length;
@@ -5256,16 +5348,11 @@ function getPreviewReadiness() {
   const missingAssessmentCount = planCandidates.filter((candidate) => !getAssessment(candidate)).length;
   const missingRationaleCount = planCandidates.filter((candidate) => !getDecision(candidate).rationale.trim()).length;
   const missingRationale = missingRationaleCount > 0;
-  const activeCandidate = getActiveCandidate();
-  const editorText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value;
-  const unsavedRuleText = Boolean(activeCandidate && editorText !== undefined && editorText !== getDecision(activeCandidate).proposedText);
-  const mutationRuleIds = planCandidates.flatMap((candidate) => {
-    const decision = getDecision(candidate);
-    return [...(isPromotionAction(decision.action) ? [getEffectiveHostedRuleId(candidate)] : []), ...getAncillaryRetirementRules(decision).map((rule) => rule.id)];
-  });
+  const unsavedRuleText = Boolean(getUnsavedApprovalEditor());
+  const mutationRuleIds = planCandidates.flatMap(getCandidateMutationRuleIds);
   const mutationCount = mutationRuleIds.length;
   const conflictingMutationCount = mutationRuleIds.length - new Set(mutationRuleIds).size;
-  const approverName = String(state.session.approverName || "").trim();
+  const approvalIdentity = getValidatedCodeOwnerIdentity();
   let status = "ready";
   if (openRuleIssueCount) status = "blocked by rule issues";
   else if (planCandidates.length === 0) status = "no actions";
@@ -5276,11 +5363,11 @@ function getPreviewReadiness() {
   else if (unsavedRuleText) status = "unsaved rule wording";
   else if (mutationCount === 0) status = "no catalog mutations";
   else if (conflictingMutationCount) status = "conflicting mutations";
-  else if (!approverName) status = "needs approver";
+  else if (!approvalIdentity) status = "needs verified CODEOWNER";
   return {
     planCandidates,
     openRuleIssueCount,
-    approverName,
+    approvalIdentity,
     missingActionCount,
     missingResourceTypeCount,
     missingAssessmentCount,
@@ -5289,30 +5376,160 @@ function getPreviewReadiness() {
     mutationCount,
     conflictingMutationCount,
     status,
-    ready: openRuleIssueCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && missingAssessmentCount === 0 && !missingRationale && !unsavedRuleText && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approverName)
+    ready: openRuleIssueCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && missingAssessmentCount === 0 && !missingRationale && !unsavedRuleText && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approvalIdentity)
   };
 }
 
-function renderApprovalRequirements(readiness) {
-  const requirements = [
-    ["Rule Issues", readiness.openRuleIssueCount ? `${readiness.openRuleIssueCount} pending` : "None pending", readiness.openRuleIssueCount === 0],
-    ["Plan actions", readiness.planCandidates.length ? `${readiness.planCandidates.length} selected` : "None selected", readiness.planCandidates.length > 0],
-    ["Rule actions", readiness.missingActionCount ? `${readiness.missingActionCount} missing` : readiness.planCandidates.length ? "Complete" : "None selected", readiness.planCandidates.length > 0 && readiness.missingActionCount === 0],
-    ["Resource types", readiness.missingResourceTypeCount ? `${readiness.missingResourceTypeCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingResourceTypeCount === 0],
-    ["Rebuild assessments", readiness.missingAssessmentCount ? `${readiness.missingAssessmentCount} required` : "Available", readiness.planCandidates.length > 0 && readiness.missingAssessmentCount === 0],
-    ["Decision rationales", readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete", readiness.planCandidates.length > 0 && readiness.missingRationaleCount === 0],
-    ["Rule wording", readiness.unsavedRuleText ? "Unsaved changes" : "Saved", !readiness.unsavedRuleText],
-    ["Catalog mutations", readiness.mutationCount ? formatCountLabel(readiness.mutationCount, "mutation") : "None", readiness.mutationCount > 0],
-    ["Mutation targets", readiness.conflictingMutationCount ? `${readiness.conflictingMutationCount} conflicting` : "Unique", readiness.planCandidates.length > 0 && readiness.conflictingMutationCount === 0],
-    ["GitHub identity", readiness.approverName || "Unavailable", Boolean(readiness.approverName)]
+function getApprovalRequirements(readiness) {
+  const hasPlan = readiness.planCandidates.length > 0;
+  const missingAssessment = hasPlan && readiness.missingAssessmentCount > 0;
+  const metadata = globalThis.__HOSTED_RULE_WORKBENCH__?.maintainerIdentity;
+  const identityReason = metadata?.login && metadata.isCodeOwner === false
+    ? "This account is not a CODEOWNER for this repository."
+    : "GitHub identity or CODEOWNERS authorization could not be verified. Check GitHub authentication and relaunch Workbench.";
+  return [
+    { id: "rule-issues", label: "Rule Issues", value: readiness.openRuleIssueCount ? `${readiness.openRuleIssueCount} pending` : "None pending", status: readiness.openRuleIssueCount ? "pending" : "passed" },
+    { id: "plan-actions", label: "Plan actions", value: hasPlan ? `${readiness.planCandidates.length} selected` : "None selected", status: hasPlan ? "passed" : "pending" },
+    { id: "rule-actions", label: "Rule actions", value: readiness.missingActionCount ? `${readiness.missingActionCount} missing` : hasPlan ? "Complete" : "None selected", status: hasPlan && !readiness.missingActionCount ? "passed" : "pending" },
+    { id: "resource-types", label: "Resource types", value: hasPlan ? readiness.missingResourceTypeCount ? `${readiness.missingResourceTypeCount} missing` : "Complete" : "None selected", status: hasPlan && !readiness.missingResourceTypeCount ? "passed" : "pending" },
+    { id: "assessments", label: "Rebuild assessments", value: missingAssessment ? "Not available" : hasPlan ? "Available" : "Not required", status: missingAssessment ? "failed" : "passed", description: missingAssessment ? "Required rebuild assessment evidence is missing or invalid. Close Workbench, relaunch with -Rebuild, then reload this page." : "" },
+    { id: "rationales", label: "Decision rationales", value: hasPlan ? readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete" : "None selected", status: hasPlan && !readiness.missingRationaleCount ? "passed" : "pending" },
+    { id: "wording", label: "Rule wording", value: readiness.unsavedRuleText ? "Unsaved changes" : "Saved", status: readiness.unsavedRuleText ? "pending" : "passed" },
+    { id: "mutations", label: "Catalog mutations", value: readiness.mutationCount ? formatCountLabel(readiness.mutationCount, "mutation") : "None", status: readiness.mutationCount ? "passed" : "pending" },
+    { id: "targets", label: "Mutation targets", value: hasPlan ? readiness.conflictingMutationCount ? `${readiness.conflictingMutationCount} conflicting` : "Unique" : "None selected", status: hasPlan && !readiness.conflictingMutationCount ? "passed" : "pending" },
+    { id: "identity", label: "GitHub identity", value: readiness.approvalIdentity?.login || metadata?.login || "Unavailable", status: readiness.approvalIdentity ? "passed" : "failed", description: readiness.approvalIdentity ? "" : identityReason }
   ];
-  elements["approval-requirements"].innerHTML = `<strong class="approval-requirements-title">Approval Requirements</strong>${requirements.map(([label, value, passed]) => `
-    <div class="approval-requirement ${passed ? "passed" : "pending"}">
-      ${icon(passed ? "pass" : "warning")}
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-    </div>
-  `).join("")}`;
+}
+
+function renderApprovalRequirements(readiness) {
+  elements["approval-requirements"].innerHTML = `<strong class="approval-requirements-title">Approval Requirements</strong>${getApprovalRequirements(readiness).map((requirement) => {
+    const pending = requirement.status === "pending";
+    const failed = requirement.status === "failed";
+    const tag = pending ? "button" : "div";
+    const descriptionId = `approval-${requirement.id}-description`;
+    const attributes = pending
+      ? `type="button" data-approval-target="${requirement.id}" aria-label="${escapeHtml(`${requirement.label}: ${requirement.value}. Go to correction`)}"`
+      : failed ? `tabindex="0" role="group" aria-label="${escapeHtml(`${requirement.label}: ${requirement.value}`)}" aria-describedby="${descriptionId}" data-workbench-tooltip="${escapeHtml(requirement.description)}"` : "";
+    return `<${tag} class="approval-requirement ${requirement.status}${pending ? " clickable" : ""}" data-approval-requirement="${requirement.id}" ${attributes}>
+      ${icon(pending ? "warning" : failed ? "error" : "pass")}
+      <span>${escapeHtml(requirement.label)}</span>
+      <strong>${escapeHtml(requirement.value)}</strong>
+      ${failed ? `<span id="${descriptionId}" hidden>${escapeHtml(requirement.description)}</span>` : ""}
+    </${tag}>`;
+  }).join("")}`;
+}
+
+function getApprovalRepairTarget(requirementId, readiness = getPreviewReadiness()) {
+  if (requirementId === "rule-issues") {
+    const filters = [...new Set([state.ruleIssueFilter, ...RULE_ISSUE_FILTERS.map((filter) => filter.key)])];
+    for (const filter of filters) {
+      const issue = getFilteredRuleIssues(filter, "")[0];
+      if (issue) return { kind: "issue", issue, filter };
+    }
+    return null;
+  }
+  if (requirementId === "wording") {
+    const unsaved = getUnsavedApprovalEditor();
+    return unsaved ? { kind: "wording", ...unsaved } : null;
+  }
+  if (["assessments", "identity"].includes(requirementId)) return null;
+  if (requirementId === "plan-actions" || !readiness.planCandidates.length) return { kind: "sources" };
+  const candidates = sortPlanCandidates(readiness.planCandidates, state.planSort);
+  const predicates = {
+    "rule-actions": (candidate) => !isActionableDecision(getDecision(candidate)),
+    "resource-types": (candidate) => getPlanReadiness(candidate).resourceTypeRequired,
+    rationales: (candidate) => !getDecision(candidate).rationale.trim(),
+    mutations: (candidate) => getCandidateMutationRuleIds(candidate).length === 0
+  };
+  let candidate;
+  if (requirementId === "targets") {
+    const counts = new Map();
+    candidates.flatMap(getCandidateMutationRuleIds).forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
+    candidate = candidates.find((item) => getCandidateMutationRuleIds(item).some((id) => counts.get(id) > 1));
+  } else if (predicates[requirementId]) {
+    candidate = candidates.find(predicates[requirementId]);
+  }
+  if (!candidate) return null;
+  const selector = requirementId === "resource-types" ? "[data-implementation-model]:not(:disabled)"
+    : requirementId === "rationales" ? '[data-decision-field="rationale"]'
+      : ".action-options input:not(:disabled)";
+  return { kind: "candidate", candidate, selector };
+}
+
+function scrollApprovalTargetIntoView(target, scroller, center = false) {
+  if (!target || !scroller) return;
+  const bounds = scroller.getBoundingClientRect();
+  const item = target.getBoundingClientRect();
+  let top = scroller.scrollTop;
+  if (center) top += item.top - bounds.top - Math.max(0, (scroller.clientHeight - item.height) / 2);
+  else if (item.top < bounds.top) top += item.top - bounds.top;
+  else if (item.bottom > bounds.bottom) top += item.bottom - bounds.bottom;
+  else return;
+  scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
+async function navigateApprovalRequirement(requirementId) {
+  const readiness = getPreviewReadiness();
+  const requirement = getApprovalRequirements(readiness).find((item) => item.id === requirementId);
+  if (requirement?.status !== "pending") return null;
+  if (getUnsavedApprovalEditor() && requirementId !== "wording") {
+    showToast("Save or reset the current rule wording before navigating to another correction.", true);
+    return null;
+  }
+  const target = getApprovalRepairTarget(requirementId, readiness);
+  if (!target) {
+    showToast("That requirement no longer needs a correction.");
+    return null;
+  }
+  elements["preview-review-popover"].hidden = true;
+  hideStatusTooltip();
+  if (target.kind === "issue") {
+    state.queries["rule-issues"] = "";
+    state.ruleIssueFilter = target.filter;
+    state.activeRuleIssueKey = target.issue.id;
+    switchView("catalog");
+    setWorkspaceTab("rule-issues");
+    const row = elements["rule-issues-list"].querySelector(`[data-rule-issue-key="${CSS.escape(target.issue.id)}"]`);
+    scrollApprovalTargetIntoView(row, elements["rule-issues-list"], true);
+    row?.focus({ preventScroll: true });
+    return target;
+  }
+  if (target.kind === "sources") {
+    state.queries["candidate-sources"] = "";
+    setWorkspaceTab("candidate-sources");
+    switchView("catalog");
+    showCandidatePane("candidates");
+    candidateHierarchicalView?.refresh();
+    elements["search-input"].focus({ preventScroll: true });
+    return target;
+  }
+  if (target.kind === "wording") {
+    const value = target.editor.value;
+    const selection = [target.editor.selectionStart, target.editor.selectionEnd, target.editor.selectionDirection];
+    setWorkspaceTab("candidate-sources");
+    switchView("catalog");
+    showCandidatePane("details");
+    const editor = elements["assessment-panel"].querySelector(`[data-proposed-candidate-key="${CSS.escape(target.candidate.key)}"]`);
+    if (editor) {
+      editor.value = value;
+      scrollCandidateDetailTargetIntoView(editor);
+      editor.focus({ preventScroll: true });
+      editor.setSelectionRange(...selection);
+    }
+    return target;
+  }
+  state.queries["candidate-sources"] = "";
+  setWorkspaceTab("candidate-sources");
+  selectCandidate(target.candidate.key, "plan");
+  switchView("catalog");
+  showCandidatePane("details");
+  candidateHierarchicalView?.refresh();
+  revealCandidateInTree(target.candidate.key);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  if (state.currentView === "catalog" && state.workspaceTab === "candidate-sources" && state.activeKey === target.candidate.key) {
+    focusCandidateAttention({ target: target.selector, label: requirement.label });
+  }
+  return target;
 }
 
 function renderCounts() {
@@ -5606,6 +5823,7 @@ function handleTreeSelection(event) {
 
 function switchView(view) {
   dismissNotification();
+  if (view !== "preview") elements["preview-review-popover"].hidden = true;
   state.currentView = view;
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   document.querySelectorAll("[data-view-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
@@ -5699,7 +5917,7 @@ function deserializeDraft(draft, candidates) {
 
 function buildApprovedRules() {
   const identity = getValidatedCodeOwnerIdentity();
-  const approvedBy = String(state.session.approverName || identity?.login || "").trim();
+  if (!identity) return null;
   return {
     $schema: "approved-rules-v4.schema.json",
     schemaVersion: APPROVED_RULES_SCHEMA_VERSION,
@@ -5707,9 +5925,9 @@ function buildApprovedRules() {
     catalogContentSha256: state.bundle.catalog.contentSha256,
     approvedAt: toUtcTimestamp(state.session.updatedAt),
     approvedBy: {
-      type: identity ? "github-authenticated" : "manual",
-      id: identity?.login || approvedBy,
-      displayName: approvedBy
+      type: "github-authenticated",
+      id: identity.login,
+      displayName: identity.login
     },
     mutations: getPlanCandidates().flatMap(buildApprovedMutations)
   };
@@ -5719,14 +5937,6 @@ function exportDraft() {
   const payload = JSON.stringify(buildDraftExport(), null, 2) + "\n";
   downloadJson(payload, `hosted-rule-draft-${toUtcTimestamp().replace(/[:.]/g, "-")}.json`);
   showToast("Draft exported");
-}
-
-function handleApproverInput(event) {
-  state.session.approverName = event.target.value.slice(0, 120);
-  state.session.updatedAt = toUtcTimestamp();
-  persistSession();
-  renderPreview();
-  refreshPresentation();
 }
 
 async function approveAndExport() {
@@ -5744,6 +5954,10 @@ async function approveAndExport() {
   elements["approve-export-button"].disabled = true;
   try {
     const approvedRules = buildApprovedRules();
+    if (!approvedRules) {
+      showToast("A verified CODEOWNER identity is required before exporting.", true);
+      return;
+    }
     downloadJson(JSON.stringify(approvedRules, null, 2) + "\n", `hosted-approved-rules-${approvedRules.approvedAt.replace(/[:.]/g, "-")}.json`);
     showToast("Approved rules exported");
   } catch {

@@ -31,6 +31,7 @@ Assessment Results additionally retains its Applicability Decision section betwe
 ### Evidence Disclosures
 
 - Source Rules and Assessment Results' Related Hosted Coverage start independently collapsed. Candidate Details omits the inferred coverage list; its absence does not alter stored assessment evidence or establish different relationships.
+- Related Hosted Coverage is absent when no related Hosted rules are recorded; render no heading, zero-count pill, empty body, or section spacing. Otherwise show the individual Hosted-rule comparisons and their relationship rationales, not the general selection or coverage-summary rationale. Keep the assessment rationale once beneath Proposed Hosted Rule; do not change the underlying evidence to remove a presentation duplicate.
 - Only their `24px` chevron buttons toggle disclosure. Titles remain static, and keyboard operation, accessible names, and ordinary-rerender disclosure preservation remain intact.
 - Count pills are `18px` tall, with white `12px` semibold text on the shared blue background. Align them to the title baseline with an `8px` gap.
 - Source IDs use the shared blue semibold rule-reference style. Retain provenance and meaning-preservation evidence, but omit a mapping badge that merely repeats the same source ID.
@@ -140,12 +141,39 @@ Use these stable labels in every freshness state:
 - Current Hosted Rule displays the shared blue semibold ID and catalog lifecycle status only. AI recommendations belong to Proposed Hosted Rule, not the existing rule.
 - Show the rebuild recommendation beside unchanged saved Proposed Hosted Rule wording, or `Maintainer edited` only after different wording is successfully saved. Unsaved typing does not change the pill, assessment, or rationale. Defer uses the same amber foreground as warning status pills. Retain the underlying assessment and the maintainer's independent selected action.
 - Put one non-dismissible rationale information panel immediately below the Proposed Hosted Rule heading and above its wording surface.
+- Keep the Proposed Hosted Rule title left-aligned and its recommendation pill right-aligned in read-only Assessment Details. Preserve the editable header's status and action alignment through the shared auto-margin layout.
 - Use `Assessment rationale:` for unchanged proposals and `Original assessment rationale:` for edited wording, preserving the exact rebuild rationale.
 - Candidate Details retains the proposed editor and explicit Save/Reset controls. Saving performs no relationship discovery, scope review, adjudication, or reassessment.
 - Derive Save availability from editor text differing from the latest successfully saved wording. Typing updates dirty controls and retry validity in place, without rebuilding assessment evidence, Rule Issues, Plan, or Preview. Persist a staged wording change before committing its saved state; failures preserve the previous saved text, pill, and unsaved buffer. Reject intervening draft or editor changes rather than overwriting them.
 - Render recommendation and validation pills together in one right-aligned `.proposed-rule-statuses` group with an `8px` internal gap and wrapping at narrow widths, before a compact Save/Reset action group. Keep both icon buttons at their existing hit-area size with no extra internal gap; preserve the `10px` separation from the pills. The renderer owns this structure so view changes need no observer or repair pass. Reset uses the pinned Codicons `debug-restart` symbol and tooltip `Reset rule to original`.
 - Shared disabled styling covers native `disabled`, `aria-disabled="true"`, and `.disabled` controls: icon buttons fade consistently, retain a default arrow cursor and their accessible names, and receive no hover decoration or tooltip. The shared tooltip owner and display functions reject disabled controls and ancestors, including a control disabled while its tooltip is pending. Do not add Save-, Reset-, or rationale-specific disabled rules.
 - Assessment Results displays the same saved proposed wording as read-only evidence.
+
+### Shared Tooltips And Protected References
+
+- Use the shared tooltip controller for authored explanations and truncated text. Show after the existing `500ms` delay. Center hover tooltips horizontally on the captured pointer entry X and keyboard tooltips on the control. Keep vertical spacing fixed above or below the invoking control, independent of pointer Y. Use the shared CSS gap and viewport inset for flipping and clamping. Movement during the opening delay does not replace the entry X; once visible, movement within the same trigger does not dismiss, reposition, or restart the tooltip.
+- Treat the trigger and visible tooltip as one hover region. The visible tooltip accepts pointer hover without taking keyboard focus. Use a cancellable `150ms` close grace to cross the gap between them, and dismiss only after leaving both regions and removing focus from the trigger.
+- Escape dismisses the tooltip without moving pointer or keyboard focus. Keep it suppressed during further movement inside the same trigger; a fresh hover entry or keyboard-focus cycle can show it again. Preserve existing click, resize, and disabled-control safeguards.
+- Keep the shared opaque dark surface, `--muted` border, and compact shadow. Do not add an oversized fade or protected-rule-specific tooltip presentation.
+- Protected Rule Issue references show `Protected` and `Immutable`, never an optional `Keep` action. Derive the protected-reference class from protected catalog identity or status. Render their text with `--disabled-foreground`, a default arrow cursor, and text selection intact; do not mark the whole reference as a disabled control. Neither pill nor the rule body has a protection-explanation tooltip or extra tab stop.
+- All classifications in the Protected issue category display one shared information panel immediately below the warning. It explains editing the protected source file directly in the repository, then relaunching with `-Rebuild` to refresh the snapshot and analysis, including the potentially significant assessment and Rule Issue processing time. Ordinary relationship issues do not display this notice. Dismissing the warning leaves the information panel visible at the existing pane inset without an extra leading gap. Displaying the notice never edits a rule, runs a rebuild, or changes approval readiness.
+
+### Shared Rendering Geometry
+
+| CSS Metric | Default | Shared Consumers |
+| --- | --- | --- |
+| `--detail-pane-inset` | `12px` | Detail pane top padding and adjacent warning/information-panel spacing |
+| `--section-gap` | `16px` | Equivalent Rule Issue section headings and section separation |
+| `--section-label-gap` | `10px` | Section heading-to-content separation |
+| `--panel-padding` | `14px` | Rule comparison, assessment, canonical wording, and recommendation content |
+| `--tooltip-gap` | `6px` | Tooltip clearance above or below the invoking control |
+| `--tooltip-viewport-inset` | `8px` | Tooltip clamping, initial placement, and maximum width |
+| `--tree-row-height` | `40px` | Candidate and Assessment row styling and hierarchy model defaults |
+| `--line-height-body` | `--line-height-default` | Body text in rule and information panels |
+
+- CSS owns these values. Runtime positioning and hierarchy adapters consume the CSS metrics rather than repeat numeric defaults. Explicit per-node heights remain available for variable-height rows.
+- The shared heading rule owns the leading section gap. A comparison followed by a section heading does not add a competing trailing margin. Preserve comparisons without a following heading.
+- Preserve intentional optical alignment for Back to Top and Scroll to Latest icons, native glyph dimensions, pixel-aligned borders, and measured virtualization geometry. These are not generic spacing inconsistencies.
 
 ### Original Proposal Restoration
 
@@ -171,6 +199,20 @@ Use these stable labels in every freshness state:
 - Preserve the published Rule Issues approval gate, mutation-target uniqueness, protected-rule boundaries, and authenticated maintainer authority.
 - Apply published Rule Issue recommendations only through an explicit maintainer command. Persist the complete recommendation atomically, protect concurrent draft changes, and leave the original draft intact on persistence failure. Do not evaluate the projected selection again.
 - Keep Details scrollbar behavior and implementation-only Legacy, Typed, and Framework applicability controls unchanged. Preserve explicit retirement intent through reload and portable draft import.
+
+### Review Changes
+
+- Balance the title and close icon vertically within the menu header, with equal top and bottom spacing. Keep the existing side padding and inset header divider.
+- Place Approve & Export in a `.preview-approval-actions` footer that owns its top divider and spacing independently of the requirement rows. Do not special-case the final row or change the button's own border; adding, removing, or reordering checks must preserve that section boundary.
+- Show the server-validated GitHub login read-only, without an `@` prefix. Remove the editable Approver Name control. A typed or imported legacy display name never satisfies approval identity or replaces verified export attribution.
+- Require a CODEOWNERS-validated identity for approval. Refresh server context before export, and use that verified login for both identity and display name. Keep a missing or unauthorized identity blocked with no manual fallback; approval metadata is not a new repository-write authority.
+- Render passed checks with the existing green check, correctable pending checks with the amber warning, and hard failures with the red outlined circle-X and red value. Successful rows are noninteractive. Pending rows are native keyboard-operable correction buttons, not explanatory tooltips.
+- Give hard-error rows the shared custom tooltip on hover and keyboard focus, plus an accessible description. Identity errors retain the logged-in username when available and explain failed CODEOWNERS authorization in the tooltip.
+- Missing or invalid original rebuild evidence for selected Plan items is a hard failure: show `Not available`, block approval, and instruct the user to close Workbench, relaunch with `-Rebuild`, and reload. Do not offer an in-app repair link or run a rebuild automatically. An empty Plan alone is not missing evidence; its separate Plan requirement remains pending.
+- A correction command closes Review Changes, opens the appropriate tab, reveals the first affected item in the destination's stable order, scrolls only its owned pane, and focuses the correction control. Missing Plan actions lead to Candidate Sources; no decisions are selected, changed, saved, or approved automatically.
+- Resolve affected Plan items in the existing Plan sort order. Rule Issues uses the current category first, then the existing category order, and clears only the obstructing issue search. Clear an obstructing source query when opening a specific candidate control.
+- Preserve unsaved wording. Its own warning returns to the same buffer and caret; unrelated correction navigation must require Save or Reset rather than discard it. Keep the menu open through ordinary Preview rendering, and close it only through dismissal or leaving Preview.
+- Treat Review Changes as a click-opened non-modal popover. Dismiss on an outside click or user-driven outside scrolling, including wheel, touch, keyboard scrolling, and scrollbar interaction, while allowing the underlying click or scroll to continue normally. Keep it open for inside interactions, pointer-leave, ordinary rerenders, and programmatic scrolling. Retain Escape, the close icon, and the Review Changes toggle as explicit dismissal controls.
 
 ## Maintainer Override
 

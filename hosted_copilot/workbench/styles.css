@@ -70,12 +70,20 @@ html.theme-hosted-dark {
   --status-bar-height: 22px;
   --status-bar-gap: 8px;
   --status-promotion-approval-width: 72px;
+  --detail-pane-inset: 12px;
+  --section-gap: 16px;
+  --section-label-gap: 10px;
+  --panel-padding: 14px;
+  --tooltip-gap: 6px;
+  --tooltip-viewport-inset: 8px;
+  --tree-row-height: 40px;
   --font-family-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-size-default: 14px;
   --font-size-ui: 13px;
   --font-size-compact: 12px;
   --font-size-detail-title: 20px;
   --line-height-default: 20px;
+  --line-height-body: var(--line-height-default);
   --line-height-ui: 18px;
   --line-height-compact: 16px;
   --line-height-detail-title: 24px;
@@ -804,7 +812,7 @@ html.theme-hosted-dark .rule-issue-ids .rule-issue-id-separator {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 12px 26px 22px;
+  padding: var(--detail-pane-inset) 26px 22px;
   cursor: default;
   background: var(--surface);
   scrollbar-gutter: stable;
@@ -833,6 +841,10 @@ html.theme-hosted-dark .rule-issue-ids .rule-issue-id-separator {
   color: var(--information-foreground);
   background: var(--information-background);
   border-color: var(--information-border);
+}
+
+.rule-issue-banner + .protected-rule-information {
+  margin-block-start: var(--detail-pane-inset);
 }
 
 .rule-issue-banner > .codicon {
@@ -886,7 +898,11 @@ html.theme-hosted-dark .rule-issue-banner-reference {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
-  margin: 16px 0 20px;
+  margin: var(--section-gap) 0 20px;
+}
+
+.rule-issue-comparison:has(+ .section-label) {
+  margin-block-end: 0;
 }
 
 .rule-issue-rule {
@@ -904,7 +920,7 @@ html.theme-hosted-dark .rule-issue-banner-reference {
   display: flex;
   gap: 10px;
   margin: 0;
-  padding: 10px 14px;
+  padding: 10px var(--panel-padding);
   align-items: center;
   justify-content: space-between;
   background: var(--context-header);
@@ -928,7 +944,14 @@ html.theme-hosted-dark .rule-issue-banner-reference {
 
 .rule-issue-rule-body {
   flex: 1;
-  padding: 14px;
+  padding: var(--panel-padding);
+}
+
+.rule-issue-rule.protected-reference .rule-issue-rule-body,
+.rule-issue-rule.protected-reference .rule-issue-rule-body :is(p, code, span) {
+  color: var(--disabled-foreground);
+  cursor: default;
+  user-select: text;
 }
 
 .rule-issue-rule.recommend-keep .rule-issue-rule-body,
@@ -944,16 +967,16 @@ html.theme-hosted-dark .rule-issue-banner-reference {
 
 .rule-issue-assessment {
   margin-top: 8px;
-  padding: 14px;
+  padding: var(--panel-padding);
   background: var(--surface-quiet);
   border: 1px solid var(--line-strong);
   border-left: 4px solid var(--accent);
   border-radius: 4px;
 }
 
-.rule-issue-assessment-label {
-  display: block;
-  margin-top: 16px;
+.rule-issue-assessment-label,
+.rule-issue-recommendation-label {
+  margin-top: var(--section-gap);
 }
 
 .rule-issue-rule p,
@@ -972,16 +995,11 @@ html.theme-hosted-dark .rule-issue-banner-reference {
 
 .rule-issue-suggestion,
 .rule-issue-recommendation {
-  margin-top: 16px;
-  padding: 14px;
+  margin-top: var(--section-gap);
+  padding: var(--panel-padding);
   background: var(--surface-quiet);
   border: 1px solid var(--line-strong);
   border-radius: 4px;
-}
-
-.rule-issue-recommendation-label {
-  display: block;
-  margin-top: 16px;
 }
 
 .rule-issue-recommendation {
@@ -2382,8 +2400,8 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
 }
 
 :is(#candidate-list, #assessment-results-list) :is(.candidate-tree-row, .assessment-result-row) {
-  min-height: 40px;
-  height: 40px;
+  min-height: var(--tree-row-height);
+  height: var(--tree-row-height);
   padding-top: 3px;
   padding-bottom: 3px;
 }
@@ -2808,7 +2826,7 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
 
 .section-label {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: var(--section-label-gap);
   color: var(--ink);
   letter-spacing: 0;
   text-transform: uppercase;
@@ -3214,10 +3232,6 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
 
 .proposed-rule-heading:has(> .proposed-rule-statuses) > .proposed-rule-actions {
   margin-left: 0;
-}
-
-.proposed-rule-heading > .section-label {
-  margin-right: 0;
 }
 
 textarea.proposed-rule {
@@ -4623,6 +4637,34 @@ p.subcontext-container {
   color: #ffd166;
 }
 
+.approval-requirement.failed svg,
+.approval-requirement.failed > strong {
+  color: var(--red);
+}
+
+button.approval-requirement {
+  appearance: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid rgba(142, 160, 208, 0.12);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+}
+
+button.approval-requirement:hover > span {
+  text-decoration: underline;
+}
+
+button.approval-requirement:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: -2px;
+}
+
 .summary-list {
   display: grid;
   gap: 10px;
@@ -5848,14 +5890,14 @@ html.theme-hosted-dark body .activity-count-badge {
   position: fixed;
   z-index: 1000;
   width: max-content;
-  max-width: calc(100vw - 16px);
+  max-width: calc(100vw - 2 * var(--tooltip-viewport-inset));
   padding: 5px 8px;
   visibility: hidden;
   overflow-wrap: anywhere;
   color: var(--ink);
   pointer-events: none;
   background: #252526;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--muted);
   border-radius: 2px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   opacity: 0;
@@ -5871,6 +5913,7 @@ html.theme-hosted-dark body .status-surface-tooltip {
   animation: workbench-tooltip-fade-in 100ms linear;
   visibility: visible;
   opacity: 1;
+  pointer-events: auto;
 }
 
 @keyframes workbench-tooltip-fade-in {
@@ -6222,7 +6265,7 @@ html.theme-hosted-dark body .status-surface-tooltip {
   right: 8px;
   z-index: 500;
   width: 360px;
-  padding: 12px;
+  padding: 0 12px 12px;
   color: #e6edf3;
   background: #161b22;
   border: 1px solid #30363d;
@@ -6238,6 +6281,7 @@ html.theme-hosted-dark body .status-surface-tooltip {
 .preview-review-popover-heading {
   display: flex;
   min-height: 32px;
+  padding: 4px 0;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #30363d;
@@ -6248,6 +6292,12 @@ html.theme-hosted-dark body .status-surface-tooltip {
   font-size: 13px;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.preview-approval-actions {
+  display: grid;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .preview-icon-button {
@@ -6707,6 +6757,7 @@ html.theme-hosted-dark body .status-surface-tooltip {
 }
 
 #preview-view .preview-review-popover .approval-controls {
+  row-gap: 0;
   padding: 10px 0 0;
 }
 
@@ -6741,7 +6792,7 @@ html.theme-hosted-dark body .status-surface-tooltip {
 }
 
 #preview-view .approval-requirements {
-  margin: 4px 0;
+  margin: 4px 0 0;
   border-top: 0;
 }
 
