@@ -21,9 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'javascript' ]
-        # CodeQL supports: 'cpp', 'csharp', 'go', 'java', 'javascript', 'python', 'ruby'
-        # We use JavaScript for shell script analysis capabilities
+        language: [ 'actions' ]
 
     steps:
       - name: Checkout repository
@@ -35,9 +33,6 @@ jobs:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
           # Enables additional security queries beyond the default set
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@c20e34f438d671fc35777cc9820dd7adf8252874 # v3
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@c20e34f438d671fc35777cc9820dd7adf8252874 # v3

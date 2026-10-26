@@ -289,6 +289,23 @@ pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -FixNpmAudit
 
 Remediation refuses to modify dirty manifests. A semver-major fix remains blocked unless the maintainer explicitly adds `-AllowBreakingNpmFix`; the full validation flow then verifies the resulting dependency graph and repository behavior.
 
+#### Reviewed dependency overrides
+
+The repository-only tooling manifest at `tools/npm-validation/package.json` retains `markdown-link-check` 3.15.0 and uses `markdownlint-cli2` 0.23.3. Its exact transitive overrides address vulnerable dependencies without accepting npm's suggested parent-package downgrades:
+
+| Package | Override | Reason |
+| --- | --- | --- |
+| `smol-toml` | `1.9.1` | Replaces the vulnerable `1.8.0` pin retained by Markdownlint CLI. |
+| `katex` | `0.18.2` | First patched release for the reported trust-restriction bypass; exceeds micromark's declared `0.16.x` range. |
+| `markdown-it` | `15.0.3` | Fixes the parser denial-of-service advisories still affecting Markdownlint CLI's exact `15.0.1` dependency. |
+| `basic-ftp` | `6.2.3` | Fixes directory-listing parser denial of service; exceeds `get-uri`'s declared `5.x` range. |
+| `ip-address` | `10.7.4` | Fixes address-parsing and cross-family subnet-check advisories in the proxy dependency graph. |
+| `undici` | `7.30.1` | Fixes the reported EventSource, integrity-check, and content-decoding advisories. |
+
+The KaTeX and Basic-FTP overrides are compatibility exceptions, not routine in-range updates. Isolated checks exercised Markdown math rendering, link-checker success/redirect/missing-link results, FTP downloads and cache/error behavior, MLSD timestamp fallback, Unix listing parsing, and FTP-hosted PAC proxy routing. A clean audit does not establish general compatibility; rerun the affected checks when these overrides or their consumers change. Prefer a supported upstream dependency range when one becomes available.
+
+The shared graph still emits the `whatwg-encoding@3.1.1` deprecation warning through Cheerio's `encoding-sniffer` dependency. This is not a current audit finding. Keep the warning visible and defer migration to `@exodus/bytes` until upstream supports it or a separately reviewed compatibility change is needed; a zero-vulnerability audit does not mean an install is warning-free.
+
 Run:
 
 ```powershell
