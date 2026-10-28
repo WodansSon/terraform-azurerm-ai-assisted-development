@@ -11,6 +11,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "status-target",
     value: "Resolving target",
     icon: "git-branch-compact",
+    iconFamily: "codicon",
     tooltip: "Promotion Target",
     classes: ["target-chip"],
     truncationOwner: true
@@ -24,8 +25,8 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     navigation: "validation-issues",
     classes: ["validation-issues-status"],
     segments: [
-      { key: "errors", valueId: "validation-error-count", value: "0", icon: "error" },
-      { key: "warnings", valueId: "validation-warning-count", value: "0", icon: "warning-compact" }
+      { key: "errors", valueId: "validation-error-count", value: "0", icon: "error", iconFamily: "codicon" },
+      { key: "warnings", valueId: "validation-warning-count", value: "0", icon: "warning-compact", iconFamily: "codicon" }
     ]
   },
   {
@@ -35,6 +36,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "save-indicator",
     value: "Draft not loaded",
     icon: "check-compact",
+    iconFamily: "codicon",
     tooltip: "Draft Autosave State",
     classes: ["save-indicator"]
   },
@@ -45,6 +47,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "rule-issues-status-count",
     value: "0",
     icon: "collection-issues-compact",
+    iconFamily: "custom",
     tooltip: "Rule Issues",
     ariaLabel: "Open rule issues",
     navigation: "issues",
@@ -57,6 +60,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "catalog-count",
     value: "0",
     icon: "collection",
+    iconFamily: "codicon",
     tooltip: "Eligible Candidates",
     ariaLabel: "Show eligible candidates",
     navigation: "eligible"
@@ -67,6 +71,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "status-excluded",
     value: "0",
     icon: "circle-slash-compact",
+    iconFamily: "codicon",
     tooltip: "Excluded Assessments",
     ariaLabel: "Show excluded assessments",
     navigation: "excluded"
@@ -99,6 +104,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "plan-count",
     value: "0",
     icon: "new-session",
+    iconFamily: "codicon",
     tooltip: "Promotion Plan Items",
     ariaLabel: "Open Promotion Plan",
     navigation: "plan"
@@ -120,6 +126,7 @@ const STATUS_BAR_ENTRIES = Object.freeze([
     valueId: "preview-status",
     value: "Draft",
     icon: "shield-compact",
+    iconFamily: "codicon",
     tooltip: "Promotion Approval Status",
     ariaLabel: "Open Promotion Preview",
     navigation: "preview",
@@ -128,15 +135,17 @@ const STATUS_BAR_ENTRIES = Object.freeze([
   }
 ]);
 
-function createStatusBarIcon(name, family = "codicon") {
-  if (!["codicon", "fluent"].includes(family)) throw new Error(`Unsupported status bar icon family: ${family}`);
+function createStatusBarIcon(name, family) {
+  if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid status bar icon name: ${name}`);
+  if (!["codicon", "fluent", "custom"].includes(family)) throw new Error(`Unsupported status bar icon family: ${family}`);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.classList.add(family === "fluent" ? "fluent-icon" : "codicon");
   svg.setAttribute("aria-hidden", "true");
   const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
   use.setAttribute("href", family === "fluent"
     ? `icons/fluent/sprite.svg#fluent-${name}`
-    : `icons/codicons/sprite.svg#codicon-${name}`);
+    : family === "custom" ? `icons/custom/sprite.svg#custom-${name}`
+      : `icons/codicons/sprite.svg#codicon-${name}`);
   svg.appendChild(use);
   return svg;
 }

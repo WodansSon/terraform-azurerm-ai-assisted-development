@@ -17,7 +17,7 @@ $npmSecurityPath = Join-Path $PSScriptRoot 'Test-NpmSecurity.ps1'
 $interactiveValidationPath = Join-Path $PSScriptRoot 'validate-ai-toolkit.ps1'
 $hostedWorkbenchTestPath = Join-Path $PSScriptRoot '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1'
 $interactiveManifestPath = Join-Path $PSScriptRoot '../installer/file-manifest.config'
-$hostedManifestPath = Join-Path $PSScriptRoot '../hosted_copilot/tools/package-manifest.json'
+$hostedManifestPath = Join-Path $PSScriptRoot '../hosted_copilot/tools/config/package-manifest.json'
 $releaseBuilderPath = Join-Path $PSScriptRoot 'build-release-bundle_dry_run.ps1'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $results = New-Object 'System.Collections.Generic.List[object]'
@@ -57,12 +57,14 @@ if (-not $relayContractPresent) {
     $issues.Add('dispatcher text mode must relay child execution states and consume the shared validation presentation contract without local formatter copies')
 }
 
-$ciDriftRoutingPresent = [regex]::Matches($workflowContent, 'Validate-ChangedToolkits\.ps1[^\r\n]*-SkipInteractiveUpstreamDrift[^\r\n]*-SkipHostedUpstreamDrift').Count -eq 1 -and
-    $workflowContent -match 'ChangedPaths\s*=\s*\$changedPaths' -and
-    $workflowContent -match 'SkipInteractiveRegressionHarness\s*=\s*\$true' -and
-    $workflowContent -match 'SkipInteractiveUpstreamDrift\s*=\s*\$true' -and
-    $workflowContent -match 'SkipHostedUpstreamDrift\s*=\s*\$true' -and
-    $workflowContent -match 'Validate-ChangedToolkits\.ps1 @validationParameters' -and
+$ciDriftRoutingPresent = $workflowContent -match 'Validate-ChangedToolkits\.ps1 -PlanOnly -OutputFormat Json -ChangedScope Branch' -and
+    $workflowContent -match 'Validate-ChangedToolkits\.ps1 -PlanOnly -OutputFormat Json -ChangedPaths \$changedPaths' -and
+    $workflowContent -match '-ValidationTarget Interactive[^\r\n]*-SkipInteractiveRegressionHarness[^\r\n]*-SkipInteractiveUpstreamDrift' -and
+    $workflowContent -match '-ValidationTarget Hosted[^\r\n]*-SkipHostedUpstreamDrift' -and
+    $workflowContent -match '-ValidationTarget Repository' -and
+    ([regex]::Matches($workflowContent, '(?m)^    needs: discover$').Count -eq 3) -and
+    $workflowContent -notmatch '(?m)^  validate-contracts:' -and
+    $workflowContent -match 'CHANGED_PATHS: \$\{\{ needs\.discover\.outputs\.paths \}\}' -and
     [regex]::Matches($workflowContent, 'Validate-InteractiveToolkit\.ps1[^\r\n]*-SkipUpstreamDrift').Count -eq 1 -and
     [regex]::Matches($workflowContent, 'hosted_copilot/tools/Test-HostedRules\.ps1[^\r\n]*-SkipUpstreamDrift').Count -eq 1
 if (-not $ciDriftRoutingPresent) {
@@ -222,8 +224,17 @@ $cases = @(
     }
 )
 
+$cases += @(
+    [pscustomobject]@{ name = 'shared-interactive-job'; paths = @('.github/.markdownlint.json'); target = 'Interactive'; validators = @('Interactive Toolkit'); repositoryChecks = $false },
+    [pscustomobject]@{ name = 'shared-hosted-job'; paths = @('.github/.markdownlint.json'); target = 'Hosted'; validators = @('Hosted Toolkit'); repositoryChecks = $false },
+    [pscustomobject]@{ name = 'shared-repository-job'; paths = @('.github/.markdownlint.json'); target = 'Repository'; validators = @(); repositoryChecks = $true },
+    [pscustomobject]@{ name = 'interactive-job-excludes-hosted-only'; paths = @('hosted_copilot/CHANGELOG.md'); target = 'Interactive'; validators = @(); repositoryChecks = $false },
+    [pscustomobject]@{ name = 'hosted-job-excludes-interactive-only'; paths = @('CHANGELOG.md'); target = 'Hosted'; validators = @(); repositoryChecks = $false }
+)
+
 foreach ($case in $cases) {
-    $json = & $dispatcherPath -OutputFormat Json -PlanOnly -ChangedPaths $case.paths
+    $target = if ($case.PSObject.Properties['target']) { $case.target } else { 'All' }
+    $json = & $dispatcherPath -OutputFormat Json -PlanOnly -ValidationTarget $target -ChangedPaths $case.paths
     $result = $json | ConvertFrom-Json
     $actualValidators = @($result.requiredValidators)
     $expectedValidators = @($case.validators)

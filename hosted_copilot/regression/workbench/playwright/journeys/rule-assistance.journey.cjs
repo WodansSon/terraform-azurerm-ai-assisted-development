@@ -1,7 +1,7 @@
 const { openWorkbench, getCssTokenColor } = require("../helpers/workbench.cjs");
 const expectedWaitingPhrases = require("../../../../workbench/assistance-waiting-phrases.json");
 const expectedBrandMap = require("../../../../workbench/llm-brands.json");
-const expectedNormalProfile = require("../../../../tools/llm.json").normal;
+const expectedNormalProfile = require("../../../../tools/config/llm.json").normal;
 
 const behaviorIds = ["WB-UX-ASSISTANCE-001"];
 

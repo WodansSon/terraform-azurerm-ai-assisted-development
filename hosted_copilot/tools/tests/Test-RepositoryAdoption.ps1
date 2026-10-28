@@ -35,7 +35,7 @@ function New-AdoptionFixture {
 
 function Read-FixtureDescriptor {
     param([string]$Root)
-    return Get-Content -LiteralPath (Join-Path $Root 'adoption.json') -Raw | ConvertFrom-Json -Depth 50
+    return Get-Content -LiteralPath (Join-Path $Root 'tools/config/adoption.json') -Raw | ConvertFrom-Json -Depth 50
 }
 
 function Get-FixturePolicy {
@@ -103,7 +103,7 @@ function Set-AlternatePolicy {
     Write-FixtureJson $catalogPath $catalog
     [IO.File]::WriteAllText((Join-Path $Root '.github/instructions/handbook.instructions.md'), ('x' * 41))
     [IO.File]::WriteAllText((Join-Path $Root '.github/instructions/security.instructions.md'), ('y' * 13))
-    Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+    Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
 }
 
 if ($OutputFormat -eq 'Text') {
@@ -115,7 +115,7 @@ try {
     $null = New-Item -ItemType Directory -Path $template -Force
     Copy-Item -LiteralPath (Join-Path $hostedRoot 'contracts') -Destination $template -Recurse
     Copy-Item -LiteralPath (Join-Path $hostedRoot 'copilot-rule-catalog') -Destination $template -Recurse
-    Copy-FixtureInput 'adoption.json'
+    Copy-FixtureInput 'tools/config/adoption.json'
     Copy-FixtureInput 'tools/internal/review/Import-PullRequest.ps1'
     foreach ($contractPath in Get-ChildItem (Join-Path $hostedRoot 'contracts/parsers') -File -Filter '*.json' | Where-Object Name -NotLike '*.schema.json') {
         $contract = Get-Content -LiteralPath $contractPath.FullName -Raw | ConvertFrom-Json
@@ -136,7 +136,7 @@ try {
         $descriptor = Read-FixtureDescriptor $Root
         Assert-Fixture ($descriptor.'$comment'.Contains('hosted_copilot/') -and $descriptor.'$comment'.Contains('Referenced source-definition')) 'The descriptor does not explain its path base and referenced-document boundary'
         $descriptor.'$comment' = 'Synthetic annotation: paths are relative to hosted_copilot/.'
-        Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+        Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
         $after = Get-FixturePolicy $Root
         Assert-Fixture ($before.sha256 -ceq $after.sha256) 'A documentation-only annotation changed the token policy'
     }
@@ -149,7 +149,7 @@ try {
         $descriptor = Read-FixtureDescriptor $Root
         $descriptor.tokenPolicy.areas += [ordered]@{ name = 'security-skill'; path = $skillPath; budgetTokens = 1000 }
         $descriptor.tokenPolicy.combinations[0].members += 'security-skill'
-        Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+        Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
         $capacity = Invoke-CapacityFixture $Root
         Assert-Fixture ($capacity.exitCode -eq 0 -and $capacity.value.reportCount -eq 9) 'Adding a second skill did not produce its independent capacity report'
         Assert-HostedGuidanceCapacity $capacity.value (Get-FixturePolicy $Root)
@@ -174,7 +174,7 @@ try {
         $descriptor.tokenPolicy.maximumGuidanceTokens = 15
         $descriptor.tokenPolicy.combinations = @()
         foreach ($area in $descriptor.tokenPolicy.areas) { $area.budgetTokens = 15 }
-        Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+        Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
         $capacity = Invoke-CapacityFixture $Root
         Assert-Fixture ($capacity.exitCode -eq 1 -and $capacity.value.status -ceq 'failed' -and @($capacity.value.reports | Where-Object { -not $_.withinBudget }).Count -eq 0) 'The overall ceiling did not independently constrain passing areas'
     }
@@ -193,7 +193,7 @@ try {
                 'absolute-path' { $descriptor.catalog = 'C:/outside.json' }
                 'allocation-over-ceiling' { $descriptor.tokenPolicy.areas[0].budgetTokens = $descriptor.tokenPolicy.maximumGuidanceTokens + 1 }
             }
-            Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+            Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
             Assert-Rejected { Get-FixturePolicy $Root }
         }
     }
@@ -209,7 +209,7 @@ try {
                 'stale-policy' {
                     $descriptor = Read-FixtureDescriptor $Root
                     $descriptor.tokenPolicy.safetyMarginPercent = 10
-                    Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+                    Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
                 }
             }
             Assert-Rejected { Assert-HostedGuidanceCapacity $capacity (Get-FixturePolicy $Root) }
@@ -234,7 +234,7 @@ try {
         param($Root)
         $descriptor = Read-FixtureDescriptor $Root
         $descriptor.reviewUpstream = 'example-team/example-project'
-        Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+        Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
         $report = Invoke-PreflightFixture $Root -OutputFormat Text
         Assert-Fixture ($report.exitCode -eq 1 -and $report.text -match '(?m)^\s+REQUIRES-ADAPTATION\s+review-upstream\r?$') 'The text report changed an adaptation finding or its exit code'
         Assert-Fixture ($report.text -match '(?m)^\s+CHANGE\s+tools/internal/review/Import-PullRequest.ps1: Adapt canonical repository validation' -and $report.text -match '(?m)^\s+VERIFY\s+tools/tests/Test-HostedReviewWorkflow.ps1\r?$') 'The text report omitted actionable change and verification details'
@@ -242,7 +242,7 @@ try {
     Invoke-AdoptionCase 'different-review-upstream' {
         param($Root)
         $descriptor = Read-FixtureDescriptor $Root; $descriptor.reviewUpstream = 'example-team/example-project'
-        Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+        Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
         $report = Invoke-PreflightFixture $Root
         $finding = $report.value.findings | Where-Object checkId -CEQ 'review-upstream'
         Assert-Fixture ($report.exitCode -eq 1 -and $finding.status -ceq 'requires-adaptation' -and $finding.requiredChanges[0].file -ceq 'tools/internal/review/Import-PullRequest.ps1') 'The actual canonical repository restriction was not reported precisely'
@@ -274,7 +274,7 @@ try {
     Invoke-AdoptionCase 'unsafe-descriptor' {
         param($Root)
         $descriptor = Read-FixtureDescriptor $Root; $descriptor.catalog = '../outside.json'
-        Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+        Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
         $report = Invoke-PreflightFixture $Root
         Assert-Fixture ($report.exitCode -eq 1 -and $report.value.status -ceq 'invalid') 'Unsafe references were not rejected with structured diagnostics'
     }
@@ -292,14 +292,14 @@ try {
         param($Root)
         $descriptor = Read-FixtureDescriptor $Root
         $descriptor.tokenPolicy.areas[0].budgetTokens = 1
-        Write-FixtureJson (Join-Path $Root 'adoption.json') $descriptor
+        Write-FixtureJson (Join-Path $Root 'tools/config/adoption.json') $descriptor
         $report = Invoke-PreflightFixture $Root
         $finding = $report.value.findings | Where-Object checkId -CEQ 'capacity'
         Assert-Fixture ($report.exitCode -eq 1 -and $finding.status -ceq 'requires-adaptation') 'The preflight ignored actual capacity exhaustion'
     }
     Invoke-AdoptionCase 'missing-descriptor' {
         param($Root)
-        Remove-Item (Join-Path $Root 'adoption.json')
+        Remove-Item (Join-Path $Root 'tools/config/adoption.json')
         $report = Invoke-PreflightFixture $Root
         Assert-Fixture ($report.exitCode -eq 1 -and $report.value.status -ceq 'invalid') 'Missing configuration used a hidden fallback'
     }

@@ -27,10 +27,10 @@ Specifies the external directory that stores validated hierarchical reconciliati
 Specifies an exact-authority retained source-assessment run to resume during an ordinary rebuild.
 
 .PARAMETER Model
-Overrides the normal model profile in hosted_copilot/tools/llm.json for source assessment, reconciliation, and AI Assistance.
+Overrides the normal model profile in hosted_copilot/tools/config/llm.json for source assessment, reconciliation, and AI Assistance.
 
 .PARAMETER AssessmentReasoningEffort
-Overrides the normal reasoning-effort profile in hosted_copilot/tools/llm.json for source assessment, reconciliation, and AI Assistance.
+Overrides the normal reasoning-effort profile in hosted_copilot/tools/config/llm.json for source assessment, reconciliation, and AI Assistance.
 
 .PARAMETER MaxRetries
 Specifies how many times a failed evaluator batch may be retried.
@@ -265,32 +265,15 @@ $ownedAssetNames = @('index.html', 'app.js', 'assistance-waiting-phrases.json', 
 foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
-$runtimeIconAssetNames = @(
-    'codicons/sprite.svg', 'codicons/LICENSE.txt', 'codicons/ATTRIBUTION.md',
-    'fluent/sprite.svg', 'fluent/ATTRIBUTION.md',
-    'llms/sprite.svg', 'llms/LICENSE.txt', 'llms/ATTRIBUTION.md',
-    'octicons/sprite.svg', 'octicons/LICENSE.txt', 'octicons/ATTRIBUTION.md'
-)
+. (Join-Path $PSScriptRoot 'internal/workbench/WorkbenchIconAssets.ps1')
+$runtimeIconAssetNames = @(Get-WorkbenchRuntimeIconAssets -IconRoot $workbenchIconSource)
 foreach ($assetName in $runtimeIconAssetNames) {
     if (-not (Test-Path -LiteralPath (Join-Path $workbenchIconSource $assetName) -PathType Leaf)) {
         throw "Required Workbench runtime icon asset was not found: $assetName"
     }
 }
 $stagedIconDirectory = Join-Path $resolvedSiteDirectory 'icons'
-if (Test-Path -LiteralPath $stagedIconDirectory) {
-    if ((Get-Item -LiteralPath $stagedIconDirectory -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
-        throw 'The staged Workbench icon directory must not be a link or junction'
-    }
-    if (@(Get-ChildItem -LiteralPath $stagedIconDirectory -Recurse -Force -Attributes ReparsePoint).Count) {
-        throw 'The staged Workbench icon directory must not contain links or junctions'
-    }
-    Remove-Item -LiteralPath $stagedIconDirectory -Recurse -Force
-}
-foreach ($assetName in $runtimeIconAssetNames) {
-    $destination = Join-Path $stagedIconDirectory $assetName
-    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $workbenchIconSource $assetName) -Destination $destination -Force
-}
+Copy-WorkbenchRuntimeIconAssets -IconRoot $workbenchIconSource -Destination $stagedIconDirectory
 
 $shutdownTokenBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($shutdownTokenBytes)

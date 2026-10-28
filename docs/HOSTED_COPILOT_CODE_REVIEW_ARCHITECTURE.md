@@ -236,7 +236,13 @@ hosted_copilot/
     modules/
       review/
     tests/
-    package-manifest.json
+    config/
+      adoption.json
+      llm.json
+      package-manifest.json
+    npm/
+      package.json
+      package-lock.json
   docs/
     HOSTED_COPILOT_CODE_REVIEW.md
     HOSTED_COPILOT_CODE_REVIEW_IMPLEMENTATION.md
@@ -255,7 +261,7 @@ hosted_copilot/
 - `tools/` also owns assessment, generation, validation, evidence capture, and deployment support. Repository-writing promotion remains unimplemented.
 - `workbench/` owns the interactive local review interface built from static browser assets. It is maintainer tooling and is not deployed into the target provider repository.
 - `CHANGELOG.md` owns Hosted Toolkit development and deployment history.
-- `tools/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package.
+- `tools/config/package-manifest.json` owns the exact set of mirrored relative paths installed and updated by the hosted package. The tools root contains only the four supported commands and its README; supporting configuration, npm files, and implementation helpers remain in their owning folders.
 - `tools/Install-HostedRules.ps1` owns safe deployment into a target repository.
 - `docs/HOSTED_COPILOT_CODE_REVIEW.md` explains the installed Hosted Toolkit; the implementation guide and Hosted review guide remain source-only maintainer documentation.
 - Generated path-specific instruction files are written directly beneath `hosted_copilot/.github/`, committed, and frozen by source commit. They must not be edited manually.

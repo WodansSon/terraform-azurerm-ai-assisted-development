@@ -33,8 +33,10 @@ substitute for Link Off, which has no 16px upstream asset. Gauge Regular conveys
 remaining Hosted guidance capacity.
 
 The generated runtime `sprite.svg` contains only icons currently consumed by
-the Workbench. The generated `preview.png` renders the complete vendored source
-inventory so maintainers can inspect every available local icon.
+the Workbench, as declared in the adjacent `runtime.json` alongside runtime legal
+notices. The shared builder used by every icon family generates both assets.
+The generated `preview.png` renders the complete vendored source inventory with
+at most six columns so maintainers can inspect every available local icon.
 
 The rule-action confirmation's inline two-tone question-circle glyph reuses the
 pinned `Question Circle 20 Color` geometry with Workbench-owned flat dark-theme

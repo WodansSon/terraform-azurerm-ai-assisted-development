@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "contractId": "assessment-reconciliation-v4",
   "behaviorFiles": [
-    "hosted_copilot/adoption.json",
+    "hosted_copilot/tools/config/adoption.json",
     "hosted_copilot/contracts/adoption/repository-adoption.schema.json",
     "hosted_copilot/contracts/assessment/source-assessment-baseline-v4.schema.json",
     "hosted_copilot/contracts/catalog/guidance-capacity.schema.json",

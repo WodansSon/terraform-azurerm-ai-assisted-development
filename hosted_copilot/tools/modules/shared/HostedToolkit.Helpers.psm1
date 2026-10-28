@@ -7,7 +7,7 @@ function Resolve-HostedLlmProfile {
         [Parameter(Mandatory = $true)][ValidateSet('normal', 'savedRuleEvaluation')][string]$Profile,
         [string]$Model,
         [string]$ReasoningEffort,
-        [string]$ConfigurationPath = (Join-Path $PSScriptRoot '../../llm.json')
+        [string]$ConfigurationPath = (Join-Path $PSScriptRoot '../../config/llm.json')
     )
 
     if (-not (Test-Path -LiteralPath $ConfigurationPath -PathType Leaf)) {

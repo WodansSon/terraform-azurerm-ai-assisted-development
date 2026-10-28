@@ -484,7 +484,7 @@ $assessmentContractSnapshotPath = Join-Path $runRepositoryRoot 'hosted_copilot/c
 $null = Copy-RunInputFile -SourcePath $resolvedContractPath -DestinationPath $assessmentContractSnapshotPath
 $repositoryInputs = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($relativePath in @(
-    'hosted_copilot/tools/llm.json',
+    'hosted_copilot/tools/config/llm.json',
     'hosted_copilot/contracts/assessment/assessment-contract.schema.json',
     'hosted_copilot/contracts/parsers/parser-contract.schema.json',
     'hosted_copilot/contracts/sources/source-definition.schema.json',

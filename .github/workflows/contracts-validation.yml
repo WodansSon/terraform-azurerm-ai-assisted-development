@@ -1,4 +1,4 @@
-name: Validate AI Toolkit
+name: Validate Toolkits
 
 on:
   push:
@@ -11,28 +11,30 @@ permissions:
   contents: read
 
 jobs:
-  validate-contracts:
-    name: Validate AI Toolkit
+  discover:
+    name: Discover Toolkit Scope
     runs-on: ubuntu-latest
-
+    outputs:
+      interactive: ${{ steps.scope.outputs.interactive }}
+      hosted: ${{ steps.scope.outputs.hosted }}
+      repository: ${{ steps.scope.outputs.repository }}
+      paths: ${{ steps.scope.outputs.paths }}
     steps:
       - name: Checkout code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Run AI toolkit validator
+      - name: Discover required checks
+        id: scope
         shell: pwsh
         env:
           GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
-            ./tools/Validate-ChangedToolkits.ps1 -ChangedScope Branch -SkipInteractiveRegressionHarness -SkipInteractiveUpstreamDrift -SkipHostedUpstreamDrift
-            exit $LASTEXITCODE
+            $json = & ./tools/Validate-ChangedToolkits.ps1 -PlanOnly -OutputFormat Json -ChangedScope Branch
           }
-
-          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+          elseif ($env:GITHUB_EVENT_NAME -eq 'push') {
             $before = $env:GITHUB_EVENT_BEFORE
             if ([string]::IsNullOrWhiteSpace($before) -or $before -match '^0+$') {
               $before = "$env:GITHUB_SHA^"
@@ -43,33 +45,89 @@ jobs:
               exit $LASTEXITCODE
             }
 
-            $validationParameters = @{
-              ChangedPaths = $changedPaths
-              SkipInteractiveRegressionHarness = $true
-              SkipInteractiveUpstreamDrift = $true
-              SkipHostedUpstreamDrift = $true
-            }
-            ./tools/Validate-ChangedToolkits.ps1 @validationParameters
-            exit $LASTEXITCODE
+            $json = & ./tools/Validate-ChangedToolkits.ps1 -PlanOnly -OutputFormat Json -ChangedPaths $changedPaths
           }
-
-          $validationFailed = $false
-
-          & pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -SkipRegressionHarness -SkipUpstreamDrift
-          if ($LASTEXITCODE -ne 0) {
-            $validationFailed = $true
+          else {
+            # Manual runs select every check through the workflow's shared ownership.
+            $json = & ./tools/Validate-ChangedToolkits.ps1 -PlanOnly -OutputFormat Json -ChangedPaths '.github/workflows/contracts-validation.yml'
           }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $plan = $json | ConvertFrom-Json
+          if ($plan.status -ne 'planned') { throw 'Toolkit scope discovery failed' }
+          @(
+            "interactive=$($plan.requiredValidators -contains 'Interactive Toolkit')".ToLowerInvariant()
+            "hosted=$($plan.requiredValidators -contains 'Hosted Toolkit')".ToLowerInvariant()
+            "repository=$($plan.repositoryChecksRequired)".ToLowerInvariant()
+            "paths=$(ConvertTo-Json -InputObject @($plan.classifications | ForEach-Object path) -Compress)"
+          ) | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
 
-          & pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1 -SkipUpstreamDrift
-          if ($LASTEXITCODE -ne 0) {
-            $validationFailed = $true
+  interactive:
+    name: Validate Interactive Toolkit
+    needs: discover
+    if: needs.discover.outputs.interactive == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate Interactive only
+        shell: pwsh
+        env:
+          CHANGED_PATHS: ${{ needs.discover.outputs.paths }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            & pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -SkipRegressionHarness -SkipUpstreamDrift
           }
+          else {
+            $paths = @($env:CHANGED_PATHS | ConvertFrom-Json)
+            & ./tools/Validate-ChangedToolkits.ps1 -ValidationTarget Interactive -ChangedPaths $paths -SkipInteractiveRegressionHarness -SkipInteractiveUpstreamDrift
+          }
+          exit $LASTEXITCODE
 
+  hosted:
+    name: Validate Hosted Toolkit
+    needs: discover
+    if: needs.discover.outputs.hosted == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate Hosted only
+        shell: pwsh
+        env:
+          CHANGED_PATHS: ${{ needs.discover.outputs.paths }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            & pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1 -SkipUpstreamDrift
+          }
+          else {
+            $paths = @($env:CHANGED_PATHS | ConvertFrom-Json)
+            & ./tools/Validate-ChangedToolkits.ps1 -ValidationTarget Hosted -ChangedPaths $paths -SkipHostedUpstreamDrift
+          }
+          exit $LASTEXITCODE
+
+  repository:
+    name: Validate Shared Repository
+    needs: discover
+    if: needs.discover.outputs.repository == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate shared maintenance and routing
+        shell: pwsh
+        env:
+          CHANGED_PATHS: ${{ needs.discover.outputs.paths }}
+        run: |
+          $paths = @($env:CHANGED_PATHS | ConvertFrom-Json)
+          & ./tools/Validate-ChangedToolkits.ps1 -ValidationTarget Repository -ChangedPaths $paths
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & pwsh -NoProfile -File ./tools/Test-ChangedToolkitRouting.ps1
-          if ($LASTEXITCODE -ne 0) {
-            $validationFailed = $true
-          }
-
-          if ($validationFailed) {
-            exit 1
-          }
+          exit $LASTEXITCODE

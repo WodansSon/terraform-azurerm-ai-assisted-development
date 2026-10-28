@@ -6,7 +6,7 @@ if ('--headless' -cnotin @($args) -or '--stdio' -cnotin @($args) -or '--no-auto-
 }
 $scenario = [Environment]::GetEnvironmentVariable('HOSTED_CLI_TEST_SCENARIO')
 if ($scenario -ceq 'timeout') { $null = [Console]::In.ReadToEnd(); return }
-$configuration = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../llm.json') -Raw | ConvertFrom-Json -DateKind String
+$configuration = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../config/llm.json') -Raw | ConvertFrom-Json -DateKind String
 $inputStream = [Console]::OpenStandardInput()
 $outputStream = [Console]::OpenStandardOutput()
 while ($true) {

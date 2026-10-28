@@ -95,7 +95,7 @@ If preflight is incomplete, do not proceed with toolkit-maintenance work.
 ### Hosted-only maintenance
 
 - Keep Hosted implementation, tests, runtime guidance, schemas, Workbench assets, and product documentation under `hosted_copilot/**` or another path explicitly classified as Hosted.
-- Use `hosted_copilot/tools/package-manifest.json` and `Install-HostedRules.ps1` for direct source deployment. Do not inspect or invoke the Interactive installer or `installer/file-manifest.config`.
+- Use `hosted_copilot/tools/config/package-manifest.json` and `Install-HostedRules.ps1` for direct source deployment. Do not inspect or invoke the Interactive installer or `installer/file-manifest.config`.
 - Use `Test-HostedRules.ps1` for complete Hosted validation. Do not invoke Interactive review agents, prompts, fixtures, or validators for Hosted changes.
 - Use Hosted source-intake and upstream-drift commands only when that Hosted maintenance flow is explicitly requested. Normal Hosted validation must not read the live Interactive catalog.
 - Limit edits to shared consumers to the Hosted-specific command, path, ownership, or routing reference that requires alignment.

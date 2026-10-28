@@ -1,7 +1,7 @@
 const path = require("node:path");
 
-const toolsRoot = path.resolve(__dirname, "../../../tools");
-const puppeteer = require(require.resolve("puppeteer", { paths: [toolsRoot] }));
+const npmRoot = path.resolve(__dirname, "../../../tools/npm");
+const puppeteer = require(require.resolve("puppeteer", { paths: [npmRoot] }));
 const { runViewportSuite } = require("../shared/WorkbenchViewportSuite.cjs");
 
 async function run() {
@@ -15,6 +15,10 @@ async function run() {
 
   try {
     const page = await browser.newPage();
+    await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      throw new Error("Workbench viewport verification requires normal motion");
+    }
     page.setDefaultTimeout(10000);
     page.setDefaultNavigationTimeout(10000);
     const result = await runViewportSuite(page, baseUrl, {

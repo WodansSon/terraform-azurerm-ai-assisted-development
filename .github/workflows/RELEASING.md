@@ -22,6 +22,14 @@ This repository is the source of the AI infrastructure. Release validation MUST 
 - Run only the staged installer's standalone `-Version` command during the dry run. Do not pass `-RepoDirectory`, `-repo-directory`, or any installation target; the dry run does not install AI files.
 - Do not checkout, pull, or otherwise change the active source-repository branch during release validation without explicit maintainer approval.
 
+### Independent Product Checks
+
+- `Discover Toolkit Scope` classifies changed paths and fails on unknown ownership. `Validate Interactive Toolkit`, `Validate Hosted Toolkit`, and `Validate Shared Repository` depend only on discovery, never on another product's result.
+- Interactive-only changes require Interactive validation; Hosted-only changes require Hosted validation. Shared changes require both products and shared repository checks. Mixed changes retain both product results, and repository-maintenance checks retain their repository-wide npm audit. The default local dispatcher still combines all applicable results; `-ValidationTarget` selects one independently reported CI check.
+- Manual workflow runs validate both complete products with live upstream drift disabled, as before. Pull requests and pushes use the ownership map and preserve each product's changelog requirement. Unrelated product jobs are skipped successfully rather than run or hidden behind one combined status.
+- When configuring required checks, replace the obsolete combined `Validate AI Toolkit` context with the discovery and independent validation contexts above. GitHub branch-protection or ruleset settings must be updated separately by a maintainer; changing the workflow does not migrate those settings. Keep applicable product and shared failures blocking, but do not add Hosted validation as an Interactive release prerequisite.
+- An Interactive release still uses the Interactive-only pre-release command below. A Hosted-only failure can block merging Hosted changes when its check is required; it is not an Interactive release validation requirement. No tag-publication or release-permission bypass is introduced.
+
 ### 1. Confirm pre-release checks are complete
 
 Before starting release preparation, confirm that the maintainer has completed the pre-release checks against the current `main` release candidate:

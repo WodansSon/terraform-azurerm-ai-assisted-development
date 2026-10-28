@@ -40,13 +40,13 @@ const GUIDANCE_CAPACITY_BUCKETS = [
   { reportName: "skill", label: "Review Skill", surface: "review-skill" }
 ];
 const FACTORS = [
-  ["severity", "Severity", "Harm caused when this defect is missed", "value"],
-  ["frequency", "Frequency", "How often this defect appears in provider changes", "value"],
-  ["breadth", "Breadth", "How widely the rule applies across the provider", "value"],
-  ["hostedDetectability", "Hosted detectability", "How reliably Hosted review can prove the defect", "value"],
-  ["evidenceStrength", "Evidence strength", "How authoritative and durable the supporting evidence is", "value"],
-  ["falsePositiveRisk", "False-positive risk", "Chance of producing unsupported findings", "penalty"],
-  ["redundancy", "Existing coverage", "How completely current Hosted rules already cover it", "penalty"]
+  ["severity", "Severity", "Harm caused when this defect is missed", "value", 6],
+  ["frequency", "Frequency", "How often this defect appears in provider changes", "value", 3],
+  ["breadth", "Breadth", "How widely the rule applies across the provider", "value", 3],
+  ["hostedDetectability", "Hosted detectability", "How reliably Hosted review can prove the defect", "value", 4],
+  ["evidenceStrength", "Evidence strength", "How authoritative and durable the supporting evidence is", "value", 4],
+  ["falsePositiveRisk", "False-positive risk", "Chance of producing unsupported findings", "penalty", -5],
+  ["redundancy", "Existing coverage", "How completely current Hosted rules already cover it", "penalty", -3]
 ];
 
 function toUtcTimestamp(value = new Date()) {
@@ -146,12 +146,12 @@ const workbenchTooltip = {
   suppressedOwner: null
 };
 function icon(name) {
-  if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
+  if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
   return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-${name}"></use></svg>`;
 }
 
 function llmIcon(name) {
-  if (!/^[a-z0-9]+$/.test(name)) throw new Error(`Invalid LLM icon name: ${name}`);
+  if (typeof name !== "string" || !/^[a-z0-9]+$/.test(name)) throw new Error(`Invalid LLM icon name: ${name}`);
   return `<svg class="llm-icon" aria-hidden="true"><use href="icons/llms/sprite.svg#llm-${name}"></use></svg>`;
 }
 
@@ -317,161 +317,17 @@ function buildWaitingPanelPalette(width, height) {
 }
 
 function octicon(name) {
-  if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Octicon name: ${name}`);
+  if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Octicon name: ${name}`);
   return `<svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-${name}-16"></use></svg>`;
 }
 
-const CORE_FLUENT_ICON_NAMES = new Set([
-  "checkmark-circle-20-regular",
-  "checkmark-circle-20-filled",
-  "dismiss-circle-20-regular",
-  "dismiss-circle-20-filled",
-  "error-circle-20-regular",
-  "error-circle-20-filled",
-  "important-20-regular",
-  "important-20-filled",
-  "info-20-regular",
-  "info-20-filled",
-  "question-circle-20-regular",
-  "question-circle-20-filled",
-  "warning-20-regular",
-  "warning-20-filled",
-  "shield-checkmark-20-regular",
-  "shield-checkmark-20-filled",
-  "shield-dismiss-20-regular",
-  "shield-dismiss-20-filled",
-  "shield-error-20-regular",
-  "shield-error-20-filled",
-  "shield-question-20-regular",
-  "shield-question-20-filled",
-  "shield-task-20-regular",
-  "shield-task-20-filled",
-  "document-add-20-regular",
-  "document-add-20-filled",
-  "document-bullet-list-20-regular",
-  "document-bullet-list-20-filled",
-  "document-checkmark-20-regular",
-  "document-checkmark-20-filled",
-  "document-dismiss-20-regular",
-  "document-dismiss-20-filled",
-  "document-edit-20-regular",
-  "document-edit-20-filled",
-  "document-error-20-regular",
-  "document-error-20-filled",
-  "document-lock-20-regular",
-  "document-lock-20-filled",
-  "document-search-20-regular",
-  "document-search-20-filled",
-  "document-sync-20-regular",
-  "document-sync-20-filled",
-  "document-text-20-regular",
-  "document-text-20-filled",
-  "approvals-app-20-regular",
-  "approvals-app-20-filled",
-  "arrow-sync-circle-20-regular",
-  "arrow-sync-circle-20-filled",
-  "book-information-20-regular",
-  "book-information-20-filled",
-  "bot-sparkle-20-regular",
-  "bot-sparkle-20-filled",
-  "brain-circuit-20-regular",
-  "brain-circuit-20-filled",
-  "certificate-20-regular",
-  "certificate-20-filled",
-  "clipboard-checkmark-20-regular",
-  "clipboard-checkmark-20-filled",
-  "clipboard-task-list-ltr-20-regular",
-  "clipboard-task-list-ltr-20-filled",
-  "data-usage-20-regular",
-  "data-usage-20-filled",
-  "gauge-20-regular",
-  "gauge-20-filled",
-  "history-20-regular",
-  "history-20-filled",
-  "lightbulb-20-regular",
-  "lightbulb-20-filled",
-  "person-feedback-20-regular",
-  "person-feedback-20-filled",
-  "target-arrow-20-regular",
-  "target-arrow-20-filled",
-  "arrow-routing-20-regular",
-  "arrow-routing-20-filled",
-  "arrow-routing-rectangle-multiple-20-regular",
-  "arrow-routing-rectangle-multiple-20-filled",
-  "arrow-split-20-regular",
-  "arrow-split-20-filled",
-  "flow-20-regular",
-  "flow-20-filled",
-  "flowchart-20-regular",
-  "flowchart-20-filled",
-  "link-multiple-20-regular",
-  "link-multiple-20-filled",
-  "connected-20-regular",
-  "connected-20-filled",
-  "group-list-20-regular",
-  "group-list-20-filled",
-  "shape-intersect-20-regular",
-  "shape-intersect-20-filled",
-  "merge-20-regular",
-  "merge-20-filled",
-  "stack-20-regular",
-  "stack-20-filled",
-  "stack-arrow-forward-20-regular",
-  "stack-arrow-forward-20-filled",
-  "gavel-20-regular",
-  "gavel-20-filled",
-  "gavel-prohibited-20-regular",
-  "gavel-prohibited-20-filled",
-  "scales-20-regular",
-  "scales-20-filled",
-  "checkbox-checked-sync-20-regular",
-  "checkbox-checked-sync-20-filled",
-  "flag-checkered-20-regular",
-  "flag-checkered-20-filled",
-  "ribbon-20-regular",
-  "ribbon-20-filled",
-  "ribbon-off-20-regular",
-  "ribbon-off-20-filled",
-  "person-edit-20-regular",
-  "person-edit-20-filled",
-  "archive-20-regular",
-  "archive-20-filled",
-  "archive-arrow-back-20-regular",
-  "archive-arrow-back-20-filled",
-  "arrow-undo-20-regular",
-  "arrow-undo-20-filled",
-  "arrow-redo-20-regular",
-  "arrow-redo-20-filled",
-  "arrow-sync-checkmark-20-regular",
-  "arrow-sync-checkmark-20-filled",
-  "arrow-sync-dismiss-20-regular",
-  "arrow-sync-dismiss-20-filled",
-  "re-order-20-regular",
-  "re-order-20-filled",
-  "document-copy-20-regular",
-  "document-copy-20-filled",
-  "document-arrow-right-20-regular",
-  "document-arrow-right-20-filled",
-  "clipboard-search-20-regular",
-  "clipboard-search-20-filled",
-  "clipboard-text-ltr-20-regular",
-  "clipboard-text-ltr-20-filled",
-  "text-quote-20-regular",
-  "text-quote-20-filled",
-  "database-search-20-regular",
-  "database-search-20-filled",
-  "task-list-square-sparkle-20-regular",
-  "task-list-square-sparkle-20-filled",
-  "wand-20-regular",
-  "wand-20-filled"
-]);
-
 function fluentIcon(name, className = "") {
-  if (!CORE_FLUENT_ICON_NAMES.has(name) && !/^[a-z0-9]+(?:-[a-z0-9]+)*-(16|20)-(regular|filled)$/.test(name)) throw new Error(`Invalid Fluent icon name: ${name}`);
+  if (typeof name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*-(16|20)-(regular|filled)$/.test(name)) throw new Error(`Invalid Fluent icon name: ${name}`);
   return `<svg class="fluent-icon ${escapeHtml(className)}" aria-hidden="true"><use href="icons/fluent/sprite.svg#fluent-${name}"></use></svg>`;
 }
 
-function renderInformationPanel(content, { iconMarkup = fluentIcon("info-20-regular"), className = "", dataAttributes = {} } = {}) {
+function renderInformationPanel(content, { iconMarkup, className = "", dataAttributes = {} } = {}) {
+  if (typeof iconMarkup !== "string" || !iconMarkup.trim()) throw new Error("Information panel requires an explicit icon");
   const attributes = Object.entries(dataAttributes)
     .map(([name, value]) => ` data-${name}="${escapeHtml(value)}"`)
     .join("");
@@ -711,11 +567,6 @@ function bindEvents() {
     if (event.key === "Escape" && workbenchTooltip.owner) {
       workbenchTooltip.suppressedOwner = workbenchTooltip.owner;
       hideStatusTooltip();
-    }
-    const scoringLegendDialog = elements["assessment-panel"].querySelector("[data-scoring-legend-dialog]");
-    if (event.key === "Escape" && scoringLegendDialog?.open) {
-      scoringLegendDialog.close();
-      return;
     }
     if (event.key === "Escape" && elements.toast.classList.contains("visible")) dismissNotification();
     if (event.key === "Escape") elements["preview-review-popover"].hidden = true;
@@ -1571,7 +1422,7 @@ function renderRuleIssueResolutionPreview(issue, proposedText) {
 function renderRuleIssueContent(issue, { candidateDetails = false, proposedText = null } = {}) {
   const visibleRules = getVisibleRuleIssueRules(issue);
   const protectedNotice = RULE_ISSUE_FILTERS.find((filter) => filter.key === "protected").classifications.includes(issue.classification)
-    ? renderInformationPanel("<p>Protected rules cannot be changed in the Workbench. Edit the protected source file directly in the repository. Relaunch with <code>-Rebuild</code> to refresh the Workbench snapshot and analysis. Rebuilding refreshes assessments and Rule Issues and may require significant processing time.</p>", { className: "protected-rule-information" })
+    ? renderInformationPanel("<p>Protected rules cannot be changed in the Workbench. Edit the protected source file directly in the repository. Relaunch with <code>-Rebuild</code> to refresh the Workbench snapshot and analysis. Rebuilding refreshes assessments and Rule Issues and may require significant processing time.</p>", { iconMarkup: fluentIcon("info-20-regular"), className: "protected-rule-information" })
     : "";
   const ordinaryRelationship = candidateDetails && !issue.blocking && !issue.classification.includes("conflict") && issue.classification !== "contradiction";
   const banner = state.dismissedRuleIssueBannerKeys.has(issue.id) ? "" : `
@@ -1585,7 +1436,7 @@ function renderRuleIssueContent(issue, { candidateDetails = false, proposedText 
     <section class="rule-issue-assessment"><p>${renderRuleReferences(issue.assessmentSummary, issue.ruleIds)}</p></section>
     ${renderRuleIssueWording(issue.wording, issue.ruleIds)}
     <span class="section-label rule-issue-recommendation-label">Recommended Maintainer Action:</span>`}
-    <section class="rule-issue-recommendation">${candidateDetails ? renderInformationPanel(`<p>${renderRuleReferences(issue.recommendedMaintainerAction.summary, issue.ruleIds)}</p>`) : `<p>${renderRuleReferences(issue.recommendedMaintainerAction.summary, issue.ruleIds)}</p>`}${renderRuleIssuePlanAction(issue)}</section>
+    <section class="rule-issue-recommendation">${candidateDetails ? renderInformationPanel(`<p>${renderRuleReferences(issue.recommendedMaintainerAction.summary, issue.ruleIds)}</p>`, { iconMarkup: fluentIcon("info-20-regular") }) : `<p>${renderRuleReferences(issue.recommendedMaintainerAction.summary, issue.ruleIds)}</p>`}${renderRuleIssuePlanAction(issue)}</section>
   `;
 }
 
@@ -2090,22 +1941,159 @@ async function resetOriginalRule(candidate) {
   showToast("Original rule proposal restored.");
 }
 
-function openOriginalRuleResetDialog(candidate, trigger) {
-  if (elements["assessment-panel"].querySelector("[data-rule-reset-dialog]")) return;
+function openWorkbenchDialog({ name, title, iconMarkup, bodyHtml, trigger, warning = false, actions = [], closeLabel = "Close confirmation", focusTarget = () => trigger }) {
+  if (document.querySelector(`[data-${name}-dialog]`)) return;
+  if (typeof iconMarkup !== "string" || !iconMarkup.trim()) throw new Error("Dialog requires an explicit icon");
   const dialog = document.createElement("dialog");
-  dialog.className = "modal-dialog modal-dialog-warning";
-  dialog.setAttribute("data-rule-reset-dialog", "");
-  dialog.dataset.candidateKey = candidate.key;
-  dialog.setAttribute("aria-labelledby", "rule-reset-dialog-title");
-  dialog.innerHTML = `<div class="modal-dialog-heading"><div class="modal-dialog-title">${icon("debug-restart")}<h2 id="rule-reset-dialog-title">Reset Rule to Original?</h2></div><button class="titlebar-icon clickable" type="button" data-rule-reset-cancel aria-label="Close confirmation" data-workbench-tooltip="Close">${icon("close")}</button></div><div class="modal-dialog-content"><p>Restore the original proposed wording for <strong class="rule-reference">${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong>?</p><p>This will replace the saved wording for this proposal.</p><div class="modal-dialog-actions"><button class="button primary clickable" type="button" data-rule-reset-cancel>Cancel</button><button class="button review clickable" type="button" data-rule-reset-confirm>${icon("debug-restart")}<span class="button-label">Reset to Original</span></button></div></div>`;
-  dialog.addEventListener("close", () => { dialog.remove(); if (trigger.isConnected) trigger.focus({ preventScroll: true }); }, { once: true });
-  dialog.addEventListener("click", event => {
-    const rect = dialog.getBoundingClientRect();
-    if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
+  dialog.className = `modal-dialog${warning ? " modal-dialog-warning" : ""}`;
+  dialog.setAttribute(`data-${name}-dialog`, "");
+  dialog.setAttribute("aria-labelledby", `${name}-dialog-title`);
+  dialog.innerHTML = `<div class="modal-dialog-heading"><div class="modal-dialog-title">${iconMarkup}<h2 id="${name}-dialog-title">${escapeHtml(title)}</h2></div><button class="titlebar-icon clickable" type="button" data-dialog-close aria-label="${escapeHtml(closeLabel)}" data-workbench-tooltip="${escapeHtml(closeLabel)}">${icon("close")}</button></div><div class="modal-dialog-content scroll-surface">${bodyHtml}</div>`;
+  const close = dialog.querySelector("[data-dialog-close]");
+  close.addEventListener("click", () => dialog.close());
+  if (actions.length) {
+    const buttons = document.createElement("div");
+    buttons.className = "modal-dialog-actions";
+    for (const action of actions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `button ${action.variant} clickable`;
+      if (action.attribute) button.setAttribute(action.attribute, "");
+      button.innerHTML = `${action.iconMarkup || ""}<span class="button-label">${escapeHtml(action.label)}</span>`;
+      button.addEventListener("click", async () => {
+        if (!dialog.open) return;
+        dialog.close();
+        await action.onConfirm?.();
+      });
+      buttons.append(button);
+    }
+    dialog.querySelector(".modal-dialog-content").append(buttons);
+  }
+  dialog.addEventListener("close", () => {
+    dialog.remove();
+    const target = focusTarget();
+    if (target?.isConnected && !target.disabled) target.focus({ preventScroll: true });
+  }, { once: true });
+  dialog.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    dialog.close();
   });
-  elements["assessment-panel"].append(dialog);
+  dialog.addEventListener("click", event => {
+    if (!dialog.open || event.target !== dialog) return;
+    const rect = dialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+  });
+  document.body.append(dialog);
   dialog.showModal();
-  dialog.querySelector("[data-rule-reset-cancel]:not(.titlebar-icon)").focus();
+  (dialog.querySelector(".modal-dialog-actions button") || close).focus();
+  return dialog;
+}
+
+function openOriginalRuleResetDialog(candidate, trigger) {
+  const dialog = openWorkbenchDialog({
+    name: "rule-reset",
+    title: "Reset Rule to Original?",
+    iconMarkup: icon("debug-restart"),
+    bodyHtml: `<p>Restore the original proposed wording for <strong class="rule-reference">${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong>?</p><p>This will replace the saved wording for this proposal.</p>`,
+    trigger,
+    warning: true,
+    actions: [
+      { label: "Cancel", variant: "primary", attribute: "data-rule-reset-cancel" },
+      {
+        label: "Reset to Original", variant: "review", attribute: "data-rule-reset-confirm", iconMarkup: icon("debug-restart"),
+        onConfirm: async () => {
+          const current = getActiveCandidate();
+          if (current?.key === candidate.key) await resetOriginalRule(current);
+        }
+      }
+    ]
+  });
+  if (dialog) {
+    dialog.dataset.candidateKey = candidate.key;
+    dialog.querySelector("[data-dialog-close]").setAttribute("data-rule-reset-cancel", "");
+  }
+}
+
+function openScoringLegendDialog(trigger) {
+  const key = trigger.closest("[data-assessment-candidate]")?.dataset.assessmentCandidate;
+  const candidate = state.assessedCandidates.find(item => item.key === key);
+  if (!candidate) return;
+  const decision = getDecision(candidate);
+  const evidence = getAssessment(candidate, decision) || getBaselineAssessment(candidate, decision);
+  const factors = evidence.selectionFactors || evidence.factors;
+  const priority = calculateImpact(factors);
+  const contributions = FACTORS.map(([name, label, , kind, weight]) => ({ label, kind, rating: Number(factors[name]), weight, points: weight * Number(factors[name]) }));
+  const valuePoints = contributions.filter(item => item.kind === "value").reduce((total, item) => total + item.points, 0);
+  const riskPoints = -contributions.filter(item => item.kind === "penalty").reduce((total, item) => total + item.points, 0);
+  const total = valuePoints - riskPoints;
+  const summary = total < 0
+    ? `${valuePoints} value points - ${riskPoints} risk points = ${total}. The Priority Score has a minimum of 0.`
+    : `${valuePoints} value points - ${riskPoints} risk points = ${priority} Priority Score`;
+  const dialog = openWorkbenchDialog({
+    name: "scoring-legend",
+    title: "Assessment Details Legend",
+    iconMarkup: icon("json"),
+    trigger,
+    closeLabel: "Close assessment details legend",
+    bodyHtml: `<div class="assessment-legend-sections">
+      <section class="assessment-legend-section">
+        <strong>Priority Score:</strong>
+        <p>A weighted score from 0 to 100. Higher means a stronger candidate to consider, not an instruction to add the rule.</p>
+        <div class="assessment-legend-key"><strong>Assessed Priority:</strong>
+          <span><i class="legend-swatch priority-low" aria-hidden="true"></i>Low payoff</span>
+          <span><i class="legend-swatch priority-potential" aria-hidden="true"></i>Potential value</span>
+          <span><i class="legend-swatch priority-promising" aria-hidden="true"></i>Promising</span>
+          <span><i class="legend-swatch priority-strong" aria-hidden="true"></i>Strong</span>
+        </div>
+      </section>
+      <section class="assessment-legend-section"><strong>Token Cost:</strong><p>Estimated space your selected change adds (+) or frees (-).</p></section>
+      <section class="assessment-legend-section"><strong>Token Headroom:</strong><p>Room left after your planned changes and the action selected here. Below zero means over budget.</p></section>
+      <hr class="assessment-legend-divider">
+      <section class="assessment-legend-section"><strong>Rule Value:</strong>
+        <p>How much useful guidance this rule could add. Higher ratings mean a stronger reason to include it.</p>
+        <div class="assessment-legend-key"><strong>Assessed Value:</strong>
+          <span><i class="legend-swatch value-low" aria-hidden="true"></i>Low</span>
+          <span><i class="legend-swatch value-moderate" aria-hidden="true"></i>Moderate</span>
+          <span><i class="legend-swatch value-high" aria-hidden="true"></i>Strong</span>
+        </div>
+      </section>
+      <section class="assessment-legend-section"><strong>Review Risk:</strong>
+        <p>What could reduce the rule's value: unhelpful review comments or guidance that is already covered. Higher ratings mean more concern.</p>
+        <div class="assessment-legend-key"><strong>Assessed Risk:</strong>
+          <span><i class="legend-swatch risk-low" aria-hidden="true"></i>Low</span>
+          <span><i class="legend-swatch risk-moderate" aria-hidden="true"></i>Moderate</span>
+          <span><i class="legend-swatch risk-high" aria-hidden="true"></i>High</span>
+        </div>
+      </section>
+    </div>
+    <section class="assessment-legend-breakdown evidence-disclosure">
+      <div class="evidence-disclosure-heading"><strong>Why does this rule have a priority score of ${priority}?</strong>
+        <button class="titlebar-icon clickable evidence-disclosure-toggle" type="button" data-assessment-score-toggle aria-controls="assessment-score-breakdown" aria-expanded="false" aria-label="Expand score breakdown" data-workbench-tooltip="Expand score breakdown">${icon("chevron-down")}</button>
+      </div>
+      <div id="assessment-score-breakdown" class="evidence-disclosure-body" hidden>
+        <p>A rating multiplied by its weight gives the points. Value adds points; risk and existing coverage subtract them.</p>
+        <table class="assessment-legend-table"><thead><tr><th scope="col">Factor</th><th scope="col">Rating</th><th scope="col">Weight</th><th scope="col">Points</th></tr></thead>
+          <tbody>${contributions.map(item => `<tr><th scope="row">${escapeHtml(item.label)}</th><td>${item.rating}</td><td>${Math.abs(item.weight)}</td><td>${item.points > 0 ? "+" : ""}${item.points}</td></tr>`).join("")}</tbody>
+        </table>
+        <p class="assessment-legend-total">${summary}</p>
+      </div>
+    </section>`
+  });
+  if (!dialog) return;
+  dialog.querySelector("[data-dialog-close]").setAttribute("data-scoring-legend-close", "");
+  const toggle = dialog.querySelector("[data-assessment-score-toggle]");
+  const breakdown = dialog.querySelector("#assessment-score-breakdown");
+  toggle.addEventListener("click", () => {
+    breakdown.hidden = !breakdown.hidden;
+    const expanded = !breakdown.hidden;
+    const action = `${expanded ? "Collapse" : "Expand"} score breakdown`;
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.setAttribute("aria-label", action);
+    setWorkbenchTooltip(toggle, action);
+    toggle.innerHTML = icon(expanded ? "chevron-up" : "chevron-down");
+  });
 }
 
 function saveDecision(candidate, decision) {
@@ -2176,14 +2164,12 @@ function renderDecisionOutputs() {
 }
 
 function calculateImpact(factors) {
-  const score = 6 * factors.severity
-    + 3 * factors.frequency
-    + 3 * factors.breadth
-    + 4 * factors.hostedDetectability
-    + 4 * factors.evidenceStrength
-    - 5 * factors.falsePositiveRisk
-    - 3 * factors.redundancy;
+  const score = FACTORS.reduce((total, [name, , , , weight]) => total + weight * factors[name], 0);
   return Math.max(0, score);
+}
+
+function getPriorityClass(score) {
+  return score <= 25 ? "priority-low" : score <= 49 ? "priority-potential" : score <= 75 ? "priority-promising" : "priority-strong";
 }
 
 function estimateGuardedTokens(text) {
@@ -3163,6 +3149,11 @@ function handleApplicabilityOverrideInput(event) {
 }
 
 async function handleApplicabilityOverrideClick(event) {
+  const scoringLegendTrigger = event.target.closest("[data-scoring-legend-open]");
+  if (scoringLegendTrigger) {
+    openScoringLegendDialog(scoringLegendTrigger);
+    return;
+  }
   const overrideJump = event.target.closest("[data-override-jump]");
   if (overrideJump) {
     elements["assessment-results-detail"].querySelector(`.maintainer-override[data-override-key="${CSS.escape(overrideJump.dataset.overrideJump)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -3355,6 +3346,7 @@ function renderAssessmentExplanation(candidate, assessment, proposedText = getDe
   const evidence = assessment || getBaselineAssessment(candidate, getDecision(candidate));
   const label = hasMaintainerEditedRuleText(candidate, proposedText) ? "Original assessment rationale" : "Assessment rationale";
   return renderInformationPanel(`<p><strong>${label}:</strong> ${escapeHtml(evidence.rationale)}</p>`, {
+    iconMarkup: fluentIcon("info-20-regular"),
     className: "assessment-explanation",
     dataAttributes: { "assessment-explanation": "" }
   });
@@ -3375,7 +3367,7 @@ function syncProposedRuleAssessment(candidate, assessment, proposedText) {
 
 function renderContributingRules(candidate) {
   return `
-    ${renderInformationPanel("<p>These are the source requirements used to form the original Hosted proposal. Expand a rule to inspect its original wording and contribution. These references are evidence, not additional Hosted rules selected for the Promotion Plan.</p>", { className: "section-guidance" })}
+    ${renderInformationPanel("<p>These are the source requirements used to form the original Hosted proposal. Expand a rule to inspect its original wording and contribution. These references are evidence, not additional Hosted rules selected for the Promotion Plan.</p>", { iconMarkup: fluentIcon("info-20-regular"), className: "section-guidance" })}
     <div class="contributing-rules">
       ${candidate.members.map((member, index) => {
         const mappedRuleId = member.catalogMapping.hostedRuleId;
@@ -3549,7 +3541,7 @@ function renderAssistanceSendIcon(running) {
     : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4m-5 5 5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 }
 
-function renderAssistanceContextNote(message, iconName = "tools") {
+function renderAssistanceContextNote(message, iconName) {
   return `<p class="assist-chat-scope">${icon(iconName)}<span>${escapeHtml(message)}</span></p>`;
 }
 
@@ -3578,7 +3570,7 @@ function renderRuleAssistance(candidate) {
     <div class="assist-chat-user-message">${escapeHtml(turn.question)}</div>
     ${turn.answer ? `<div class="assist-chat-ai-message">
       <div class="assist-chat-message-author">Completed in ${escapeHtml(turn.duration)}</div>
-      ${renderAssistanceContextNote("Assessment, sources, and catalog snapshot; excludes other drafts and Plan changes.")}
+      ${renderAssistanceContextNote("Assessment, sources, and catalog snapshot; excludes other drafts and Plan changes.", "tools")}
       <div class="assist-chat-message-text">${escapeHtml(turn.answer.message)}</div>
       ${turn.answer.suggestedWording ? `<section class="assist-chat-inline-wording">
         <p>I suggest updating the rule to:</p>
@@ -3600,7 +3592,7 @@ function renderRuleAssistance(candidate) {
       <button class="titlebar-icon clickable" type="button" data-assist-sidebar-close aria-label="Close AI assistance" data-workbench-tooltip="Close AI assistance">${icon("close")}</button>
     </div></div>
     <div id="rule-assistance-body" data-assist-body>
-    ${renderInformationPanel(`<p>${profile?.model ? "This response is AI-generated. Please review it for accuracy and relevance before use." : "AI assistance is unavailable. Restart the Workbench with the current source."}</p>`, { className: "section-guidance" })}
+    ${renderInformationPanel(`<p>${profile?.model ? "This response is AI-generated. Please review it for accuracy and relevance before use." : "AI assistance is unavailable. Restart the Workbench with the current source."}</p>`, { iconMarkup: fluentIcon("info-20-regular"), className: "section-guidance" })}
     <div class="assist-chat-reply-window">
       <div class="assist-chat-conversation-toolbar">
         <span class="assist-chat-identity">${icon("copilot")}<span>Copilot ·</span><em class="assist-chat-context-label">${escapeHtml(getEffectiveHostedRuleId(candidate))}</em></span>
@@ -3736,44 +3728,34 @@ function formatElapsedTime(milliseconds) {
 
 function openNewRuleAssistanceDialog(chat, trigger, { title, message }) {
   if (chat.active || !chat.turns.length || document.querySelector("[data-assist-new-chat-dialog]")) return;
-  const dialog = document.createElement("dialog");
-  dialog.className = "modal-dialog modal-dialog-warning";
-  dialog.setAttribute("data-assist-new-chat-dialog", "");
-  dialog.setAttribute("aria-labelledby", "assist-new-chat-title");
-  dialog.setAttribute("aria-describedby", "assist-new-chat-description");
-  dialog.innerHTML = `<div class="modal-dialog-heading"><div class="modal-dialog-title">${icon("warning")}<h2 id="assist-new-chat-title">${escapeHtml(title)}</h2></div><button class="titlebar-icon clickable" type="button" data-assist-new-chat-cancel aria-label="Close confirmation" data-workbench-tooltip="Close">${icon("close")}</button></div><div class="modal-dialog-content"><p id="assist-new-chat-description">${escapeHtml(message)}</p><p>This action cannot be undone.</p><div class="modal-dialog-actions"><button class="button primary clickable" type="button" data-assist-new-chat-cancel>Cancel</button><button class="button destructive clickable" type="button" data-assist-new-chat-confirm>${icon("trash")}<span>Clear Chat</span></button></div></div>`;
-  dialog.addEventListener("close", () => {
-    dialog.remove();
-    const focusTarget = trigger.isConnected && !trigger.disabled ? trigger
+  const dialog = openWorkbenchDialog({
+    name: "assist-new-chat",
+    title,
+    iconMarkup: icon("warning"),
+    bodyHtml: `<p id="assist-new-chat-description">${escapeHtml(message)}</p><p>This action cannot be undone.</p>`,
+    trigger,
+    warning: true,
+    focusTarget: () => trigger.isConnected && !trigger.disabled ? trigger
       : !elements["rule-assistance-panel"].hidden ? elements["assist-sidebar-content"].querySelector(".assist-goal")
-        : elements["assist-panel-toggle"];
-    focusTarget?.focus({ preventScroll: true });
-  }, { once: true });
-  dialog.addEventListener("click", (event) => {
-    if (!dialog.open) return;
-    if (event.target.closest("[data-assist-new-chat-cancel]")) dialog.close();
-    else if (event.target.closest("[data-assist-new-chat-confirm]")) {
-      if (ruleAssistanceChats.get(chat.contextKey) === chat && !chat.active) {
-        chat.turns = [];
-        chat.followOutput = true;
-        chat.scrollTop = 0;
-        if (ruleAssistance === chat) syncRuleAssistance();
+        : elements["assist-panel-toggle"],
+    actions: [
+      { label: "Cancel", variant: "primary", attribute: "data-assist-new-chat-cancel" },
+      {
+        label: "Clear Chat", variant: "destructive", attribute: "data-assist-new-chat-confirm", iconMarkup: icon("trash"),
+        onConfirm: () => {
+          if (ruleAssistanceChats.get(chat.contextKey) !== chat || chat.active) return;
+          chat.turns = [];
+          chat.followOutput = true;
+          chat.scrollTop = 0;
+          if (ruleAssistance === chat) syncRuleAssistance();
+        }
       }
-      dialog.close();
-    } else if (event.target === dialog) {
-      const bounds = dialog.getBoundingClientRect();
-      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
-    }
+    ]
   });
-  dialog.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    dialog.close();
-  });
-  document.body.append(dialog);
-  dialog.showModal();
-  dialog.querySelector(".button[data-assist-new-chat-cancel]").focus();
+  if (dialog) {
+    dialog.setAttribute("aria-describedby", "assist-new-chat-description");
+    dialog.querySelector("[data-dialog-close]").setAttribute("data-assist-new-chat-cancel", "");
+  }
 }
 
 async function handleRuleAssistanceClick(event) {
@@ -3887,7 +3869,7 @@ function renderAssessment() {
 
       <div class="section-block rule-actions">
         <span class="section-label">Rule Actions: <strong class="rule-reference">${escapeHtml(displayId)}</strong></span>
-        ${renderInformationPanel(`<p>${unchangedMappedRule ? "Current and proposed Hosted rule text are identical, so Update is unavailable." : "Choose one action. Hosted catalog status determines which actions are available."}</p>`, { className: "rule-actions-guidance section-guidance" })}
+        ${renderInformationPanel(`<p>${unchangedMappedRule ? "Current and proposed Hosted rule text are identical, so Update is unavailable." : "Choose one action. Hosted catalog status determines which actions are available."}</p>`, { iconMarkup: fluentIcon("info-20-regular"), className: "rule-actions-guidance section-guidance" })}
         <div class="rule-actions-content">
           <span class="control-subtitle">Rule Action:</span>
           <div class="control-group action-plan-group">
@@ -3945,28 +3927,18 @@ function renderAssessmentEvidence(candidate, assessment, decision) {
   const evidence = assessment || getBaselineAssessment(candidate, decision);
   const factors = evidence.selectionFactors || evidence.factors;
   const cost = getDecisionTokenDelta(candidate, decision);
+  const priority = calculateImpact(factors);
   return `
-    <div data-assessment-origin="${assessment && !hasMaintainerEditedRuleText(candidate) ? "current" : "original"}">
+    <div data-assessment-candidate="${escapeHtml(candidate.key)}" data-assessment-origin="${assessment && !hasMaintainerEditedRuleText(candidate) ? "current" : "original"}">
     <div class="assessment-details-heading">
-      <div class="assessment-details-title-row"><strong class="section-label">Assessment Details:</strong><button class="titlebar-icon clickable scoring-legend-trigger" type="button" data-scoring-legend-open aria-label="Show scoring legend" data-workbench-tooltip="Show scoring legend">${icon("question")}</button></div>
+      <div class="assessment-details-title-row"><strong class="section-label">Assessment Details:</strong><button class="titlebar-icon clickable scoring-legend-trigger" type="button" data-scoring-legend-open aria-label="Show assessment details legend" data-workbench-tooltip="Show assessment details legend">${icon("question")}</button></div>
     </div>
-    ${renderInformationPanel(`<p ${assessment && !hasMaintainerEditedRuleText(candidate) ? "" : "data-assessment-history"}><strong>Assessment:</strong> ${assessment && !hasMaintainerEditedRuleText(candidate) ? "Priority and factor scores are AI-adjudicated evidence. Maintainers can review these values but cannot edit them." : `Priority and factor scores describe the original rebuild proposal, whose recommendation was ${escapeHtml(formatRecommendation(evidence.recommendation))}; they do not validate the maintainer-edited wording.`} Token Cost and Token Headroom reflect the current draft.</p>`, { className: "assessment-context section-guidance" })}
+    ${renderInformationPanel(`<p ${assessment && !hasMaintainerEditedRuleText(candidate) ? "" : "data-assessment-history"}><strong>Assessment:</strong> ${assessment && !hasMaintainerEditedRuleText(candidate) ? "Priority and factor scores are AI-adjudicated evidence. Maintainers can review these values but cannot edit them." : `Priority and factor scores describe the original rebuild proposal, whose recommendation was ${escapeHtml(formatRecommendation(evidence.recommendation))}; they do not validate the maintainer-edited wording.`} Token Cost and Token Headroom reflect the current draft.</p>`, { iconMarkup: fluentIcon("info-20-regular"), className: "assessment-context section-guidance" })}
     <div class="score-strip">
-      <div class="score-item impact"><span class="control-subtitle">Priority Score:</span><strong>${calculateImpact(factors)}</strong></div>
+      <div class="score-item impact"><span class="control-subtitle">Priority Score:</span><strong class="${getPriorityClass(priority)}">${priority}</strong></div>
       <div class="score-item cost"><span class="control-subtitle">Token Cost:</span><strong>${cost === 0 ? "0" : formatSignedNumber(cost)}</strong></div>
       <div class="score-item efficiency"><span class="control-subtitle">Token Headroom:</span><strong>${formatNumber(getAssessmentProjectedHeadroom(candidate, decision.action, decision))}</strong></div>
     </div>
-    <dialog class="modal-dialog" data-scoring-legend-dialog aria-labelledby="scoring-legend-dialog-title">
-      <div class="modal-dialog-heading"><div class="modal-dialog-title">${icon("json")}<h2 id="scoring-legend-dialog-title">Scoring Legend</h2></div><button class="titlebar-icon clickable" type="button" data-scoring-legend-close aria-label="Close scoring legend" data-workbench-tooltip="Close scoring legend">${icon("close")}</button></div>
-      <div class="modal-dialog-content scroll-surface">
-        <div class="scoring-legend-items">
-          <div class="scoring-legend-item"><span class="control-subtitle">Score Scale:</span><span>Scores run from 0 (none) through 5 (very high); a score of 4 means high.</span></div>
-          <div class="scoring-legend-item"><span class="control-subtitle"><i class="legend-swatch value"></i>Rule Value:</span><span>Higher scores strengthen the case for adding or updating Hosted review coverage.</span></div>
-          <div class="scoring-legend-item"><span class="control-subtitle"><i class="legend-swatch risk"></i>Review Risk:</span><span>Higher scores strengthen the reason to avoid a change and reduce the candidate priority.</span></div>
-          <div class="scoring-legend-item"><span class="control-subtitle">Existing Coverage:</span><span>0 means no current Hosted coverage; 5 means active Hosted rules already cover the behavior completely.</span></div>
-        </div>
-      </div>
-    </dialog>
     <div class="factor-groups">
       <section class="factor-group value">
         <div class="factor-group-heading"><strong>Rule Value:</strong><span class="ui-badge status-capsule direction-badge positive">Adds to Impact</span></div>
@@ -3987,8 +3959,9 @@ function renderAssessmentEvidence(candidate, assessment, decision) {
 
 function factorReadout(label, description, kind, value) {
   const riskClass = kind === "penalty" ? ` risk-${value <= 2 ? "low" : value === 3 ? "moderate" : "high"}` : "";
+  const valueClass = kind === "value" ? ` value-${value <= 2 ? "low" : value === 3 ? "moderate" : "high"}` : "";
   return `
-    <div class="factor-line ${kind}${riskClass}">
+    <div class="factor-line ${kind}${riskClass}${valueClass}">
       <span class="factor-copy"><strong class="control-subtitle">${escapeHtml(label)}:</strong><small>${escapeHtml(description)}</small></span>
       <progress class="factor-meter" max="5" value="${Number(value)}">${Number(value)} of 5</progress>
       <span class="factor-value" aria-label="${escapeHtml(label)} score">${Number(value)}</span>
@@ -4156,16 +4129,6 @@ async function handleAssessmentClick(event) {
     if (candidate && !resetTrigger.disabled) openOriginalRuleResetDialog(candidate, resetTrigger);
     return;
   }
-  const resetCancel = event.target.closest("[data-rule-reset-cancel]");
-  if (resetCancel) { resetCancel.closest("dialog")?.close(); return; }
-  if (event.target.closest("[data-rule-reset-confirm]")) {
-    const dialog = event.target.closest("dialog");
-    const candidate = getActiveCandidate();
-    const key = dialog?.dataset.candidateKey;
-    dialog?.close();
-    if (candidate?.key === key) await resetOriginalRule(candidate);
-    return;
-  }
   if (event.target.closest("[data-rule-assistance]")) {
     await handleRuleAssistanceClick(event);
     return;
@@ -4176,16 +4139,7 @@ async function handleAssessmentClick(event) {
   }
   const scoringLegendTrigger = event.target.closest("[data-scoring-legend-open]");
   if (scoringLegendTrigger) {
-    const dialog = elements["assessment-panel"].querySelector("[data-scoring-legend-dialog]");
-    if (!dialog) return;
-    dialog.addEventListener("close", () => scoringLegendTrigger.focus(), { once: true });
-    dialog.showModal();
-    dialog.querySelector("[data-scoring-legend-close]")?.focus();
-    return;
-  }
-  const scoringLegendClose = event.target.closest("[data-scoring-legend-close]");
-  if (scoringLegendClose) {
-    scoringLegendClose.closest("dialog")?.close();
+    openScoringLegendDialog(scoringLegendTrigger);
     return;
   }
   if (event.target.closest("[data-proposed-text-save]")) {
@@ -4305,7 +4259,7 @@ function renderPlan() {
     const readiness = getPlanReadiness(candidate);
     const displayId = getEffectiveHostedRuleId(candidate);
     const readinessLabel = readiness.attention?.actionLabel || readiness.label;
-    const readinessIcon = readiness.attention?.actionIcon || "edit";
+    const readinessIcon = readiness.attention?.actionIcon;
     const detailLabel = `${readiness.attention?.reason === "pending" ? "Checking rule relationships" : readinessLabel} for ${displayId}`;
     const detailTooltip = `Open candidate: ${readiness.attention?.reason === "pending" ? "Checking rule relationships" : readiness.label}`;
     const undoLabel = "Undo this candidate";
@@ -4378,10 +4332,10 @@ function getPlanReadiness(candidate) {
   const actionRequired = !isActionableDecision(decision);
   const rationaleRequired = isActionableDecision(decision) && !decision.rationale.trim();
   const resourceTypeRequired = canEditImplementationModels(candidate, decision.action) && decision.implementationModels.length === 0;
-  const attention = actionRequired ? { reason: "action", label: "Needs action", target: ".action-options input:checked, .action-options input" }
-    : resourceTypeRequired ? { reason: "resource-type", label: "Needs resource type", target: "[data-implementation-model]" }
-    : rationaleRequired ? { reason: "rationale", label: "Needs rationale", target: '[data-decision-field="rationale"]' }
-    : !assessment ? { reason: "assessment", label: "Needs AI assessment", target: "[data-assessment-evidence]" } : null;
+  const attention = actionRequired ? { reason: "action", label: "Needs action", actionIcon: "edit", target: ".action-options input:checked, .action-options input" }
+    : resourceTypeRequired ? { reason: "resource-type", label: "Needs resource type", actionIcon: "edit", target: "[data-implementation-model]" }
+    : rationaleRequired ? { reason: "rationale", label: "Needs rationale", actionIcon: "edit", target: '[data-decision-field="rationale"]' }
+    : !assessment ? { reason: "assessment", label: "Needs AI assessment", actionIcon: "edit", target: "[data-assessment-evidence]" } : null;
   return {
     actionRequired,
     rationaleRequired,
@@ -6067,7 +6021,7 @@ function persistSession(session = state.session, beforeWrite) {
       transaction.onabort = () => reject(transaction.error || new Error("The draft save was aborted"));
       transaction.objectStore("sessions").put(snapshot);
     });
-    setSaveIndicator(`Saved ${formatTime(snapshot.updatedAt)}`);
+    setSaveIndicator(`Saved ${formatTime(snapshot.updatedAt)}`, { icon: "check-compact" });
   };
   persistencePromise = persistencePromise.then(writeSnapshot, writeSnapshot);
   persistencePromise.catch((error) => {
@@ -6077,7 +6031,8 @@ function persistSession(session = state.session, beforeWrite) {
   return persistencePromise;
 }
 
-function setSaveIndicator(text, { kind = "success", icon = "check-compact", tooltip = "Draft Autosave State" } = {}) {
+function setSaveIndicator(text, { kind = "success", icon, tooltip = "Draft Autosave State" } = {}) {
+  if (typeof icon !== "string" || !/^[a-z0-9-]+$/.test(icon)) throw new Error("Save indicator requires an explicit icon");
   workbenchStatusBar.update("save", { text, kind, icon, tooltip });
 }
 

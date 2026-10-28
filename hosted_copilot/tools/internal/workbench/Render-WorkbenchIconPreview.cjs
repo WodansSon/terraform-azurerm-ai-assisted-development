@@ -1,6 +1,6 @@
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const puppeteer = require("puppeteer");
+const puppeteer = require(require.resolve("puppeteer", { paths: [path.resolve(__dirname, "../../npm")] }));
 
 async function run() {
   const [sourcePath, outputPath, widthValue, heightValue] = process.argv.slice(2);
@@ -16,8 +16,12 @@ async function run() {
   });
   try {
     const page = await browser.newPage();
+    await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "no-preference" }]);
     await page.setViewport({ width, height, deviceScaleFactor: 1 });
     await page.goto(pathToFileURL(path.resolve(sourcePath)).href, { waitUntil: "load" });
+    if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      throw new Error("Icon previews require normal motion");
+    }
     await page.screenshot({
       path: path.resolve(outputPath),
       type: "png",

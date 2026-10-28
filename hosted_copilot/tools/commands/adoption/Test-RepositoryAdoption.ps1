@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$HostedRoot = (Join-Path $PSScriptRoot '../../..'),
-    [string]$DescriptorPath = 'adoption.json',
+    [string]$DescriptorPath = 'tools/config/adoption.json',
     [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text'
 )
 
@@ -75,18 +75,18 @@ if ($null -ne $configuration) {
             $path = Resolve-HostedAdoptionPath -HostedRoot $configuration.hostedRoot -RelativePath $area.path
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Missing guidance file' }
         }
-        Add-AdoptionFinding token-policy passed 'Every allocation, catalog surface, guidance file and combined membership resolves; actual capacity enforcement is performed by Get-GuidanceCapacity.' -RelatedFiles @('adoption.json', 'tools/internal/workbench/Get-GuidanceCapacity.ps1') -Verification @('tools/tests/Test-RepositoryAdoption.ps1')
+        Add-AdoptionFinding token-policy passed 'Every allocation, catalog surface, guidance file and combined membership resolves; actual capacity enforcement is performed by Get-GuidanceCapacity.' -RelatedFiles @($DescriptorPath, 'tools/internal/workbench/Get-GuidanceCapacity.ps1') -Verification @('tools/tests/Test-RepositoryAdoption.ps1')
         $capacityOutput = @(& pwsh -NoProfile -File (Join-Path $PSScriptRoot '../../internal/workbench/Get-GuidanceCapacity.ps1') -HostedRoot $configuration.hostedRoot -DescriptorPath $DescriptorPath -OutputFormat Json 2>$null)
         $capacity = ($capacityOutput | Out-String) | ConvertFrom-Json -Depth 50
         Assert-HostedGuidanceCapacity -Capacity $capacity -TokenPolicy $policy
         if ($capacity.status -ceq 'passed') {
-            Add-AdoptionFinding capacity passed 'Current guidance satisfies every configured area, combined view and overall ceiling.' -RelatedFiles @('adoption.json', 'tools/internal/workbench/Get-GuidanceCapacity.ps1')
+            Add-AdoptionFinding capacity passed 'Current guidance satisfies every configured area, combined view and overall ceiling.' -RelatedFiles @($DescriptorPath, 'tools/internal/workbench/Get-GuidanceCapacity.ps1')
         }
         else {
-            Add-AdoptionFinding capacity requires-adaptation 'Current guidance exceeds one or more declared budgets; review the content and intended allocations without bypassing enforcement.' -RelatedFiles @('adoption.json', 'tools/internal/workbench/Get-GuidanceCapacity.ps1') -Verification @('tools/internal/workbench/Get-GuidanceCapacity.ps1')
+            Add-AdoptionFinding capacity requires-adaptation 'Current guidance exceeds one or more declared budgets; review the content and intended allocations without bypassing enforcement.' -RelatedFiles @($DescriptorPath, 'tools/internal/workbench/Get-GuidanceCapacity.ps1') -Verification @('tools/internal/workbench/Get-GuidanceCapacity.ps1')
         }
     }
-    catch { Add-AdoptionFinding token-policy invalid 'Token policy allocations, paths, catalog references or combination membership are invalid.' -RelatedFiles @('adoption.json', 'contracts/adoption/repository-adoption.schema.json') }
+    catch { Add-AdoptionFinding token-policy invalid 'Token policy allocations, paths, catalog references or combination membership are invalid.' -RelatedFiles @($DescriptorPath, 'contracts/adoption/repository-adoption.schema.json') }
 
     $collectorPath = 'tools/internal/collection/New-SourceInventory.ps1'
     $collectorAst = $null

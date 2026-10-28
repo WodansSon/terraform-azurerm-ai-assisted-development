@@ -53,6 +53,11 @@ try {
         Write-ValidationSectionHeader -Title 'Hosted command help'
     }
 
+    Write-TestProgress -Name 'tools-root-layout' -Detail 'Checking that only public entry points and the README occupy the tools root'
+    $rootFiles = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '..') -File | ForEach-Object Name | Sort-Object)
+    $expectedRootFiles = @('Install-HostedRules.ps1', 'Invoke-HostedReview.ps1', 'README.md', 'Start-RuleWorkbench.ps1', 'Test-HostedRules.ps1') | Sort-Object
+    Add-TestResult -Name 'tools-root-layout' -Passed (@(Compare-Object $expectedRootFiles $rootFiles).Count -eq 0) -Detail 'The tools root contains exactly the four public commands and README; support files belong in their owning folders.'
+
     Write-TestProgress -Name 'native-help-content' -Detail 'Reading standard PowerShell help and parameter-set metadata'
     $nativeHelp = Get-Help -Name $fixturePath -Full
     $fixtureCommand = Get-Command -Name $fixturePath -CommandType ExternalScript
@@ -211,7 +216,7 @@ try {
     Add-TestResult -Name 'workbench-model-profiles' -Passed $profilesValid -Detail 'All normal and saved entry points resolve their role through the shared loader without literal model or effort defaults.'
 
     Write-TestProgress -Name 'llm-configuration' -Detail 'Checking central configuration, independent overrides, and fail-closed invalid inputs'
-    $configurationPath = Join-Path $PSScriptRoot '../llm.json'
+    $configurationPath = Join-Path $PSScriptRoot '../config/llm.json'
     $configuration = Get-Content -LiteralPath $configurationPath -Raw | ConvertFrom-Json -DateKind String
     $normalProfile = Resolve-HostedLlmProfile -Profile normal
     $savedProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation

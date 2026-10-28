@@ -10,6 +10,9 @@ param(
 
     [switch]$PlanOnly,
 
+    [ValidateSet('All', 'Interactive', 'Hosted', 'Repository')]
+    [string]$ValidationTarget = 'All',
+
     [switch]$InteractiveChangelogNotRequired,
 
     [string]$InteractiveChangelogReason,
@@ -335,6 +338,9 @@ $classifiedOwnership = @($classification.ToArray() | Select-Object -ExpandProper
 $runInteractive = ($classifiedOwnership -contains 'interactive') -or ($classifiedOwnership -contains 'shared')
 $runHosted = ($classifiedOwnership -contains 'hosted') -or ($classifiedOwnership -contains 'shared')
 $runRepositoryChecks = ($classifiedOwnership -contains 'repository-maintenance') -or ($classifiedOwnership -contains 'shared')
+$runInteractive = $runInteractive -and $ValidationTarget -in @('All', 'Interactive')
+$runHosted = $runHosted -and $ValidationTarget -in @('All', 'Hosted')
+$runRepositoryChecks = $runRepositoryChecks -and $ValidationTarget -in @('All', 'Repository')
 $requiredValidators = @()
 if ($runInteractive) { $requiredValidators += 'Interactive Toolkit' }
 if ($runHosted) { $requiredValidators += 'Hosted Toolkit' }
@@ -430,6 +436,7 @@ $result = [ordered]@{
     purpose = 'repository-maintenance'
     scope = $resolution.scope
     planOnly = [bool]$PlanOnly
+    validationTarget = $ValidationTarget
     changedPathCount = $resolution.paths.Count
     classifications = @($classification.ToArray())
     requiredValidators = $requiredValidators

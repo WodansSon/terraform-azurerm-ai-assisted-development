@@ -21,7 +21,7 @@ function New-WorkbenchIconPreview {
         [string[]]$SymbolMarkup
     )
 
-    $rendererPath = Join-Path $PSScriptRoot '../../Render-WorkbenchIconPreview.cjs'
+    $rendererPath = Join-Path $PSScriptRoot 'Render-WorkbenchIconPreview.cjs'
     if (-not (Test-Path -LiteralPath $rendererPath -PathType Leaf)) {
         throw "Workbench icon preview renderer was not found: $rendererPath"
     }

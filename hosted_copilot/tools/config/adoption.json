@@ -1,5 +1,5 @@
 {
-  "$schema": "contracts/adoption/repository-adoption.schema.json",
+  "$schema": "../../contracts/adoption/repository-adoption.schema.json",
   "$comment": "Paths declared in this file are relative to the Hosted Toolkit root (hosted_copilot/), not the repository root. Referenced source-definition documents retain their own path rules.",
   "schemaVersion": 1,
   "reviewUpstream": "hashicorp/terraform-provider-azurerm",

@@ -3,9 +3,9 @@ const os = require("node:os");
 const path = require("node:path");
 
 const workbenchRegressionRoot = path.resolve(__dirname, "..");
-const toolsRoot = path.resolve(workbenchRegressionRoot, "../../tools");
-const { chromium } = require(require.resolve("@playwright/test", { paths: [toolsRoot] }));
-const puppeteer = require(require.resolve("puppeteer", { paths: [toolsRoot] }));
+const npmRoot = path.resolve(workbenchRegressionRoot, "../../tools/npm");
+const { chromium } = require(require.resolve("@playwright/test", { paths: [npmRoot] }));
+const puppeteer = require(require.resolve("puppeteer", { paths: [npmRoot] }));
 
 function formatProgressLine(status, name, detail) {
   return `${`[${status.toUpperCase()}]`.padEnd(10)} ${name.padEnd(30)} : ${detail}\n`;
@@ -221,9 +221,12 @@ async function run() {
       const context = journey.isolatedBrowser
         ? null
         : await (timingBrowser || await getBrowser()).newContext(headed && journey.physicalViewport
-          ? { viewport: null }
-          : { viewport: journey.viewport || { width: 768, height: 900 } });
+          ? { viewport: null, reducedMotion: "no-preference" }
+          : { viewport: journey.viewport || { width: 768, height: 900 }, reducedMotion: "no-preference" });
       const page = context ? await context.newPage() : null;
+      if (page && await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+        throw new Error("Workbench journeys require normal motion");
+      }
       const assert = (condition, message) => {
         assertionCount += 1;
         if (!condition) throw new Error(`${journey.name}: ${message}`);
@@ -284,9 +287,12 @@ async function run() {
         playbackError = new AggregateError([playbackError, shutdownError], "Playback failed and fallback shutdown also failed");
       }
     } else if (shutdownRequested && !shutdownVerified) {
-      const context = await (await getBrowser()).newContext({ viewport: { width: 768, height: 900 } });
+      const context = await (await getBrowser()).newContext({ viewport: { width: 768, height: 900 }, reducedMotion: "no-preference" });
       const page = await context.newPage();
       try {
+        if (await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+          throw new Error("Workbench shutdown verification requires normal motion");
+        }
         let shutdownConfigurationRequests = 0;
         let evaluationConfigurationRequests = 0;
         page.on("request", (request) => {

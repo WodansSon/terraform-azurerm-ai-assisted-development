@@ -5,7 +5,7 @@
   "additionalProperties": false,
   "required": ["$schema", "schemaVersion", "reviewUpstream", "sourceDefinitionSet", "catalog", "protectedRules", "tokenPolicy"],
   "properties": {
-    "$schema": { "const": "contracts/adoption/repository-adoption.schema.json" },
+    "$schema": { "const": "../../contracts/adoption/repository-adoption.schema.json" },
     "$comment": { "type": "string", "minLength": 1 },
     "schemaVersion": { "const": 1 },
     "reviewUpstream": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$" },

@@ -86,7 +86,7 @@ $architecturePath = Join-Path $repoRoot 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITE
 $gitIgnorePath = Join-Path $repoRoot '.gitignore'
 $changelogPath = Join-Path $hostedRoot 'CHANGELOG.md'
 $forbiddenVersionPath = Join-Path $hostedRoot 'VERSION'
-$packageManifestPath = Join-Path $PSScriptRoot 'package-manifest.json'
+$packageManifestPath = Join-Path $PSScriptRoot 'config/package-manifest.json'
 $installerPath = Join-Path $PSScriptRoot 'Install-HostedRules.ps1'
 $hostedRuntimePath = Join-Path $hostedRoot '.github'
 $repositoryInstructionsPath = Join-Path $hostedRuntimePath 'copilot-instructions.md'
@@ -160,13 +160,13 @@ $ruleIssueAdjudicationFixturePath = Join-Path $PSScriptRoot 'tests/fixtures/rule
 $v4WorkbenchContractsTestPath = Join-Path $PSScriptRoot 'tests/Test-WorkbenchContracts.ps1'
 $ruleWorkbenchLauncherPath = Join-Path $PSScriptRoot 'Start-RuleWorkbench.ps1'
 $ruleWorkbenchTestPath = Join-Path $PSScriptRoot 'tests/Test-RuleWorkbench.ps1'
-$ruleWorkbenchIconPreviewRendererPath = Join-Path $PSScriptRoot 'Render-WorkbenchIconPreview.cjs'
+$ruleWorkbenchIconPreviewRendererPath = Join-Path $PSScriptRoot 'internal/workbench/Render-WorkbenchIconPreview.cjs'
 $ruleWorkbenchBehaviorManifestPath = Join-Path $hostedRoot 'regression/workbench/behavior-manifest.json'
 $ruleWorkbenchBehaviorManifestSchemaPath = Join-Path $hostedRoot 'contracts/workbench/behavior-manifest.schema.json'
 $ruleWorkbenchPlaywrightRunnerPath = Join-Path $hostedRoot 'regression/workbench/playwright/run.cjs'
 $ruleWorkbenchLayoutTestPath = Join-Path $hostedRoot 'regression/workbench/puppeteer/Test-RuleWorkbenchLayout.cjs'
-$nodePackageManifestPath = Join-Path $PSScriptRoot 'package.json'
-$nodePackageLockPath = Join-Path $PSScriptRoot 'package-lock.json'
+$nodePackageManifestPath = Join-Path $PSScriptRoot 'npm/package.json'
+$nodePackageLockPath = Join-Path $PSScriptRoot 'npm/package-lock.json'
 $ruleWorkbenchIndexPath = Join-Path $hostedRoot 'workbench/index.html'
 $ruleWorkbenchScriptPath = Join-Path $hostedRoot 'workbench/app.js'
 $ruleWorkbenchStylesPath = Join-Path $hostedRoot 'workbench/styles.css'
@@ -357,7 +357,7 @@ if (Test-Path -LiteralPath $packageManifestPath) {
 }
 elseif ($runtimeStarted) {
     Start-ValidationCheck -Name 'package-manifest'
-    Add-ValidationIssue -Name 'package-manifest' -Issue 'Hosted Toolkit runtime assets exist, but hosted_copilot/tools/package-manifest.json is missing'
+    Add-ValidationIssue -Name 'package-manifest' -Issue 'Hosted Toolkit runtime assets exist, but hosted_copilot/tools/config/package-manifest.json is missing'
 }
 else {
     Add-SkippedCheck -Name 'package-manifest' -Detail 'No package manifest is required during the design phase.'
@@ -1462,7 +1462,7 @@ else {
     Add-SkippedCheck -Name 'architecture-style' -Detail 'Architecture style validation requires the architecture document.'
 }
 
-$validationBinDirectory = Join-Path $PSScriptRoot 'node_modules/.bin'
+$validationBinDirectory = Join-Path $PSScriptRoot 'npm/node_modules/.bin'
 $markdownCommand = Join-Path $validationBinDirectory $(if ($IsWindows) { 'markdownlint-cli2.cmd' } else { 'markdownlint-cli2' })
 $mermaidCommand = Join-Path $validationBinDirectory $(if ($IsWindows) { 'mmdc.cmd' } else { 'mmdc' })
 
@@ -1475,7 +1475,7 @@ else {
     Push-Location $repoRoot
     try {
         $global:LASTEXITCODE = 0
-        $markdownOutput = @(& $markdownCommand 'hosted_copilot/**/*.md' '#hosted_copilot/tools/node_modules' 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md' --config '.github/.markdownlint.json' 2>&1)
+        $markdownOutput = @(& $markdownCommand 'hosted_copilot/**/*.md' '#hosted_copilot/tools/npm/node_modules' 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md' --config '.github/.markdownlint.json' 2>&1)
         $markdownExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     }
     finally {
@@ -1505,7 +1505,7 @@ else {
         if ($useLinuxCiPuppeteerConfig) {
             @{ args = @('--no-sandbox', '--disable-setuid-sandbox') } | ConvertTo-Json | Set-Content -LiteralPath $puppeteerConfigPath -Encoding utf8NoBOM
         }
-        $validationDependencyRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'node_modules'))
+        $validationDependencyRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'npm/node_modules'))
         $validationDependencyPrefix = $validationDependencyRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
         $markdownPaths = @(
             Get-ChildItem -LiteralPath $hostedRoot -Filter '*.md' -File -Recurse | Where-Object { -not $_.FullName.StartsWith($validationDependencyPrefix, [System.StringComparison]::OrdinalIgnoreCase) }

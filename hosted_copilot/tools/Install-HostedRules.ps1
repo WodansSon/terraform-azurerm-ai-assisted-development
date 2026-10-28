@@ -9,7 +9,7 @@ Validates the Hosted deployment manifest, compares packaged files with a target 
 Specifies the required Git repository root that receives the Hosted Toolkit payload.
 
 .PARAMETER ManifestPath
-Specifies the Hosted package manifest. Defaults to `hosted_copilot/tools/package-manifest.json`.
+Specifies the Hosted package manifest. Defaults to `hosted_copilot/tools/config/package-manifest.json`.
 
 .PARAMETER Install
 Applies the validated deployment plan. When omitted, the command performs a read-only dry run.
@@ -52,7 +52,7 @@ param(
 
     [Parameter(ParameterSetName = 'DryRun')]
     [Parameter(ParameterSetName = 'Install')]
-    [string]$ManifestPath = (Join-Path $PSScriptRoot 'package-manifest.json'),
+    [string]$ManifestPath = (Join-Path $PSScriptRoot 'config/package-manifest.json'),
 
     [Parameter(Mandatory, ParameterSetName = 'Install')]
     [switch]$Install,

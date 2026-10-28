@@ -208,7 +208,7 @@ function Get-HostedCliAvailability {
             $profile = $Profiles[$name]
             $entries = @($catalog.models | Where-Object { $null -ne $_.PSObject.Properties['id'] -and $_.id -ceq $profile.model })
             if ($entries.Count -eq 0) {
-                Stop-HostedCliPreflight "Copilot CLI model '$($profile.model)' is unavailable for profile '$name'; update hosted_copilot/tools/llm.json or the explicit CLI override"
+                Stop-HostedCliPreflight "Copilot CLI model '$($profile.model)' is unavailable for profile '$name'; update hosted_copilot/tools/config/llm.json or the explicit CLI override"
             }
             if ($entries.Count -ne 1) { Stop-HostedCliPreflight "Copilot CLI returned duplicate model metadata for profile '$name'" }
             $entry = $entries[0]
@@ -219,7 +219,7 @@ function Get-HostedCliAvailability {
             if ($entry.policy.state -cne 'enabled') { Stop-HostedCliPreflight "Copilot CLI model policy is not enabled for profile '$name'; availability could not be verified" }
             if ($entry.capabilities.supports.reasoningEffort -isnot [bool] -or -not $entry.capabilities.supports.reasoningEffort -or
                 $entry.supportedReasoningEfforts -isnot [array] -or $profile.reasoningEffort -cnotin $entry.supportedReasoningEfforts) {
-                Stop-HostedCliPreflight "Copilot CLI reasoning effort '$($profile.reasoningEffort)' is unsupported for model '$($profile.model)' in profile '$name'; update hosted_copilot/tools/llm.json or the explicit CLI override"
+                Stop-HostedCliPreflight "Copilot CLI reasoning effort '$($profile.reasoningEffort)' is unsupported for model '$($profile.model)' in profile '$name'; update hosted_copilot/tools/config/llm.json or the explicit CLI override"
             }
             $resolvedProfiles.Add([ordered]@{ name = [string]$name; model = [string]$profile.model; reasoningEffort = [string]$profile.reasoningEffort })
         }

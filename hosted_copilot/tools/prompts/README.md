@@ -38,6 +38,6 @@ The intended engine is repository-neutral. AzureRM is the current configured use
 | Rule content and protected policy | [Instruction catalog](../../copilot-rule-catalog/instruction-catalog.json) and [protected rules](../../copilot-rule-catalog/protected-rules.json) |
 | Semantic task instructions | The task folders above |
 | Snapshot and cache behavior | The owning assessment and reconciliation JSON contracts' `behaviorFiles` |
-| Model and reasoning profiles | [llm.json](../llm.json) |
+| Model and reasoning profiles | [llm.json](../config/llm.json) |
 
 This migration does not establish drop-in portability. Known remaining code-level AzureRM coupling includes source collection's repository guard in [New-SourceInventory.ps1](../internal/collection/New-SourceInventory.ps1), paired-review repository validation in [Import-PullRequest.ps1](../internal/review/Import-PullRequest.ps1), and hard-coded review surfaces and budgets in [Get-GuidanceCapacity.ps1](../internal/workbench/Get-GuidanceCapacity.ps1). These need explicit configuration ownership and focused alternative-repository tests before claiming general adoption. Moving such values must preserve repository authorization and capacity enforcement, not remove those checks.

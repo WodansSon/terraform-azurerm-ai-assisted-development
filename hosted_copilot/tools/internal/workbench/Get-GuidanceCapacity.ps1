@@ -2,7 +2,7 @@
 param(
     [string]$HostedRoot = (Join-Path $PSScriptRoot '../../..'),
 
-    [string]$DescriptorPath = 'adoption.json',
+    [string]$DescriptorPath = 'tools/config/adoption.json',
 
     [ValidateSet('Text', 'Json')]
     [string]$OutputFormat = 'Text'

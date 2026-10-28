@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "familyName": "Lobe Icons AI and LLM Brands",
+  "symbolPrefix": "llm",
+  "sourceUrl": "https://github.com/lobehub/lobe-icons/tree/8a1b2821bb768c484fe8da20c5e1838b6bf551a9/packages/static-svg/icons",
+  "revision": "8a1b2821bb768c484fe8da20c5e1838b6bf551a9",
+  "colorMode": "original",
+  "preview": { "icons": "all" },
+  "sprite": { "icons": ["claude", "gemini", "grok", "openai"] },
+  "runtimeFiles": ["sprite.svg", "LICENSE.txt", "ATTRIBUTION.md"]
+}

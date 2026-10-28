@@ -22,7 +22,7 @@ function Resolve-HostedAdoptionPath {
 }
 
 function Get-HostedAdoptionConfiguration {
-    param([Parameter(Mandatory)][string]$HostedRoot, [string]$DescriptorPath = 'adoption.json')
+    param([Parameter(Mandatory)][string]$HostedRoot, [string]$DescriptorPath = 'tools/config/adoption.json')
 
     $root = [IO.Path]::GetFullPath($HostedRoot)
     $path = Resolve-HostedAdoptionPath -HostedRoot $root -RelativePath $DescriptorPath

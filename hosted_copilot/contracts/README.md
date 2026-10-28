@@ -27,7 +27,7 @@ This is the authoritative location for Hosted behavior descriptors and JSON vali
 
 ## Configuration And Adoption
 
-The [adoption descriptor](../adoption.json) owns references to the required source-definition set, instruction catalog, and protected rules, together with the guidance token policy. Its references are relative to the Hosted root. The referenced files still own lane definitions and rule content; the descriptor does not introduce a second lane registry. This library exposes behavior and validation dependencies without making arbitrary files executable.
+The [adoption descriptor](../tools/config/adoption.json) owns references to the required source-definition set, instruction catalog, and protected rules, together with the guidance token policy. Its references are relative to the Hosted root. The referenced files still own lane definitions and rule content; the descriptor does not introduce a second lane registry. This library exposes behavior and validation dependencies without making arbitrary files executable.
 
 Capacity reports bind the resolved policy hash, include every configured area and combination exactly once, and account for every deployed catalog surface. Validation checks membership, paths, budgets, arithmetic, safety margin, unique-file totals, and the overall ceiling. Retained reconciliation snapshots include the descriptor, schema, and loader; they do not fall back to a live policy. Existing reports without this authority must be reconstructed, not relabeled as current.
 

@@ -14,13 +14,13 @@ Each source SVG is unmodified and was verified against its upstream Git blob has
 
 ## Offline Generation
 
-`sprite.svg` and `preview.png` are generated locally by `hosted_copilot/tools/internal/workbench/New-WorkbenchLlmIconSprite.ps1`, reusing the shared Workbench icon-preview renderer. Generation performs no network requests. The runtime sprite contains only the unique symbols referenced by [the branding map](../../llm-brands.json): initially OpenAI, Claude, Gemini, and Grok. The preview receives the complete symbol inventory separately and continues to display all 340 vendored icons.
+The adjacent `runtime.json` declares the runtime symbols and legal companion files. `hosted_copilot/tools/internal/workbench/New-WorkbenchLlmIconSprite.ps1` delegates to the same shared builder used by every icon family, without model-specific generation behavior or network requests. The manifest selects OpenAI, Claude, Gemini, and Grok for the runtime sprite. The preview continues to display all 340 vendored icons, with at most six columns.
 
-Generation preserves native viewBoxes, source geometry, fragment IDs, fills, and fill rules. Upstream layout-only root styles are omitted; the two standard icons with root grayscale styling retain it as an SVG filter presentation attribute. Symbols use the `llm-` prefix. Missing source icons and duplicate or overlapping model-family prefixes fail generation rather than producing incomplete runtime artwork.
+Generation preserves native viewBoxes, source geometry, fragment IDs, fills, and fill rules. Upstream layout-only root styles are omitted; the two standard icons with root grayscale styling retain it as an SVG filter presentation attribute. Symbols use the `llm-` prefix. Missing declared source icons fail generation rather than producing incomplete runtime artwork.
 
 ## Runtime Branding
 
-The UI resolves the effective configured model identifier through the same map, independently of CLI provider routing and availability. Unknown model families display the Codicons `question` symbol beside their actual model name and effort. That fallback remains in the Codicons sprite; it is not copied into the LLM family, and missing branding does not block a valid CLI model. The fixed Copilot assistant identity remains unchanged.
+The UI resolves the effective configured model identifier through [the branding map](../../llm-brands.json), independently of CLI provider routing and availability. Duplicate or overlapping model prefixes are rejected by the chat consumer and covered by its tests, not by icon generation. Unknown or missing model names display the Codicons `question` symbol. Unmapped model names and effort remain visible; that fallback stays in the Codicons sprite rather than being copied into the LLM family. The fixed Copilot assistant identity remains unchanged.
 
 ## Brand Ownership
 
