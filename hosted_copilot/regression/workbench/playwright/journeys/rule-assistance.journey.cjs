@@ -459,7 +459,17 @@ async function run({ page, baseUrl, assert }) {
     } else await route.fulfill(response);
   });
 
-  await page.evaluate(() => { globalThis.__assistanceOriginalRandom = Math.random; Math.random = () => 0; });
+  await page.evaluate(() => {
+    globalThis.__assistanceStableChrome = {
+      root: document.querySelector("[data-rule-assistance]"),
+      header: document.querySelector(".assist-header"),
+      composer: document.querySelector(".assist-chat-composer"),
+      input: document.querySelector(".assist-goal"),
+      toggle: document.querySelector("#assist-panel-toggle svg")
+    };
+    globalThis.__assistanceOriginalRandom = Math.random;
+    Math.random = () => 0;
+  });
   await input.press("Enter");
   await page.waitForFunction(() => Boolean(ruleAssistance?.active));
   await root.locator(".waiting-panel[data-waiting-panel-ready]").waitFor();
@@ -468,6 +478,8 @@ async function run({ page, baseUrl, assert }) {
   assert(await input.inputValue() === ""
     && await root.locator(".assist-chat-user-message").last().textContent() === "Check this rule against the Hosted catalog.",
     "Enter did not immediately move submitted text from the composer into the transcript");
+  assert(await page.evaluate(() => Object.values(globalThis.__assistanceStableChrome).every(node => node.isConnected)),
+    "Starting a request replaced the shared sidebar controls instead of updating their state");
   await page.waitForFunction(() => document.querySelector(".assist-chat-send .codicon use")?.getBBox().width > 0);
   const running = await root.evaluate((node) => {
     const glyph = node.querySelector(".assist-chat-send .codicon");
@@ -492,7 +504,11 @@ async function run({ page, baseUrl, assert }) {
   assert(await waiting.locator(".sr-only").textContent() === phrases[0], "The request did not consume the first phrase from the seeded shuffle");
   assert(await waiting.locator(".shimmer-character").first().evaluate((node) => getComputedStyle(node).animationName.startsWith("shimmer-heading-")),
     "Waiting text did not reuse the shared shimmer animation");
-  await page.evaluate(() => { Math.random = () => 0.999999; syncRuleAssistance(); });
+  await page.evaluate(() => {
+    globalThis.__assistanceWaitingLayer = document.querySelector(".assist-chat-animation-layer");
+    Math.random = () => 0.999999;
+    syncRuleAssistance();
+  });
   await page.waitForTimeout(5200);
   assert(await waiting.locator(".sr-only").textContent() === phrases[0], "A waiting phrase changed during rerender or rotated during a request");
   const shimmerMotion = await waiting.locator(".shimmer-character").first().evaluate(async (node) => {
@@ -507,12 +523,17 @@ async function run({ page, baseUrl, assert }) {
   });
   assert(shimmerMotion.normalMotion && shimmerMotion.advancing
     && await waiting.locator(".sr-only").textContent() === phrases[0], "Waiting text stopped animating or lost its phrase during normal motion");
+  assert(await page.evaluate(() => globalThis.__assistanceWaitingLayer.isConnected
+    && Object.values(globalThis.__assistanceStableChrome).every(node => node.isConnected)),
+  "An unchanged pending request recreated its border animation or shared controls");
   await pending();
   await page.waitForFunction(() => !ruleAssistance?.active && Boolean(ruleAssistance?.turns[0]?.answer));
   assert(!await root.locator(".assist-chat-operation-message .shimmer-heading").count(), "Completed assistance retained animated waiting text");
   assert(await root.locator(".assist-chat-ai-message").textContent().then((text) => text.includes("<img src=x onerror=alert(1)>"))
     && !await root.locator(".assist-chat-ai-message img").count(), "AI reply was interpreted as HTML");
   assert(await input.inputValue() === "" && !await clear.isDisabled(), "Completed reply did not reset input or enable Clear");
+  assert(await page.evaluate(() => Object.values(globalThis.__assistanceStableChrome).every(node => node.isConnected)),
+    "A genuine reply failed to preserve the shared sidebar controls");
   assert(await page.evaluate((session) => JSON.stringify(state.session) === session, setup.session), "Reading an answer mutated persisted draft state");
   assert(await editor.inputValue() === setup.text, "AI completion edited the rule automatically");
   const replyLayout = await root.evaluate((node) => {
@@ -852,7 +873,7 @@ async function run({ page, baseUrl, assert }) {
     "Reopening the sidebar discarded its failure or retained a stale busy border");
   await confirmNewChat();
   assert(!await root.locator(".assist-chat-error").count(), "Clearing conversation retained a stale failure");
-  const sharedNavigation = await page.evaluate(() => {
+  const sharedNavigation = await page.evaluate(async () => {
     const chat = ruleAssistance;
     const node = document.querySelector("[data-rule-assistance]");
     const panel = document.getElementById("rule-assistance-panel");
@@ -870,13 +891,21 @@ async function run({ page, baseUrl, assert }) {
     switchView("preview");
     const onPreview = panel.hidden && !toggle.disabled;
     switchView("catalog");
+    const retainedChrome = [node, node.querySelector(".assist-header"), node.querySelector(".assist-chat-composer"), node.querySelector(".assist-goal"), toggle.querySelector("svg")];
+    let visibilityChanges = 0;
+    const observer = new MutationObserver(records => { visibilityChanges += records.length; });
+    observer.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
     setWorkspaceTab("rule-issues");
     const onIssues = !panel.hidden && !toggle.disabled && ruleAssistance !== chat
       && ruleAssistance.viewKind === "rule-issues" && ruleAssistance.ruleIssueId === state.activeRuleIssueKey;
+    setWorkspaceTab("candidate-sources");
+    await Promise.resolve();
+    observer.disconnect();
+    const stableTransition = visibilityChanges === 0 && retainedChrome.every(control => control.isConnected);
     setWorkspaceTab("assessment-results");
     const onAssessment = panel.hidden && !toggle.disabled && toggle.parentElement.classList.contains("topbar-actions");
     setWorkspaceTab("candidate-sources");
-    return { onList, onAssessment, onPlan, onPreview, onIssues, collapsedRetained, retained: ruleAssistance === chat && document.querySelectorAll("[data-rule-assistance]").length === 1 && document.querySelectorAll("#assist-panel-toggle").length === 1 && !panel.hidden && !toggle.disabled };
+    return { onList, onAssessment, onPlan, onPreview, onIssues, collapsedRetained, stableTransition, retained: ruleAssistance === chat && document.querySelectorAll("[data-rule-assistance]").length === 1 && document.querySelectorAll("#assist-panel-toggle").length === 1 && !panel.hidden && !toggle.disabled };
   });
   assert(Object.values(sharedNavigation).every(Boolean),
     `Contextual sidebar navigation lost control availability, expansion preference, or the shared conversation: ${JSON.stringify(sharedNavigation)}`);

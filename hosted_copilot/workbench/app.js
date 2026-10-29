@@ -124,6 +124,7 @@ const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
 const ruleAssistanceChats = new Map();
 let ruleAssistance = null;
+let ruleAssistanceRenderState = null;
 let ruleAssistanceExpanded = true;
 let ruleAssistanceSidebarWidth = 420;
 let assistanceSidebarSplitter;
@@ -3865,8 +3866,61 @@ function getRuleAssistanceTarget() {
 
 function renderRuleAssistanceSidebar() {
   const target = getRuleAssistanceTarget();
-  elements["assist-sidebar-content"].innerHTML = target ? renderRuleAssistance(target)
-    : '<div class="empty-state compact"><h2>AI Assistance</h2><p>No context selected.</p></div>';
+  const content = elements["assist-sidebar-content"];
+  if (!target) {
+    const empty = '<div class="empty-state compact"><h2>AI Assistance</h2><p>No context selected.</p></div>';
+    if (content.innerHTML !== empty) content.innerHTML = empty;
+    ruleAssistanceRenderState = null;
+    syncRuleAssistanceVisibility();
+    return;
+  }
+  const template = document.createElement("template");
+  template.innerHTML = renderRuleAssistance(target);
+  const next = template.content.querySelector("[data-rule-assistance]");
+  let root = content.querySelector("[data-rule-assistance]");
+  if (!root) {
+    content.replaceChildren(next);
+    root = next;
+  } else {
+    const response = root.querySelector(".assist-chat-response");
+    const scrollTop = response.scrollTop;
+    for (const selector of [".assist-chat-response", ".section-guidance", ".assist-chat-profile", "[data-assist-send]"]) {
+      const current = root.querySelector(selector);
+      const fresh = next.querySelector(selector);
+      if (current.innerHTML !== fresh.innerHTML) current.innerHTML = fresh.innerHTML;
+    }
+    const labels = root.querySelectorAll(".assist-chat-context-label");
+    const nextLabels = next.querySelectorAll(".assist-chat-context-label");
+    labels.forEach((label, index) => {
+      if (label.textContent !== nextLabels[index].textContent) label.textContent = nextLabels[index].textContent;
+    });
+    const input = root.querySelector(".assist-goal");
+    const nextInput = next.querySelector(".assist-goal");
+    if (input.value !== nextInput.value) input.value = nextInput.value;
+    if (input.readOnly !== nextInput.readOnly) input.readOnly = nextInput.readOnly;
+    for (const attribute of ["aria-label", "placeholder"]) {
+      if (input.getAttribute(attribute) !== nextInput.getAttribute(attribute)) input.setAttribute(attribute, nextInput.getAttribute(attribute));
+    }
+    for (const selector of ["[data-assist-clear]", "[data-assist-send]"]) {
+      const current = root.querySelector(selector);
+      const fresh = next.querySelector(selector);
+      if (current.disabled !== fresh.disabled) current.disabled = fresh.disabled;
+    }
+    const send = root.querySelector("[data-assist-send]");
+    const nextSend = next.querySelector("[data-assist-send]");
+    if (send.className !== nextSend.className) send.className = nextSend.className;
+    if (send.getAttribute("aria-label") !== nextSend.getAttribute("aria-label")) send.setAttribute("aria-label", nextSend.getAttribute("aria-label"));
+    const composer = root.querySelector(".assist-chat-composer");
+    composer.classList.toggle("assist-chat-running", Boolean(ruleAssistance.active));
+    if (ruleAssistanceRenderState?.active !== ruleAssistance.active || ruleAssistanceRenderState?.status !== ruleAssistance.active?.turn.status) {
+      composer.querySelector(".assist-chat-animation-layer")?.remove();
+      const waiting = next.querySelector(".assist-chat-animation-layer");
+      if (waiting) composer.prepend(waiting);
+    }
+    response.scrollTop = ruleAssistance.followOutput ? response.scrollHeight
+      : ruleAssistanceRenderState?.contextKey !== ruleAssistance.contextKey ? ruleAssistance.scrollTop : scrollTop;
+  }
+  ruleAssistanceRenderState = { contextKey: ruleAssistance.contextKey, active: ruleAssistance.active, status: ruleAssistance.active?.turn.status };
   syncRuleAssistanceVisibility();
   requestAnimationFrame(syncRuleAssistanceScrollControl);
 }
@@ -3890,15 +3944,16 @@ function syncRuleAssistanceVisibility() {
   const transcript = elements["assist-sidebar-content"].querySelector(".assist-chat-response");
   if (!expanded && !elements["rule-assistance-panel"].hidden && ruleAssistance && transcript) ruleAssistance.scrollTop = transcript.scrollTop;
   if (!expanded) assistanceSidebarSplitter?.cancel();
-  elements["rule-assistance-panel"].hidden = !expanded;
+  if (elements["rule-assistance-panel"].hidden === expanded) elements["rule-assistance-panel"].hidden = !expanded;
   document.querySelector(".app-shell").classList.toggle("assist-sidebar-open", expanded);
   const toggle = elements["assist-panel-toggle"];
   const label = `${ruleAssistanceExpanded ? "Hide" : "Show"} AI assistance`;
-  toggle.setAttribute("aria-expanded", String(expanded));
-  toggle.setAttribute("aria-pressed", String(ruleAssistanceExpanded));
-  toggle.setAttribute("aria-label", label);
-  setWorkbenchTooltip(toggle, label);
-  toggle.innerHTML = icon(ruleAssistanceExpanded ? "layout-sidebar-right" : "layout-sidebar-right-off");
+  for (const [attribute, value] of [["aria-expanded", String(expanded)], ["aria-pressed", String(ruleAssistanceExpanded)], ["aria-label", label]]) {
+    if (toggle.getAttribute(attribute) !== value) toggle.setAttribute(attribute, value);
+  }
+  if (toggle.getAttribute("data-workbench-tooltip") !== label) setWorkbenchTooltip(toggle, label);
+  const toggleIcon = icon(ruleAssistanceExpanded ? "layout-sidebar-right" : "layout-sidebar-right-off");
+  if (toggle.innerHTML !== toggleIcon) toggle.innerHTML = toggleIcon;
   if (expanded) requestAnimationFrame(() => {
     const response = elements["assist-sidebar-content"].querySelector(".assist-chat-response");
     if (response && ruleAssistance) response.scrollTop = ruleAssistance.followOutput ? response.scrollHeight : ruleAssistance.scrollTop;
@@ -4027,23 +4082,8 @@ function renderRuleAssistance(target) {
 }
 
 function syncRuleAssistance() {
-  const root = elements["assist-sidebar-content"].querySelector("[data-rule-assistance]");
-  const target = getRuleAssistanceTarget();
-  if (!root || !target) { renderRuleAssistanceSidebar(); return; }
-  const transcript = root.querySelector(".assist-chat-response");
-  const focus = root.contains(document.activeElement);
-  const position = [root.querySelector(".assist-goal").selectionStart, root.querySelector(".assist-goal").selectionEnd];
-  const scrollTop = transcript.scrollTop;
-  root.outerHTML = renderRuleAssistance(target);
-  const updated = elements["assist-sidebar-content"].querySelector("[data-rule-assistance]");
-  const response = updated.querySelector(".assist-chat-response");
-  response.scrollTop = ruleAssistance.followOutput ? response.scrollHeight : scrollTop;
+  renderRuleAssistanceSidebar();
   syncRuleAssistanceScrollControl();
-  if (focus && ruleAssistanceExpanded) {
-    const input = updated.querySelector(".assist-goal");
-    input.focus({ preventScroll: true });
-    if (input.matches(".assist-goal")) input.setSelectionRange(...position);
-  }
   refreshPresentation();
 }
 
@@ -6128,8 +6168,6 @@ function setWorkspaceTab(tab) {
   const protectedTarget = tab === "candidate-sources" && Boolean(state.activeProtectedRuleId);
   dismissNotification();
   state.workspaceTab = tab;
-  if (tab === "rule-issues") setRuleAssistanceIssue(state.ruleIssues.find(issue => issue.id === state.activeRuleIssueKey) || null);
-  else setRuleAssistanceCandidate(!protectedTarget && key ? state.assessedCandidates.find(candidate => candidate.key === key) || null : null);
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
     const active = button.dataset.workspaceTab === tab;
     button.classList.toggle("active", active);
@@ -6148,9 +6186,12 @@ function setWorkspaceTab(tab) {
       ? "Search excluded assessment results"
       : "Search rule issues";
   elements["search-input"].setAttribute("aria-label", elements["search-input"].placeholder);
-  if (tab === "candidate-sources") candidateHierarchicalView?.refreshLayout();
-  else if (tab === "assessment-results") assessmentHierarchicalView?.refreshLayout();
-  else renderRuleIssues();
+  if (tab === "rule-issues") renderRuleIssues();
+  else {
+    setRuleAssistanceCandidate(!protectedTarget && key ? state.assessedCandidates.find(candidate => candidate.key === key) || null : null);
+    if (tab === "candidate-sources") candidateHierarchicalView?.refreshLayout();
+    else assessmentHierarchicalView?.refreshLayout();
+  }
   refreshPresentation();
 }
 
