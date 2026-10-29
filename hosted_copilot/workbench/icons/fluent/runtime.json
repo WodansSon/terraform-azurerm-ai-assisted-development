@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "familyName": "Microsoft Fluent UI System Icons",
+  "symbolPrefix": "fluent",
+  "sourceUrl": "https://github.com/microsoft/fluentui-system-icons/tree/a347af95478f989038cccbf085978865264c048a/assets",
+  "revision": "a347af95478f989038cccbf085978865264c048a",
+  "colorMode": "monochrome",
+  "preview": { "icons": "all" },
+  "sprite": { "icons": ["gauge-16-regular", "info-20-regular", "link-dismiss-16-filled", "link-multiple-16-filled"] },
+  "runtimeFiles": ["sprite.svg", "ATTRIBUTION.md"]
+}

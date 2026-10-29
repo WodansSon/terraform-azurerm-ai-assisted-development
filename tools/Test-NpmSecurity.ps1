@@ -2,6 +2,8 @@
 param(
     [string]$RepositoryRoot = (Join-Path $PSScriptRoot '..'),
 
+    [string[]]$LockPath = @(),
+
     [string[]]$AdditionalLockPath = @(),
 
     [switch]$Fix,
@@ -29,6 +31,9 @@ if ($null -eq $gitCommand) {
 }
 if ($AllowBreakingFix -and -not $Fix) {
     throw 'AllowBreakingFix requires Fix'
+}
+if ($PSBoundParameters.ContainsKey('LockPath') -and $AdditionalLockPath.Count -gt 0) {
+    throw 'LockPath cannot be combined with AdditionalLockPath'
 }
 
 function Resolve-RepositoryPath {
@@ -62,6 +67,48 @@ function Get-NpmFindings {
     }
 
     return @($Audit.vulnerabilities.PSObject.Properties | Where-Object { $_.Value.severity -in @('low', 'moderate', 'high', 'critical') } | Sort-Object Name)
+}
+
+function ConvertTo-NpmFindingReport {
+    param([Parameter(Mandatory = $true)][object]$Finding)
+
+    $packageName = [string]$Finding.Name
+    $vulnerability = $Finding.Value
+    $advisories = @($vulnerability.via | ForEach-Object {
+        if ($_ -is [string]) {
+            "Affected through $_"
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace([string]$_.title)) {
+            [string]$_.title
+        }
+        else {
+            "Affected through $([string]$_.name)"
+        }
+    })
+    $dependencyPath = if ($vulnerability.isDirect) {
+        'Direct dependency'
+    }
+    elseif (@($vulnerability.effects).Count -gt 0) {
+        "Required by $(@($vulnerability.effects) -join ', ')"
+    }
+    else {
+        'Transitive dependency'
+    }
+    $remediation = if ($vulnerability.fixAvailable -is [bool]) {
+        if ($vulnerability.fixAvailable) { 'A compatible fix is available' } else { 'No compatible fix is reported' }
+    }
+    else {
+        "Set $($vulnerability.fixAvailable.name) to $($vulnerability.fixAvailable.version)"
+    }
+
+    return [ordered]@{
+        package = $packageName
+        severity = ([string]$vulnerability.severity).ToUpperInvariant()
+        advisory = $advisories -join '; '
+        affectedRange = [string]$vulnerability.range
+        dependencyPath = $dependencyPath
+        remediation = $remediation
+    }
 }
 
 function Invoke-NpmRemediation {
@@ -184,13 +231,17 @@ function Invoke-NpmRemediation {
     }
 }
 
-$trackedLockPaths = @(& $gitCommand.Source -C $resolvedRepositoryRoot ls-files -- 'package-lock.json' '**/package-lock.json')
-if ($LASTEXITCODE -ne 0) {
-    throw 'git could not enumerate tracked npm lockfiles'
+$candidateLockPaths = @($LockPath)
+if (-not $PSBoundParameters.ContainsKey('LockPath')) {
+    $trackedLockPaths = @(& $gitCommand.Source -C $resolvedRepositoryRoot ls-files -- 'package-lock.json' '**/package-lock.json')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'git could not enumerate tracked npm lockfiles'
+    }
+    $candidateLockPaths = @($trackedLockPaths) + @($AdditionalLockPath)
 }
 
 $lockPaths = New-Object 'System.Collections.Generic.List[string]'
-foreach ($path in @($trackedLockPaths) + @($AdditionalLockPath)) {
+foreach ($path in $candidateLockPaths) {
     if ([string]::IsNullOrWhiteSpace([string]$path)) {
         continue
     }
@@ -202,11 +253,11 @@ foreach ($path in @($trackedLockPaths) + @($AdditionalLockPath)) {
 
 $reports = New-Object 'System.Collections.Generic.List[object]'
 $failures = New-Object 'System.Collections.Generic.List[string]'
-foreach ($lockPath in @($lockPaths | Sort-Object)) {
-    $relativeLockPath = [IO.Path]::GetRelativePath($resolvedRepositoryRoot, $lockPath).Replace('\', '/')
-    $packageDirectory = Split-Path -Parent $lockPath
+foreach ($resolvedLockPath in @($lockPaths | Sort-Object)) {
+    $relativeLockPath = [IO.Path]::GetRelativePath($resolvedRepositoryRoot, $resolvedLockPath).Replace('\', '/')
+    $packageDirectory = Split-Path -Parent $resolvedLockPath
     $manifestPath = Join-Path $packageDirectory 'package.json'
-    if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $resolvedLockPath -PathType Leaf)) {
         $failures.Add("npm lockfile was not found: $relativeLockPath")
         continue
     }
@@ -217,7 +268,7 @@ foreach ($lockPath in @($lockPaths | Sort-Object)) {
 
     try {
         $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
-        $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $lock = Get-Content -LiteralPath $resolvedLockPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
         if ($manifest.private -ne $true) {
             throw 'package.json must set private to true'
         }
@@ -238,10 +289,10 @@ foreach ($lockPath in @($lockPaths | Sort-Object)) {
             }
         }
 
-        $hashesBefore = @($manifestPath, $lockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
+        $hashesBefore = @($manifestPath, $resolvedLockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
         $auditResult = Invoke-NpmAudit -PackageDirectory $packageDirectory
         $auditExitCode = $auditResult.exitCode
-        $hashesAfter = @($manifestPath, $lockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
+        $hashesAfter = @($manifestPath, $resolvedLockPath) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
         if (Compare-Object -ReferenceObject $hashesBefore -DifferenceObject $hashesAfter) {
             throw 'npm audit modified package.json or package-lock.json'
         }
@@ -249,28 +300,16 @@ foreach ($lockPath in @($lockPaths | Sort-Object)) {
         $audit = $auditResult.report
         $findingProperties = @(Get-NpmFindings -Audit $audit)
 
-        $findings = @($findingProperties | ForEach-Object {
-            [ordered]@{
-                package = $_.Name
-                severity = ([string]$_.Value.severity).ToUpperInvariant()
-                affectedRange = [string]$_.Value.range
-            }
-        })
+        $findings = @($findingProperties | ForEach-Object { ConvertTo-NpmFindingReport -Finding $_ })
         $passed = $auditExitCode -eq 0 -and $findings.Count -eq 0
         $remediation = $null
         if (-not $passed -and $Fix) {
-            $remediation = Invoke-NpmRemediation -ManifestPath $manifestPath -LockPath $lockPath -AllowBreaking:$AllowBreakingFix
+            $remediation = Invoke-NpmRemediation -ManifestPath $manifestPath -LockPath $resolvedLockPath -AllowBreaking:$AllowBreakingFix
             if ($remediation.passed) {
                 $auditResult = Invoke-NpmAudit -PackageDirectory $packageDirectory
                 $audit = $auditResult.report
                 $findingProperties = @(Get-NpmFindings -Audit $audit)
-                $findings = @($findingProperties | ForEach-Object {
-                    [ordered]@{
-                        package = $_.Name
-                        severity = ([string]$_.Value.severity).ToUpperInvariant()
-                        affectedRange = [string]$_.Value.range
-                    }
-                })
+                $findings = @($findingProperties | ForEach-Object { ConvertTo-NpmFindingReport -Finding $_ })
                 $passed = $auditResult.exitCode -eq 0 -and $findings.Count -eq 0
             }
         }

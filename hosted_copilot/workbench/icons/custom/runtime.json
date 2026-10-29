@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "familyName": "Workbench Custom Icons",
+  "symbolPrefix": "custom",
+  "sourceUrl": "https://github.com/microsoft/vscode-codicons/tree/1c47ab36a4bb845c437866405c2fa67b8ca0fe36/src/icons",
+  "revision": "1c47ab36a4bb845c437866405c2fa67b8ca0fe36",
+  "colorMode": "monochrome",
+  "preview": { "icons": "all" },
+  "sprite": { "icons": ["collection-issues-compact", "discard-all"] },
+  "runtimeFiles": ["sprite.svg", "LICENSE.txt", "ATTRIBUTION.md"]
+}

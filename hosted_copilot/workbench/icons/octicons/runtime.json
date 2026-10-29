@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "familyName": "GitHub Primer Octicons",
+  "symbolPrefix": "octicon",
+  "sourceUrl": "https://github.com/primer/octicons/tree/6220ff87f3ddd923b05ffdac7e2d9cb714213205/icons",
+  "revision": "6220ff87f3ddd923b05ffdac7e2d9cb714213205",
+  "colorMode": "monochrome",
+  "preview": { "icons": "all" },
+  "sprite": {
+    "icons": [
+      "checkbox-fill-16", "chevron-down-16", "chevron-right-16", "copy-16", "file-added-16",
+      "file-diff-16", "file-directory-fill-16", "file-directory-open-fill-16", "file-removed-16",
+      "fold-16", "fold-down-16", "fold-up-16", "kebab-horizontal-16", "shield-check-16",
+      "shield-lock-16", "square-16", "unfold-16"
+    ]
+  },
+  "runtimeFiles": ["sprite.svg", "LICENSE.txt", "ATTRIBUTION.md"]
+}

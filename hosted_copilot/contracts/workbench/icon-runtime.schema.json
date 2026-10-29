@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workbench icon family assets",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "familyName", "symbolPrefix", "sourceUrl", "revision", "colorMode", "preview", "sprite", "runtimeFiles"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "familyName": { "type": "string", "minLength": 1 },
+    "symbolPrefix": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "sourceUrl": { "type": "string", "pattern": "^https://[^\\s]+$" },
+    "revision": { "type": "string", "pattern": "^[a-zA-Z0-9._-]+$" },
+    "colorMode": { "enum": ["monochrome", "original"] },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["icons"],
+      "properties": { "icons": { "const": "all" } }
+    },
+    "sprite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["icons"],
+      "properties": {
+        "icons": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+        }
+      }
+    },
+    "runtimeFiles": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$" },
+      "allOf": [
+        { "contains": { "const": "sprite.svg" } },
+        { "contains": { "const": "ATTRIBUTION.md" } }
+      ]
+    }
+  }
+}

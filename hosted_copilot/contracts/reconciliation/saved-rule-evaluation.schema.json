@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hosted Saved Rule Evaluation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "candidateKey", "requestId", "ruleTextSha256", "authoritySha256", "evaluationContextSha256", "scopeReview", "affectedRuleIds", "coveredProposals", "assessments", "ruleIssues"],
+  "properties": {
+    "schemaVersion": { "const": 4 },
+    "evaluationMode": { "const": "unchanged" },
+    "candidateKey": { "type": "string", "minLength": 1 },
+    "requestId": { "type": "string", "minLength": 1 },
+    "ruleTextSha256": { "$ref": "#/$defs/sha256" },
+    "authoritySha256": { "$ref": "#/$defs/sha256" },
+    "evaluationContextSha256": { "$ref": "#/$defs/sha256" },
+    "scopeReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disposition", "ownerRuleId", "baselineQuote", "proposalQuote", "rationale", "wordingStatus", "wordingRationale"],
+      "properties": {
+        "disposition": { "enum": ["within-scope", "route-to-existing-rule", "suggest-new-rule", "uncertain"] },
+        "ownerRuleId": { "type": ["string", "null"] },
+        "baselineQuote": { "type": "string", "minLength": 1 },
+        "proposalQuote": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "wordingStatus": { "enum": ["acceptable", "needs-review"] },
+        "wordingRationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "assessments": { "type": "array", "items": { "type": "object" } },
+    "affectedRuleIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "coveredProposals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidateKey", "sourceHash", "action", "inPlan", "proposedText", "retireHostedRuleIds"],
+        "properties": {
+          "candidateKey": { "type": "string", "minLength": 1 },
+          "sourceHash": { "$ref": "#/$defs/sha256" },
+          "action": { "enum": ["add", "update", "no-change", "retire", "restore", "exclude", "defer"] },
+          "inPlan": { "type": "boolean" },
+          "proposedText": { "type": "string", "minLength": 1 },
+          "retireHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "ruleIssues": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["evaluationMode"] },
+      "then": {
+        "properties": {
+          "assessments": { "maxItems": 0 },
+          "scopeReview": { "properties": { "wordingStatus": { "const": "acceptable" } } },
+          "affectedRuleIds": { "maxItems": 1 },
+          "coveredProposals": {
+            "maxItems": 1,
+            "items": { "properties": { "action": { "const": "no-change" }, "inPlan": { "const": false } } }
+          }
+        }
+      },
+      "else": { "properties": { "assessments": { "minItems": 1 } } }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "shardKey", "groups"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "hosted-assessment-routing-result" },
+    "shardKey": { "type": "string", "minLength": 1 },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["nodeKeys", "semanticSummary"],
+        "properties": {
+          "nodeKeys": {
+            "type": "array",
+            "minItems": 2,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "semanticSummary": { "type": "string", "minLength": 1, "maxLength": 1200 }
+        }
+      }
+    }
+  }
+}
