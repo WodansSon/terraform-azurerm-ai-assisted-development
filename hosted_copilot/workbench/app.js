@@ -117,15 +117,19 @@ let previewBodyVirtualizer;
 let previewVirtualizationResizeTimer;
 const previewExpandedScopes = new Set(Object.keys(PREVIEW_SCOPE_LABELS));
 let previewSelectedFilePath = "";
-let previewTreeResizePointerId = null;
+let previewTreeSplitter;
+let ruleIssuesListSplitter;
+let ruleIssuesListWidth = 360;
 const candidateExpansionState = new Map();
 const assessmentExpansionState = new Map();
 const ruleAssistanceChats = new Map();
 let ruleAssistance = null;
 let ruleAssistanceExpanded = true;
 let ruleAssistanceSidebarWidth = 420;
-let ruleAssistanceSidebarResize = null;
+let assistanceSidebarSplitter;
 let ruleAssistanceWaitingPhrases;
+let ruleAssistanceWaitingPhraseBag = [];
+let ruleAssistanceLastWaitingPhrase = null;
 let llmBrandMap = [];
 const expandedEvidencePanels = new Set();
 const sourceRuleDisclosureStates = new Map();
@@ -360,6 +364,178 @@ document.addEventListener("DOMContentLoaded", async () => {
   refreshPresentation();
 });
 
+let activeSplitterCancel = null;
+
+function createWorkbenchSplitter({ element, owner, edge, label, controls, getSize, getBounds, onResize, onResizeEnd = () => {}, defaultSize, keyboardStep = 16, formatValue = value => `${value} pixels`, isEnabled = () => owner.getClientRects().length > 0 && getComputedStyle(element).display !== "none" }) {
+  if (!["left", "right", "top", "bottom"].includes(edge)) throw new Error("Invalid splitter edge");
+  const orientation = ["left", "right"].includes(edge) ? "vertical" : "horizontal";
+  const direction = ["right", "bottom"].includes(edge) ? 1 : -1;
+  const controller = new AbortController();
+  const options = { signal: controller.signal };
+  let drag = null;
+  let idleTimer = null;
+  let hoverTimer = null;
+  let lastPoint = null;
+  let keyboardInput = false;
+  element.classList.add("workbench-splitter");
+  element.dataset.splitterEdge = edge;
+  element.setAttribute("role", "separator");
+  element.setAttribute("aria-orientation", orientation);
+  element.setAttribute("aria-label", label);
+  element.setAttribute("aria-controls", controls.join(" "));
+  element.innerHTML = icon(orientation === "vertical" ? "kebab-vertical" : "ellipsis");
+
+  const hideGrip = () => {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+    delete element.dataset.splitterGripVisible;
+  };
+  const clearHover = () => {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+    delete element.dataset.splitterHover;
+  };
+  const sync = () => {
+    const bounds = getBounds();
+    const value = getSize();
+    element.setAttribute("aria-valuemin", String(bounds.min));
+    element.setAttribute("aria-valuemax", String(bounds.max));
+    element.setAttribute("aria-valuenow", String(value));
+    element.setAttribute("aria-valuetext", formatValue(value));
+  };
+  const resizeTo = value => {
+    const bounds = getBounds();
+    onResize(Math.round(Math.max(bounds.min, Math.min(bounds.max, value))));
+    sync();
+  };
+  const revealGrip = event => {
+    if (event.buttons !== 0 || drag || !isEnabled()) return;
+    const point = { x: event.clientX, y: event.clientY };
+    if (lastPoint?.x === point.x && lastPoint?.y === point.y) return;
+    lastPoint = point;
+    clearTimeout(idleTimer);
+    element.dataset.splitterGripVisible = "";
+    idleTimer = setTimeout(hideGrip, 1200);
+  };
+  const scheduleHover = () => {
+    clearHover();
+    if (drag || !isEnabled() || !element.matches(":hover")) return;
+    hoverTimer = setTimeout(() => {
+      hoverTimer = null;
+      if (!drag && isEnabled() && element.matches(":hover")) element.dataset.splitterHover = "";
+    }, 300);
+  };
+  const cancel = () => {
+    const pointerId = drag?.pointerId;
+    drag = null;
+    hideGrip();
+    clearHover();
+    delete element.dataset.splitterActive;
+    if (activeSplitterCancel === cancel) {
+      activeSplitterCancel = null;
+      delete document.documentElement.dataset.workbenchSplitterDragging;
+    }
+    if (pointerId !== undefined && element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId);
+    if (pointerId !== undefined) onResizeEnd();
+  };
+  document.addEventListener("keydown", () => { keyboardInput = true; }, { ...options, capture: true });
+  document.addEventListener("pointerdown", () => {
+    keyboardInput = false;
+    delete element.dataset.splitterKeyboardFocus;
+  }, { ...options, capture: true });
+  owner.addEventListener("pointerenter", revealGrip, options);
+  owner.addEventListener("pointermove", revealGrip, options);
+  owner.addEventListener("pointerleave", event => {
+    if (!owner.contains(event.relatedTarget) && !element.contains(event.relatedTarget)) lastPoint = null;
+  }, options);
+  element.addEventListener("pointerenter", event => {
+    revealGrip(event);
+    scheduleHover();
+  }, options);
+  element.addEventListener("pointerleave", event => {
+    clearHover();
+    if (!owner.contains(event.relatedTarget)) lastPoint = null;
+  }, options);
+  element.addEventListener("pointerdown", event => {
+    if (event.button !== 0 || !isEnabled()) return;
+    event.preventDefault();
+    activeSplitterCancel?.();
+    hideStatusTooltip();
+    clearHover();
+    hideGrip();
+    drag = { pointerId: event.pointerId, start: orientation === "vertical" ? event.clientX : event.clientY, size: getSize() };
+    activeSplitterCancel = cancel;
+    element.setPointerCapture(event.pointerId);
+    element.focus({ preventScroll: true });
+    element.dataset.splitterActive = "";
+    document.documentElement.dataset.workbenchSplitterDragging = orientation;
+  }, options);
+  element.addEventListener("pointermove", event => {
+    if (drag?.pointerId !== event.pointerId) {
+      revealGrip(event);
+      return;
+    }
+    lastPoint = { x: event.clientX, y: event.clientY };
+    const coordinate = orientation === "vertical" ? event.clientX : event.clientY;
+    resizeTo(drag.size + direction * (coordinate - drag.start));
+  }, options);
+  const finish = event => {
+    if (drag?.pointerId !== event.pointerId) return;
+    lastPoint = { x: event.clientX, y: event.clientY };
+    cancel();
+    if (event.type === "pointerup") scheduleHover();
+  };
+  for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) element.addEventListener(eventName, finish, options);
+  element.addEventListener("focus", () => {
+    if (keyboardInput) element.dataset.splitterKeyboardFocus = "";
+  }, options);
+  element.addEventListener("blur", () => {
+    delete element.dataset.splitterKeyboardFocus;
+    if (!drag) delete element.dataset.splitterActive;
+  }, options);
+  element.addEventListener("keydown", event => {
+    keyboardInput = true;
+    element.dataset.splitterKeyboardFocus = "";
+    if (!isEnabled()) return;
+    const step = keyboardStep * (event.shiftKey ? 3 : 1);
+    const value = getSize();
+    const bounds = getBounds();
+    const arrows = orientation === "vertical"
+      ? { ArrowLeft: value - direction * step, ArrowRight: value + direction * step }
+      : { ArrowUp: value - direction * step, ArrowDown: value + direction * step };
+    const requested = { ...arrows, Home: bounds.min, End: bounds.max }[event.key];
+    if (requested === undefined) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hideGrip();
+    clearHover();
+    element.dataset.splitterActive = "";
+    resizeTo(requested);
+    onResizeEnd();
+  }, options);
+  element.addEventListener("keyup", () => { if (!drag) delete element.dataset.splitterActive; }, options);
+  element.addEventListener("dblclick", event => {
+    if (!isEnabled()) return;
+    event.preventDefault();
+    hideGrip();
+    clearHover();
+    resizeTo(defaultSize);
+    onResizeEnd();
+  }, options);
+  const observer = new ResizeObserver(() => {
+    if (!isEnabled()) cancel();
+  });
+  observer.observe(owner);
+  window.addEventListener("blur", cancel, options);
+  resizeTo(getSize());
+  return {
+    sync,
+    cancel,
+    refresh: () => { if (!isEnabled()) cancel(); resizeTo(getSize()); },
+    dispose: () => { cancel(); observer.disconnect(); controller.abort(); }
+  };
+}
+
 function captureElements() {
   for (const id of [
     "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
@@ -368,7 +544,7 @@ function captureElements() {
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel", "rule-issues-panel",
     "bulk-actions", "bulk-scope-count", "bulk-add-count", "bulk-update-count", "bulk-actionable-count", "bulk-undo", "bulk-undo-count", "bulk-actions-note",
-    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail", "rule-issues-tab-count", "rule-issue-tab-pager", "rule-issue-tab-viewport", "rule-issues-previous", "rule-issues-filters", "rule-issues-next", "rule-issues-list", "rule-issues-detail", "rule-issues-status", "rule-issues-status-count",
+    "assessment-results-list", "assessment-sticky-stack", "assessment-results-detail", "rule-issues-tab-count", "rule-issue-tab-pager", "rule-issue-tab-viewport", "rule-issues-previous", "rule-issues-filters", "rule-issues-next", "rule-issues-list", "rule-issues-list-resizer", "rule-issues-detail", "rule-issues-status", "rule-issues-status-count",
     "return-catalog-button", "plan-attention-filter", "plan-attention-count", "plan-undo-menu", "plan-undo-trigger", "plan-undo-all-count", "plan-undo-manual-count", "plan-undo-bulk-count", "plan-undo-override-count", "plan-table-head", "plan-table-body", "empty-plan", "capacity-panel", "approval-badge",
     "preview-summary", "preview-tree-resizer", "preview-diff", "preview-payload-diff", "preview-json", "preview-protected", "preview-protected-section", "preview-code",
     "preview-review-toolbar",
@@ -398,13 +574,18 @@ function bindEvents() {
   elements["plan-undo-menu"].addEventListener("mouseleave", () => elements["plan-undo-menu"].removeAttribute("open"));
   elements["close-button"].addEventListener("click", closeWorkbench);
   elements["assist-panel-toggle"].addEventListener("click", () => setRuleAssistanceExpanded(!ruleAssistanceExpanded));
-  elements["assist-sidebar-resizer"].addEventListener("pointerdown", handleAssistanceSidebarResizeStart);
-  elements["assist-sidebar-resizer"].addEventListener("pointermove", handleAssistanceSidebarResizeMove);
-  elements["assist-sidebar-resizer"].addEventListener("pointerup", finishAssistanceSidebarResize);
-  elements["assist-sidebar-resizer"].addEventListener("pointercancel", finishAssistanceSidebarResize);
-  elements["assist-sidebar-resizer"].addEventListener("lostpointercapture", finishAssistanceSidebarResize);
-  elements["assist-sidebar-resizer"].addEventListener("keydown", handleAssistanceSidebarResizeKeyboard);
-  setAssistanceSidebarWidth(ruleAssistanceSidebarWidth);
+  assistanceSidebarSplitter = createWorkbenchSplitter({
+    element: elements["assist-sidebar-resizer"],
+    owner: elements["rule-assistance-panel"],
+    edge: "left",
+    label: "Resize AI assistance panel",
+    controls: ["rule-assistance-panel"],
+    getSize: () => ruleAssistanceSidebarWidth,
+    getBounds: getAssistanceSidebarBounds,
+    onResize: setAssistanceSidebarWidth,
+    defaultSize: 420,
+    formatValue: value => `Panel width ${value} pixels`
+  });
   setRuleAssistanceExpanded(ruleAssistanceExpanded);
   elements["export-button"].addEventListener("click", () => {
     exportDraft();
@@ -426,7 +607,14 @@ function bindEvents() {
   });
   elements["rule-issues-previous"].addEventListener("click", () => changeRuleIssueTabPage(-1));
   elements["rule-issues-next"].addEventListener("click", () => changeRuleIssueTabPage(1));
-  window.addEventListener("resize", () => scheduleRuleIssueTabPagination(true));
+  let ruleIssuePagerWidth = 0;
+  const ruleIssuePagerObserver = new ResizeObserver(([entry]) => {
+    const width = entry.contentRect.width;
+    if (width === ruleIssuePagerWidth) return;
+    ruleIssuePagerWidth = width;
+    if (width > 0) scheduleRuleIssueTabPagination(true);
+  });
+  ruleIssuePagerObserver.observe(elements["rule-issue-tab-pager"]);
   elements["rule-issues-list"].addEventListener("click", (event) => {
     const key = event.target.closest("[data-rule-issue-key]")?.dataset.ruleIssueKey;
     if (!key) return;
@@ -547,12 +735,31 @@ function bindEvents() {
   });
   elements["preview-summary"].addEventListener("input", handlePreviewFileFilter);
   elements["preview-summary"].addEventListener("click", handlePreviewFileNavigation);
-  elements["preview-tree-resizer"].addEventListener("pointerdown", handlePreviewTreeResizeStart);
-  elements["preview-tree-resizer"].addEventListener("pointermove", handlePreviewTreeResizeMove);
-  elements["preview-tree-resizer"].addEventListener("pointerup", handlePreviewTreeResizeEnd);
-  elements["preview-tree-resizer"].addEventListener("pointercancel", handlePreviewTreeResizeEnd);
-  elements["preview-tree-resizer"].addEventListener("keydown", handlePreviewTreeResizeKeyboard);
-  setPreviewTreeWidth(PREVIEW_TREE_DEFAULT_WIDTH);
+  previewTreeSplitter = createWorkbenchSplitter({
+    element: elements["preview-tree-resizer"],
+    owner: elements["preview-summary"].parentElement,
+    edge: "right",
+    label: "Resize preview file tree",
+    controls: ["preview-summary", "preview-code"],
+    getSize: () => parseFloat(elements["preview-tree-resizer"].parentElement.style.getPropertyValue("--preview-tree-width")) || PREVIEW_TREE_DEFAULT_WIDTH,
+    getBounds: getPreviewTreeBounds,
+    onResize: setPreviewTreeWidth,
+    onResizeEnd: refreshPreviewBodyVirtualizer,
+    defaultSize: PREVIEW_TREE_DEFAULT_WIDTH,
+    keyboardStep: PREVIEW_TREE_KEYBOARD_STEP,
+    formatValue: value => `Pane width ${value} pixels`
+  });
+  ruleIssuesListSplitter = createWorkbenchSplitter({
+    element: elements["rule-issues-list-resizer"],
+    owner: elements["rule-issues-list"].parentElement,
+    edge: "right",
+    label: "Resize rule issues list",
+    controls: ["rule-issues-list", "rule-issues-detail"],
+    getSize: () => ruleIssuesListWidth,
+    getBounds: getRuleIssuesListBounds,
+    onResize: setRuleIssuesListWidth,
+    defaultSize: 360
+  });
   elements["preview-review-toolbar"].addEventListener("click", handlePreviewReviewClick);
   document.addEventListener("click", handlePreviewReviewOutsideInteraction, true);
   document.addEventListener("pointerdown", handlePreviewReviewOutsideInteraction, { passive: true, capture: true });
@@ -576,8 +783,9 @@ function bindEvents() {
   window.addEventListener("resize", () => {
     candidateHierarchicalView?.refreshLayout();
     assessmentHierarchicalView?.refreshLayout();
-    setPreviewTreeWidth(Number(elements["preview-tree-resizer"].getAttribute("aria-valuenow")));
-    setAssistanceSidebarWidth(ruleAssistanceSidebarWidth);
+    previewTreeSplitter.refresh();
+    assistanceSidebarSplitter.refresh();
+    ruleIssuesListSplitter.refresh();
     schedulePreviewBodyVirtualizerRefresh();
   });
 }
@@ -770,27 +978,31 @@ function handleRowKeyboardNavigation(event, container, keyProperty, selectRow, a
   target.scrollIntoView({ block: "nearest" });
 }
 
-async function waitForIconSymbol(path, symbol) {
+async function validateIconSpriteReferences(references, sprites = new Map()) {
   const namespace = "http://www.w3.org/2000/svg";
-  const probe = document.createElementNS(namespace, "svg");
-  const use = document.createElementNS(namespace, "use");
-  probe.setAttribute("width", "16");
-  probe.setAttribute("height", "16");
-  probe.style.cssText = "position:fixed;left:-32px;top:-32px;opacity:0;pointer-events:none";
-  use.setAttribute("href", `${path}#${symbol}`);
-  probe.appendChild(use);
-  document.body.appendChild(probe);
-  try {
-    const deadline = performance.now() + 5000;
-    while (performance.now() < deadline) {
-      const bounds = use.getBBox();
-      if (bounds.width > 0 && bounds.height > 0) return;
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+  const resolved = references.map(([path, symbol]) => {
+    const url = new URL(path, document.baseURI);
+    if (url.origin !== location.origin) throw new Error("Icon sprite references must use the Workbench origin");
+    return { path: url.href, symbol };
+  });
+  const paths = [...new Set(resolved.map(reference => reference.path))];
+  await Promise.all(paths.filter(path => !sprites.has(path)).map(async path => {
+    const response = await fetch(path);
+    if (!response.ok) throw new Error(`Icon sprite request failed for ${new URL(path).pathname} with ${response.status}`);
+    const sprite = new DOMParser().parseFromString(await response.text(), "image/svg+xml");
+    if (sprite.getElementsByTagNameNS("*", "parsererror").length > 0
+      || sprite.documentElement.localName !== "svg" || sprite.documentElement.namespaceURI !== namespace) {
+      throw new Error(`Icon sprite is not valid SVG: ${new URL(path).pathname}`);
     }
-    throw new Error(`Icon symbol did not paint: ${symbol}`);
-  } finally {
-    probe.remove();
+    sprites.set(path, sprite);
+  }));
+  for (const { path, symbol } of resolved) {
+    const element = sprites.get(path).getElementById(symbol);
+    if (!element || element.localName !== "symbol" || element.namespaceURI !== namespace) {
+      throw new Error(`Icon sprite ${new URL(path).pathname} is missing required symbol: ${symbol}`);
+    }
   }
+  return sprites;
 }
 
 async function preloadIconSprites() {
@@ -804,30 +1016,23 @@ async function preloadIconSprites() {
     ...[...new Set(llmBrandMap.map(entry => entry.icon))].map(name => ["icons/llms/sprite.svg", `llm-${name}`]),
     ["icons/codicons/sprite.svg", "codicon-question"]
   ];
-  const responses = await Promise.all([...new Set(sprites.map(([path]) => path))].map(path => fetch(path)));
-  const failed = responses.find((response) => !response.ok);
-  if (failed) throw new Error(`Icon sprite request failed with ${failed.status}`);
-  await Promise.all(responses.map((response) => response.arrayBuffer()));
-  await Promise.all(sprites.map(([path, symbol]) => waitForIconSymbol(path, symbol)));
+  return validateIconSpriteReferences(sprites);
 }
 
-async function waitForCandidateDecorationPaint() {
-  const deadline = performance.now() + 5000;
-  while (performance.now() < deadline) {
-    const uses = [...elements["candidate-list"].querySelectorAll(".candidate-parent-decoration-icon:not([hidden]) use, .candidate-decoration-icon:not([hidden]) use")];
-    if (uses.every((use) => {
-      const bounds = use.getBBox();
-      return bounds.width > 0 && bounds.height > 0;
-    })) return;
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-  }
-  throw new Error("Candidate decoration icons did not paint");
+async function validateCandidateDecorationIcons(sprites) {
+  const references = [...elements["candidate-list"].querySelectorAll(".candidate-parent-decoration-icon:not([hidden]) use, .candidate-decoration-icon:not([hidden]) use")].map(use => {
+    const url = new URL(use.getAttribute("href"), document.baseURI);
+    const symbol = url.hash.slice(1);
+    url.hash = "";
+    return [url.href, symbol];
+  });
+  await validateIconSpriteReferences(references, sprites);
 }
 
 async function loadBundle() {
   setSaveIndicator("Loading display", { kind: "standard", icon: "ellipsis" });
   try {
-    await preloadIconSprites();
+    const iconSprites = await preloadIconSprites();
     const [displayResponse, ruleIssuesResponse, waitingPhrasesResponse] = await Promise.all([
       fetch("workbench-display.json", { cache: "no-store" }),
       fetch("workbench-rule-issues.json", { cache: "no-store" }),
@@ -840,6 +1045,7 @@ async function loadBundle() {
     validateDisplay(display);
     validateRuleIssueBundle(ruleIssueBundle);
     ruleAssistanceWaitingPhrases = validateRuleAssistanceWaitingPhrases(waitingPhrases);
+    ruleAssistanceWaitingPhraseBag = [];
     if (!sourceFilesEqual(display.sourceFiles, ruleIssueBundle.sourceFiles)) {
       throw new Error("The Workbench display and Rule Issues source files do not match.");
     }
@@ -883,7 +1089,7 @@ async function loadBundle() {
     renderAll();
     showCandidatePane("candidates");
     showAssessmentPane("assessments");
-    await waitForCandidateDecorationPaint();
+    await validateCandidateDecorationIcons(iconSprites);
     elements.workspace.classList.remove("icon-paint-pending");
     showToast("Workbench draft loaded");
   } catch (error) {
@@ -1130,6 +1336,14 @@ function getRuleIssueTabPages(tabs, availableWidth) {
     pageWidth += tabWidth;
   });
   if (page.length) pages.push(page);
+  if (pages.length > 1) {
+    for (let index = page[0] - 1; index >= 0; index -= 1) {
+      const tabWidth = tabs[index].getBoundingClientRect().width + Number.parseFloat(getComputedStyle(tabs[index]).marginRight || "0");
+      if (pageWidth + tabWidth > availableWidth) break;
+      page.unshift(index);
+      pageWidth += tabWidth;
+    }
+  }
   return pages;
 }
 
@@ -1374,6 +1588,13 @@ async function stageRuleIssueRecommendation(issue) {
 }
 
 async function handleRuleIssueDetailClick(event) {
+  const resolution = event.target.closest("[data-rule-issue-resolve]");
+  if (resolution) {
+    const issue = state.ruleIssues.find((item) => item.id === resolution.dataset.ruleIssueResolve);
+    const rule = issue?.rules.find((item) => item.id === resolution.dataset.ruleIssueRule);
+    if (rule) openRuleIssueResolutionDialog(issue, rule, resolution);
+    return;
+  }
   const dismiss = event.target.closest("[data-dismiss-rule-issue-banner]");
   if (dismiss) {
     state.dismissedRuleIssueBannerKeys.add(dismiss.dataset.dismissRuleIssueBanner);
@@ -1386,7 +1607,7 @@ async function handleRuleIssueDetailClick(event) {
   if (issue) await stageRuleIssueRecommendation(issue);
 }
 
-function renderRuleIssueRule(rule, issue) {
+function renderRuleIssueRule(rule, issue, resolutionControls = true) {
   const isProtected = rule.status === "protected" || state.protectedRules.some((item) => item.id === rule.id);
   const operation = getRuleIssueOperations(issue).find((item) => item.ruleId === rule.id);
   const action = operation?.action || ({ promote: "add", replace: "update", retire: "retire", exclude: "exclude", defer: "defer" })[rule.disposition];
@@ -1395,18 +1616,199 @@ function renderRuleIssueRule(rule, issue) {
     : action
       ? `<span class="ui-badge status-capsule decision-badge ${escapeHtml(action)}">${escapeHtml(formatRecommendation(action))}</span>`
       : `<span class="ui-badge status-capsule decision-badge ${rule.disposition === "keep" ? "no-change" : "defer"}">${escapeHtml(capitalize(rule.disposition))}</span>`;
-  return `
-    <section class="rule-issue-rule recommend-${escapeHtml(rule.disposition)}${isProtected ? " protected-reference" : ""}"${isProtected ? ` role="group" aria-label="Protected rule ${escapeHtml(rule.id)}"` : ""}>
-      <h3><span class="rule-reference">${escapeHtml(rule.id)}</span><span class="rule-issue-rule-statuses"><span class="ui-badge status-capsule catalog-status ${isProtected ? "protected" : escapeHtml(rule.status)}">${isProtected ? "Protected" : escapeHtml(capitalize(rule.status))}</span>${actionBadge}</span></h3>
-      <div class="rule-issue-rule-body"${isProtected ? ' role="document" aria-label="Protected rule text, read only"' : ""}><p>${renderRuleReferences(rule.text, issue.ruleIds)}</p></div>
-    </section>
-  `;
+  return renderRuleTextPanel({
+    id: `rule-issue-${issue.id}-${rule.id}`,
+    title: rule.id,
+    titleClassName: "rule-reference",
+    text: rule.text,
+    ruleIds: issue.ruleIds,
+    statusMarkup: `<span class="ui-badge status-capsule catalog-status ${isProtected ? "protected" : escapeHtml(rule.status)}">${isProtected ? "Protected" : escapeHtml(capitalize(rule.status))}</span>${actionBadge}`,
+    accent: ({ keep: "success", promote: "success", retire: "danger", replace: "danger", exclude: "danger" })[rule.disposition] || "none",
+    disabled: isProtected,
+    className: isProtected ? "protected-reference" : "",
+    sectionLabel: isProtected ? `Protected rule ${rule.id}` : "",
+    bodyLabel: isProtected ? "Protected rule text, read only" : "",
+    headerAction: resolutionControls && !isProtected ? {
+      icon: "open-in-window",
+      label: `Resolve ${rule.id}`,
+      tooltip: "Resolve rule",
+      attributes: { "data-rule-issue-resolve": issue.id, "data-rule-issue-rule": rule.id }
+    } : null
+  });
 }
 
 function renderRuleIssueWording(wording, ruleIds) {
   const unresolved = wording.status === "unresolved";
   const text = unresolved ? wording.reason : wording.text;
   return `<section class="rule-issue-suggestion ${unresolved ? "rule-issue-wording-unresolved" : ""}"><h3>${escapeHtml(wording.label)}</h3><p>${renderRuleReferences(text, ruleIds)}</p></section>`;
+}
+
+function renderRationaleField({ id, label, value = "", maxLength = DECISION_RATIONALE_MAX_LENGTH, disabled = false, readOnly = false, placeholder = "", actionsMarkup = "", className = "", textareaAttributes = {}, showCounter = true }) {
+  const attributes = Object.entries(textareaAttributes).map(([name, attributeValue]) => `${name}="${escapeHtml(attributeValue)}"`).join(" ");
+  return `<div class="rationale-field ${escapeHtml(className)}"><div class="rationale-heading"><label class="control-subtitle" id="${escapeHtml(id)}-label" for="${escapeHtml(id)}">${escapeHtml(label)}</label>${actionsMarkup}</div><textarea class="evidence-box scroll-surface" id="${escapeHtml(id)}" maxlength="${maxLength}" aria-labelledby="${escapeHtml(id)}-label" ${showCounter ? `aria-describedby="${escapeHtml(id)}-limit"` : ""} placeholder="${escapeHtml(placeholder)}" ${disabled ? "disabled" : ""} ${readOnly ? "readonly" : ""} ${attributes}>${escapeHtml(value)}</textarea>${showCounter ? `<small class="rationale-limit" id="${escapeHtml(id)}-limit">${value.length} / ${maxLength} characters</small>` : ""}</div>`;
+}
+
+function syncRationaleCounter(textarea) {
+  const counter = textarea?.closest(".rationale-field")?.querySelector(".rationale-limit");
+  if (counter) counter.textContent = `${textarea.value.length} / ${textarea.maxLength} characters`;
+}
+
+function renderRuleTextPanel({ id, title, text, ruleIds = [], statusMarkup = "", choice = null, accent = "none", headerAction = null, disabled = false, className = "", titleClassName = "", sectionLabel = "", bodyLabel = "" }) {
+  const actionAttributes = Object.entries(headerAction?.attributes || {}).map(([name, value]) => `${name}="${escapeHtml(value)}"`).join(" ");
+  const actionMarkup = headerAction ? `<button class="titlebar-icon rule-text-panel-action clickable" type="button" ${actionAttributes} aria-label="${escapeHtml(headerAction.label)}" data-workbench-tooltip="${escapeHtml(headerAction.tooltip)}">${icon(headerAction.icon)}</button>` : "";
+  return `<section class="rule-text-panel rule-issue-rule ${escapeHtml(className)}" data-rule-panel-accent="${escapeHtml(accent)}"${disabled ? " data-rule-panel-disabled" : ""}${sectionLabel ? ` role="group" aria-label="${escapeHtml(sectionLabel)}"` : ""}>
+    <h3 class="rule-text-panel-header"><span class="rule-text-panel-title ${escapeHtml(titleClassName)}" id="${escapeHtml(id)}-title">${escapeHtml(title)}</span>${statusMarkup || actionMarkup ? `<span class="rule-text-panel-statuses rule-issue-rule-statuses">${statusMarkup}${actionMarkup}</span>` : ""}</h3>
+    ${choice ? `<div class="rule-resolution-wording-choice action-plan-group"><label class="action-option clickable"><input type="radio" name="${escapeHtml(choice.name)}" value="${escapeHtml(choice.value)}" aria-controls="${escapeHtml(id)}-body" ${choice.selected ? "checked" : ""} ${choice.disabled ? "disabled" : ""}><span>${escapeHtml(choice.label)}</span></label></div>` : ""}
+    <div class="rule-issue-rule-body scroll-surface" id="${escapeHtml(id)}-body" role="document" ${bodyLabel ? `aria-label="${escapeHtml(bodyLabel)}"` : `aria-labelledby="${escapeHtml(id)}-title"`}><p>${renderRuleReferences(text, ruleIds)}</p></div>
+  </section>`;
+}
+
+function openRuleIssueResolutionDialog(issue, rule, trigger) {
+  if (rule.status === "protected" || state.protectedRules.some((item) => item.id === rule.id)) return;
+  const operation = getRuleIssueOperations(issue).find((item) => item.ruleId === rule.id);
+  const candidateKeys = operation ? [operation.candidateKey] : rule.candidateKeys;
+  const candidate = state.assessedCandidates.find((item) => candidateKeys.includes(item.key));
+  if (!candidate) {
+    showToast("This rule cannot be mapped to a current candidate.", true);
+    return;
+  }
+  const original = getDecision(candidate);
+  const textChanged = String(original.proposedText).replace(/\r\n/g, "\n") !== String(rule.text).replace(/\r\n/g, "\n");
+  const allowedActions = getAllowedActions(candidate, original.proposedText);
+  const pending = {
+    action: allowedActions.includes(operation?.action) ? operation.action : original.action,
+    proposedText: original.proposedText,
+    rationale: original.rationale,
+    wording: textChanged ? "updated" : "original"
+  };
+  const baseline = { ...pending };
+  const sessionSnapshot = JSON.stringify(state.session);
+  const candidateHash = candidate.hash;
+  const identity = getValidatedCodeOwnerIdentity();
+  const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+  const editorText = editor?.value;
+  const hasChanges = () => pending.action !== baseline.action || pending.proposedText !== baseline.proposedText || pending.rationale !== baseline.rationale;
+  const dialog = openWorkbenchDialog({
+    name: "rule-resolution",
+    title: "Resolve rule",
+    iconMarkup: icon("git-branch-conflicts"),
+    trigger,
+    closeLabel: "Close resolution",
+    bodyHtml: `
+      <div class="rule-resolution-meta"><strong class="rule-reference">${escapeHtml(rule.id)}</strong></div>
+      <p class="rule-resolution-context">${escapeHtml(issue.title)}</p>
+      <div class="rule-resolution-comparison" role="group" aria-label="${textChanged ? "Wording to keep" : "Original text"}">
+        ${(textChanged ? [["updated", "UPDATED TEXT", original.proposedText], ["original", "ORIGINAL TEXT", rule.text]] : [["original", "ORIGINAL TEXT", rule.text]]).map(([version, title, text]) => renderRuleTextPanel({
+          id: `rule-resolution-${version}`,
+          title,
+          className: "rule-resolution-text",
+          titleClassName: "rule-resolution-text-title",
+          text,
+          ruleIds: issue.ruleIds,
+          statusMarkup: version === "updated" ? '<span class="ui-badge status-capsule">Changed Since Adjudication</span>' : `<span class="ui-badge status-capsule catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span>`,
+          choice: textChanged ? { name: "rule-resolution-wording", value: version, label: `Keep ${version === "updated" ? "Updated" : "Original"} Text`, selected: version === "updated", disabled: issue.blocking } : null
+        })).join("")}
+      </div>
+      <div class="field-stack rule-resolution-state"><span class="control-subtitle" id="rule-resolution-state-label">Adjudicated State:</span><div class="control-group action-plan-group"><fieldset class="action-options" aria-labelledby="rule-resolution-state-label">${allowedActions.map((action) => `<label class="action-option clickable"><input type="radio" name="rule-resolution-action" value="${escapeHtml(action)}"><span>${escapeHtml(formatRecommendation(action))}</span></label>`).join("")}</fieldset></div></div>
+      ${renderRationaleField({ id: "rule-resolution-rationale", label: "Resolution Rationale:", value: pending.rationale, disabled: issue.blocking, className: "rule-resolution-rationale" })}`,
+    actions: [
+      { label: "Cancel", variant: "", iconMarkup: icon("close") },
+      { label: "Save Resolution", variant: "primary", iconMarkup: icon("save"), attribute: "data-resolution-save", onConfirm: async () => {
+        const assertCurrent = () => {
+          const current = state.assessedCandidates.find(item => item.key === candidate.key);
+          if (issue.blocking || !hasChanges() || !current || current.hash !== candidateHash
+            || JSON.stringify(state.session) !== sessionSnapshot
+            || (editor?.isConnected && editor.value !== editorText)
+            || state.protectedRules.some(item => item.id === rule.id)
+            || (original.inPlan && (!identity || getValidatedCodeOwnerIdentity()?.login !== identity.login))
+            || !getAllowedActions(current, pending.proposedText).includes(pending.action)) {
+            throw new Error("The resolution changed or is not valid. Review the current draft and protected integrity.");
+          }
+        };
+        try {
+          assertCurrent();
+          const nextSession = structuredClone(state.session);
+          const changedOutcome = pending.action !== original.action || pending.proposedText !== original.proposedText;
+          const { assessment, ...decision } = original;
+          removeCandidateFromBulkOperations(candidate.key, nextSession);
+          const updatedAt = toUtcTimestamp();
+          nextSession.decisions[candidate.key] = {
+            ...decision,
+            action: pending.action,
+            proposedText: pending.proposedText,
+            rationale: pending.rationale,
+            ...(changedOutcome ? createPlanMembership() : original.inPlan ? createPlanMembership("manual") : createPlanMembership()),
+            sourceHash: candidate.hash,
+            updatedAt
+          };
+          nextSession.updatedAt = updatedAt;
+          await persistSession(nextSession, assertCurrent);
+          try { assertCurrent(); }
+          catch (error) { await persistSession(); throw error; }
+          if (changedOutcome && original.inPlan) prepareRuleIssueRestore([candidate.key]);
+          state.session = nextSession;
+          syncCandidateTreeRows();
+          renderBulkActions();
+          renderRuleIssues();
+          renderAssessment();
+          renderAssessmentResults();
+          renderDecisionOutputs();
+          showToast("Resolution saved.");
+        } catch (error) {
+          showToast(`Resolution was not saved: ${error.message}`, true);
+        }
+      } }
+    ]
+  });
+  if (!dialog) return;
+  const footer = dialog.querySelector(".modal-dialog-actions");
+  dialog.append(footer);
+  const save = dialog.querySelector("[data-resolution-save]");
+  const close = dialog.querySelector("[data-dialog-close]");
+  const titleActions = document.createElement("div");
+  titleActions.className = "rule-resolution-header-actions";
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "titlebar-icon clickable";
+  reset.setAttribute("data-resolution-reset", "");
+  reset.setAttribute("aria-label", "Reset Changes");
+  reset.setAttribute("data-workbench-tooltip", "Reset Changes");
+  reset.innerHTML = icon("discard");
+  close.before(titleActions);
+  titleActions.append(reset, close);
+  const refresh = () => {
+    save.disabled = issue.blocking || !hasChanges() || !getAllowedActions(candidate, pending.proposedText).includes(pending.action);
+    reset.disabled = !hasChanges();
+    for (const input of dialog.querySelectorAll('input[name="rule-resolution-action"]')) {
+      input.checked = input.value === pending.action;
+      input.disabled = issue.blocking || !getAllowedActions(candidate, pending.proposedText).includes(input.value);
+      input.closest("label").classList.toggle("selected", input.checked);
+    }
+    for (const input of dialog.querySelectorAll('input[name="rule-resolution-wording"]')) {
+      input.checked = input.value === pending.wording;
+      input.closest("section").classList.toggle("wording-selected", input.checked);
+    }
+    const rationale = dialog.querySelector("#rule-resolution-rationale");
+    rationale.value = pending.rationale;
+    syncRationaleCounter(rationale);
+  };
+  dialog.addEventListener("change", event => {
+    if (event.target.matches('input[name="rule-resolution-action"]')) pending.action = event.target.value;
+    else if (event.target.matches('input[name="rule-resolution-wording"]')) {
+      pending.wording = event.target.value;
+      pending.proposedText = pending.wording === "updated" ? original.proposedText : rule.text;
+    } else return;
+    refresh();
+  });
+  dialog.querySelector("#rule-resolution-rationale").addEventListener("input", event => {
+    pending.rationale = event.target.value;
+    refresh();
+  });
+  reset.addEventListener("click", () => {
+    Object.assign(pending, baseline);
+    refresh();
+  });
+  refresh();
 }
 
 function renderRuleIssueResolutionPreview(issue, proposedText) {
@@ -1430,7 +1832,7 @@ function renderRuleIssueContent(issue, { candidateDetails = false, proposedText 
   return `
     ${banner}
     ${protectedNotice}
-    <div class="rule-issue-comparison">${visibleRules.map((rule) => renderRuleIssueRule(rule, issue)).join("")}</div>
+    <div class="rule-issue-comparison">${visibleRules.map((rule) => renderRuleIssueRule(rule, issue, !candidateDetails)).join("")}</div>
     ${candidateDetails && proposedText !== null ? renderRuleIssueResolutionPreview(issue, proposedText) : ""}
     ${candidateDetails ? "" : `<span class="section-label rule-issue-assessment-label">Assessment:</span>
     <section class="rule-issue-assessment"><p>${renderRuleReferences(issue.assessmentSummary, issue.ruleIds)}</p></section>
@@ -1444,6 +1846,7 @@ function renderRuleIssueDetail(issue) {
   elements["rule-issues-detail"].innerHTML = issue
     ? renderRuleIssueContent(issue)
     : renderPreviewEmptyState("warning-compact", "Select a Rule Issue", "Relationship evidence, affected rules, consolidated wording, and advisory actions will appear here.");
+  if (state.workspaceTab === "rule-issues") setRuleAssistanceIssue(issue);
   scheduleTruncationTooltips();
 }
 
@@ -3102,11 +3505,7 @@ function renderApplicabilityOverride(candidate) {
         <span class="section-label">Maintainer Override:</span>
         ${readOnlyBanner}
         <div class="override-record subcontext-container">
-          <div class="override-rationale">
-            <span class="rationale-heading"><label class="control-subtitle" for="${escapeHtml(fieldId)}">Override Rationale:</label><span class="override-record-actions">${actions}</span></span>
-            <textarea id="${escapeHtml(fieldId)}" class="scroll-surface" maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" data-saved-override-rationale ${editing ? "" : "readonly"}>${escapeHtml(override.rationale)}</textarea>
-            ${editing ? `<small class="rationale-limit">${override.rationale.length} / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small>` : ""}
-          </div>
+          ${renderRationaleField({ id: fieldId, label: "Override Rationale:", value: override.rationale, maxLength: OVERRIDE_RATIONALE_MAX_LENGTH, readOnly: !editing, actionsMarkup: `<span class="override-record-actions">${actions}</span>`, className: "override-rationale", textareaAttributes: { "data-saved-override-rationale": "" }, showCounter: editing })}
           <small class="override-record-audit">Last saved by @${escapeHtml(override.recordedBy.login)} on ${escapeHtml(formatTimestamp(override.recordedAt))}. The original AI exclusion remains in this audit.</small>
         </div>
       </div>
@@ -3125,7 +3524,7 @@ function renderApplicabilityOverride(candidate) {
       <div class="override-form subcontext-container" hidden>
         <span class="control-subtitle">Corrected Outcome:</span>
         <label class="override-outcome clickable"><input type="radio" name="corrected-outcome" value="eligible" checked><span>Eligible for Candidate Sources</span></label>
-        <label class="override-rationale"><span class="rationale-heading"><span class="control-subtitle">Override Rationale:</span><span class="override-inline-actions"><button class="titlebar-icon clickable" type="button" data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply override" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel override">${icon("close")}</button></span></span><textarea class="scroll-surface" maxlength="${OVERRIDE_RATIONALE_MAX_LENGTH}" aria-describedby="override-rationale-limit" placeholder="Briefly explain why the AI exclusion is incorrect."></textarea><small id="override-rationale-limit" class="rationale-limit">0 / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters</small></label>
+        ${renderRationaleField({ id: `override-rationale-${candidate.key}`, label: "Override Rationale:", maxLength: OVERRIDE_RATIONALE_MAX_LENGTH, placeholder: "Briefly explain why the AI exclusion is incorrect.", className: "override-rationale", actionsMarkup: `<span class="override-inline-actions"><button class="titlebar-icon clickable" type="button" data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply override" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel override">${icon("close")}</button></span>` })}
         <p class="override-audit-note">The original AI result remains in the assessment audit. This provisional override records the corrected outcome, rationale, authenticated maintainer, and timestamp.</p>
       </div>
     </div>
@@ -3136,7 +3535,7 @@ function handleApplicabilityOverrideInput(event) {
   if (!event.target.matches(".override-rationale textarea")) return;
   const form = event.target.closest(".override-form");
   if (form) {
-    form.querySelector(".rationale-limit").textContent = `${event.target.value.length} / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters`;
+    syncRationaleCounter(event.target);
     form.querySelector("[data-override-apply]").disabled = !event.target.value.trim();
     return;
   }
@@ -3144,7 +3543,7 @@ function handleApplicabilityOverrideInput(event) {
   const candidate = state.assessedCandidates.find((item) => item.key === record?.closest(".maintainer-override")?.dataset.overrideKey);
   const override = candidate ? getApplicabilityOverride(candidate) : null;
   if (!record || !override) return;
-  record.querySelector(".rationale-limit").textContent = `${event.target.value.length} / ${OVERRIDE_RATIONALE_MAX_LENGTH} characters`;
+  syncRationaleCounter(event.target);
   record.querySelector("[data-override-save]").disabled = !event.target.value.trim() || event.target.value.trim() === override.rationale;
 }
 
@@ -3401,6 +3800,23 @@ function validateRuleAssistanceWaitingPhrases(phrases) {
   return phrases;
 }
 
+function nextRuleAssistanceWaitingPhrase() {
+  if (ruleAssistanceWaitingPhraseBag.length === 0) {
+    ruleAssistanceWaitingPhraseBag = [...ruleAssistanceWaitingPhrases];
+    for (let index = ruleAssistanceWaitingPhraseBag.length - 1; index > 0; index -= 1) {
+      const target = Math.floor(Math.random() * (index + 1));
+      [ruleAssistanceWaitingPhraseBag[index], ruleAssistanceWaitingPhraseBag[target]] = [ruleAssistanceWaitingPhraseBag[target], ruleAssistanceWaitingPhraseBag[index]];
+    }
+    const lastIndex = ruleAssistanceWaitingPhraseBag.length - 1;
+    if (lastIndex > 0 && ruleAssistanceWaitingPhraseBag[lastIndex] === ruleAssistanceLastWaitingPhrase) {
+      const target = Math.floor(Math.random() * lastIndex);
+      [ruleAssistanceWaitingPhraseBag[lastIndex], ruleAssistanceWaitingPhraseBag[target]] = [ruleAssistanceWaitingPhraseBag[target], ruleAssistanceWaitingPhraseBag[lastIndex]];
+    }
+  }
+  ruleAssistanceLastWaitingPhrase = ruleAssistanceWaitingPhraseBag.pop();
+  return ruleAssistanceLastWaitingPhrase;
+}
+
 function syncRuleAssistanceScrollControl() {
   const root = elements["assist-sidebar-content"].querySelector("[data-rule-assistance]");
   const transcript = root?.querySelector(".assist-chat-response");
@@ -3409,7 +3825,16 @@ function syncRuleAssistanceScrollControl() {
 }
 
 function setRuleAssistanceCandidate(candidate, viewKind = state.workspaceTab) {
-  const contextKey = candidate ? JSON.stringify([viewKind, candidate.key]) : null;
+  setRuleAssistanceContext(candidate, viewKind);
+}
+
+function setRuleAssistanceIssue(issue) {
+  setRuleAssistanceContext(issue, "rule-issues");
+}
+
+function setRuleAssistanceContext(target, viewKind) {
+  const isIssue = viewKind === "rule-issues";
+  const contextKey = target ? JSON.stringify([viewKind, isIssue ? target.id : target.key]) : null;
   if (ruleAssistance?.contextKey === contextKey) {
     if (!elements["assist-sidebar-content"].hasChildNodes()) renderRuleAssistanceSidebar();
     else syncRuleAssistanceVisibility();
@@ -3417,8 +3842,8 @@ function setRuleAssistanceCandidate(candidate, viewKind = state.workspaceTab) {
   }
   const transcript = elements["assist-sidebar-content"].querySelector(".assist-chat-response");
   if (ruleAssistance && transcript) ruleAssistance.scrollTop = transcript.scrollTop;
-  if (candidate && !ruleAssistanceChats.has(contextKey)) {
-    ruleAssistanceChats.set(contextKey, { contextKey, viewKind, candidateKey: candidate.key, input: "", turns: [], active: null, followOutput: true, scrollTop: 0 });
+  if (target && !ruleAssistanceChats.has(contextKey)) {
+    ruleAssistanceChats.set(contextKey, { contextKey, viewKind, candidateKey: isIssue ? null : target.key, ruleIssueId: isIssue ? target.id : null, input: "", turns: [], active: null, followOutput: true, scrollTop: 0 });
   }
   ruleAssistance = contextKey ? ruleAssistanceChats.get(contextKey) : null;
   renderRuleAssistanceSidebar();
@@ -3432,10 +3857,16 @@ function getRuleAssistanceCandidate() {
   return state.assessedCandidates.find(candidate => candidate.key === ruleAssistance?.candidateKey) || null;
 }
 
+function getRuleAssistanceTarget() {
+  return ruleAssistance?.viewKind === "rule-issues"
+    ? state.ruleIssueBundle.issues.find(issue => issue.id === ruleAssistance.ruleIssueId) || null
+    : getRuleAssistanceCandidate();
+}
+
 function renderRuleAssistanceSidebar() {
-  const candidate = getRuleAssistanceCandidate();
-  elements["assist-sidebar-content"].innerHTML = candidate ? renderRuleAssistance(candidate)
-    : '<div class="empty-state compact"><h2>AI Assistance</h2><p>No candidate selected.</p></div>';
+  const target = getRuleAssistanceTarget();
+  elements["assist-sidebar-content"].innerHTML = target ? renderRuleAssistance(target)
+    : '<div class="empty-state compact"><h2>AI Assistance</h2><p>No context selected.</p></div>';
   syncRuleAssistanceVisibility();
   requestAnimationFrame(syncRuleAssistanceScrollControl);
 }
@@ -3446,18 +3877,19 @@ function setRuleAssistanceExpanded(expanded) {
 }
 
 function syncRuleAssistanceVisibility() {
-  const candidate = getRuleAssistanceCandidate();
+  const target = getRuleAssistanceTarget();
+  const isIssue = state.workspaceTab === "rule-issues";
   const detail = state.workspaceTab === "candidate-sources" ? elements["assessment-panel"]
-    : state.workspaceTab === "assessment-results" ? elements["assessment-results-detail"] : null;
-  const candidateKey = state.workspaceTab === "candidate-sources" ? state.activeKey : state.assessmentActiveKey;
-  const available = Boolean(candidate && candidate.key === candidateKey && ruleAssistance.viewKind === state.workspaceTab
+    : state.workspaceTab === "assessment-results" ? elements["assessment-results-detail"] : isIssue ? elements["rule-issues-detail"] : null;
+  const selectedKey = state.workspaceTab === "candidate-sources" ? state.activeKey : isIssue ? state.activeRuleIssueKey : state.assessmentActiveKey;
+  const available = Boolean(target && (isIssue ? target.id : target.key) === selectedKey && ruleAssistance.viewKind === state.workspaceTab
     && detail?.dataset.sidebarEnabled === "true" && !detail.hidden
     && detail.closest("[data-view-panel]")?.classList.contains("active")
     && !detail.closest(".workspace-tab-panel")?.hidden);
   const expanded = available && ruleAssistanceExpanded;
   const transcript = elements["assist-sidebar-content"].querySelector(".assist-chat-response");
   if (!expanded && !elements["rule-assistance-panel"].hidden && ruleAssistance && transcript) ruleAssistance.scrollTop = transcript.scrollTop;
-  if (!expanded) finishAssistanceSidebarResize();
+  if (!expanded) assistanceSidebarSplitter?.cancel();
   elements["rule-assistance-panel"].hidden = !expanded;
   document.querySelector(".app-shell").classList.toggle("assist-sidebar-open", expanded);
   const toggle = elements["assist-panel-toggle"];
@@ -3474,45 +3906,16 @@ function syncRuleAssistanceVisibility() {
   });
 }
 
+function getAssistanceSidebarBounds() {
+  return { min: 320, max: Math.max(320, Math.min(680, document.documentElement.clientWidth - 400)) };
+}
+
 function setAssistanceSidebarWidth(value) {
-  const maximum = Math.max(320, Math.min(680, document.documentElement.clientWidth - 400));
-  ruleAssistanceSidebarWidth = Math.round(Math.max(320, Math.min(maximum, value)));
+  const bounds = getAssistanceSidebarBounds();
+  ruleAssistanceSidebarWidth = Math.round(Math.max(bounds.min, Math.min(bounds.max, value)));
   document.documentElement.style.setProperty("--assist-sidebar-width", `${ruleAssistanceSidebarWidth}px`);
-  const handle = elements["assist-sidebar-resizer"];
-  handle.setAttribute("aria-valuemax", String(maximum));
-  handle.setAttribute("aria-valuenow", String(ruleAssistanceSidebarWidth));
-  handle.setAttribute("aria-valuetext", `Panel width ${ruleAssistanceSidebarWidth} pixels`);
+  assistanceSidebarSplitter?.sync();
   requestAnimationFrame(syncRuleAssistanceScrollControl);
-}
-
-function handleAssistanceSidebarResizeStart(event) {
-  if (event.button !== 0 || ruleAssistanceSidebarResize) return;
-  event.preventDefault();
-  const handle = elements["assist-sidebar-resizer"];
-  ruleAssistanceSidebarResize = { pointerId: event.pointerId, start: event.clientX, width: ruleAssistanceSidebarWidth };
-  handle.setPointerCapture(event.pointerId);
-}
-
-function handleAssistanceSidebarResizeMove(event) {
-  const resize = ruleAssistanceSidebarResize;
-  if (!resize || resize.pointerId !== event.pointerId) return;
-  setAssistanceSidebarWidth(resize.width + resize.start - event.clientX);
-}
-
-function finishAssistanceSidebarResize() {
-  const resize = ruleAssistanceSidebarResize;
-  if (!resize) return;
-  ruleAssistanceSidebarResize = null;
-  const handle = elements["assist-sidebar-resizer"];
-  if (handle.hasPointerCapture(resize.pointerId)) handle.releasePointerCapture(resize.pointerId);
-}
-
-function handleAssistanceSidebarResizeKeyboard(event) {
-  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-  event.preventDefault();
-  const maximum = Number(elements["assist-sidebar-resizer"].getAttribute("aria-valuemax"));
-  setAssistanceSidebarWidth(event.key === "Home" ? 320 : event.key === "End" ? maximum
-    : ruleAssistanceSidebarWidth + (event.key === "ArrowLeft" ? 16 : -16));
 }
 
 function cancelRuleAssistance() {
@@ -3528,6 +3931,10 @@ function cancelRuleAssistance() {
 }
 
 function getAssistanceEditorText() {
+  if (ruleAssistance?.viewKind === "rule-issues") {
+    const issue = getRuleAssistanceTarget();
+    return issue ? JSON.stringify(issue) : undefined;
+  }
   const candidate = getRuleAssistanceCandidate();
   if (!candidate) return undefined;
   const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
@@ -3559,8 +3966,12 @@ function createRuleAssistanceError(message, code = "rule-assistance-failed", dia
   return Object.assign(new Error(message), { assistanceError: { code, message, diagnosticId } });
 }
 
-function renderRuleAssistance(candidate) {
+function renderRuleAssistance(target) {
   const chat = ruleAssistance;
+  const isIssue = chat.viewKind === "rule-issues";
+  const contextLabel = isIssue ? target.title : getEffectiveHostedRuleId(target);
+  const scope = isIssue ? "Issue, affected rules, recorded evidence, and catalog snapshot; excludes drafts and Plan changes."
+    : "Assessment, sources, and catalog snapshot; excludes other drafts and Plan changes.";
   const profile = globalThis.__HOSTED_RULE_WORKBENCH__?.ruleAssistance;
   const running = Boolean(chat.active);
   const ready = Boolean(chat.input.trim() && profile?.model);
@@ -3570,7 +3981,7 @@ function renderRuleAssistance(candidate) {
     <div class="assist-chat-user-message">${escapeHtml(turn.question)}</div>
     ${turn.answer ? `<div class="assist-chat-ai-message">
       <div class="assist-chat-message-author">Completed in ${escapeHtml(turn.duration)}</div>
-      ${renderAssistanceContextNote("Assessment, sources, and catalog snapshot; excludes other drafts and Plan changes.", "tools")}
+      ${renderAssistanceContextNote(scope, "tools")}
       <div class="assist-chat-message-text">${escapeHtml(turn.answer.message)}</div>
       ${turn.answer.suggestedWording ? `<section class="assist-chat-inline-wording">
         <p>I suggest updating the rule to:</p>
@@ -3595,7 +4006,7 @@ function renderRuleAssistance(candidate) {
     ${renderInformationPanel(`<p>${profile?.model ? "This response is AI-generated. Please review it for accuracy and relevance before use." : "AI assistance is unavailable. Restart the Workbench with the current source."}</p>`, { iconMarkup: fluentIcon("info-20-regular"), className: "section-guidance" })}
     <div class="assist-chat-reply-window">
       <div class="assist-chat-conversation-toolbar">
-        <span class="assist-chat-identity">${icon("copilot")}<span>Copilot ·</span><em class="assist-chat-context-label">${escapeHtml(getEffectiveHostedRuleId(candidate))}</em></span>
+        <span class="assist-chat-identity">${icon("copilot")}<span>Copilot ·</span><em class="assist-chat-context-label">${escapeHtml(contextLabel)}</em></span>
       </div>
       <div class="assist-chat-response scroll-surface" id="rule-assistance-conversation" role="region" aria-label="AI assistance conversation">${messages}</div>
       <button class="scroll-edge-button assist-chat-scroll-latest clickable" type="button" data-assist-scroll-latest aria-label="Scroll to latest reply" data-workbench-tooltip="Scroll to latest reply" aria-controls="rule-assistance-conversation" hidden>${icon("chevron-down")}</button>
@@ -3605,9 +4016,9 @@ function renderRuleAssistance(candidate) {
       <span class="assist-chat-context" title="Current Hosted rule context">
         <button class="assist-chat-add-context" type="button" disabled aria-label="Additional context is not available"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v15M2.5 10h15" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
         <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><ellipse cx="10" cy="10" rx="3.25" ry="7.5"/><path d="M2.5 10h15M4 5.5h12M4 14.5h12"/></svg>
-        <em class="assist-chat-context-label">${escapeHtml(getEffectiveHostedRuleId(candidate))}</em>
+        <em class="assist-chat-context-label">${escapeHtml(contextLabel)}</em>
       </span>
-      <textarea class="assist-goal scroll-surface" maxlength="8000" aria-label="Message AI about this rule" placeholder="Chat with Copilot to describe what you want to accomplish with this rule..." ${running ? "readonly" : ""}>${escapeHtml(chat.input)}</textarea>
+      <textarea class="assist-goal scroll-surface" maxlength="8000" aria-label="Message AI about this ${isIssue ? "rule issue" : "rule"}" placeholder="${isIssue ? "Ask Copilot about this issue and possible resolutions..." : "Chat with Copilot to describe what you want to accomplish with this rule..."}" ${running ? "readonly" : ""}>${escapeHtml(chat.input)}</textarea>
       <div class="assist-chat-toolbar"><span class="assist-chat-profile">${renderLlmModelIcon(profile?.model)}${escapeHtml(model)}${profile?.reasoningEffort ? ` · ${escapeHtml(capitalize(profile.reasoningEffort))}` : ""}</span>
       <button class="assist-chat-send ${!running && ready ? "assist-chat-send-ready clickable" : ""}" type="button" data-assist-send aria-label="${running ? "Cancel operation" : "Send request"}" ${!running && !ready ? "disabled" : ""}>${renderAssistanceSendIcon(running)}</button></div>
     </div>
@@ -3617,13 +4028,13 @@ function renderRuleAssistance(candidate) {
 
 function syncRuleAssistance() {
   const root = elements["assist-sidebar-content"].querySelector("[data-rule-assistance]");
-  const candidate = getRuleAssistanceCandidate();
-  if (!root || !candidate) { renderRuleAssistanceSidebar(); return; }
+  const target = getRuleAssistanceTarget();
+  if (!root || !target) { renderRuleAssistanceSidebar(); return; }
   const transcript = root.querySelector(".assist-chat-response");
   const focus = root.contains(document.activeElement);
   const position = [root.querySelector(".assist-goal").selectionStart, root.querySelector(".assist-goal").selectionEnd];
   const scrollTop = transcript.scrollTop;
-  root.outerHTML = renderRuleAssistance(candidate);
+  root.outerHTML = renderRuleAssistance(target);
   const updated = elements["assist-sidebar-content"].querySelector("[data-rule-assistance]");
   const response = updated.querySelector(".assist-chat-response");
   response.scrollTop = ruleAssistance.followOutput ? response.scrollHeight : scrollTop;
@@ -3638,14 +4049,15 @@ function syncRuleAssistance() {
 
 async function sendRuleAssistance(retryTurn = null) {
   const chat = ruleAssistance;
-  const candidate = getRuleAssistanceCandidate();
-  if (!chat || chat.active || candidate?.key !== chat.candidateKey || (retryTurn ? !canRetryRuleAssistance(retryTurn) : !chat.input.trim())) return;
+  const target = getRuleAssistanceTarget();
+  const isIssue = chat?.viewKind === "rule-issues";
+  if (!chat || chat.active || !target || (isIssue ? target.id !== chat.ruleIssueId : target.key !== chat.candidateKey) || (retryTurn ? !canRetryRuleAssistance(retryTurn) : !chat.input.trim())) return;
   const proposedText = getAssistanceEditorText();
   const controller = new AbortController();
   const turn = retryTurn || { question: chat.input.trim(), answer: null, proposedText };
   turn.failed = false;
   turn.error = null;
-  turn.status = ruleAssistanceWaitingPhrases[Math.floor(Math.random() * ruleAssistanceWaitingPhrases.length)];
+  turn.status = nextRuleAssistanceWaitingPhrase();
   const submittedInput = !retryTurn || chat.input.trim() === turn.question ? chat.input : null;
   const active = { controller, turn, submittedInput };
   chat.active = active;
@@ -3661,6 +4073,9 @@ async function sendRuleAssistance(retryTurn = null) {
     if (profile.catalogSha256 !== state.bundle.catalog.contentSha256 || profile.protectedRulesSha256 !== state.bundle.catalog.protectedRulesContentSha256) {
       throw createRuleAssistanceError("The Hosted catalog changed. Reload the Workbench before asking again.");
     }
+    if (isIssue && !/^[0-9a-f]{64}$/.test(profile.ruleIssuesSha256 || "")) {
+      throw createRuleAssistanceError("Rule Issue assistance requires the current Workbench server. Close and restart the Workbench before asking again.");
+    }
     const messages = chat.turns.filter((item) => item.answer).flatMap((item) => [
       { role: "user", content: item.question },
       { role: "assistant", content: item.answer.message + (item.answer.suggestedWording ? `\n\nSuggested wording:\n${item.answer.suggestedWording}` : "") }
@@ -3668,7 +4083,9 @@ async function sendRuleAssistance(retryTurn = null) {
     messages.push({ role: "user", content: turn.question });
     const request = {
       schemaVersion: 1, requestId: crypto.randomUUID(), authoritySha256: profile.authoritySha256,
-      candidateKey: candidate.key, sourceHash: candidate.hash, proposedText, messages
+      viewKind: chat.viewKind, messages,
+      ...(isIssue ? { ruleIssueId: target.id, ruleIssuesSha256: profile.ruleIssuesSha256 }
+        : { candidateKey: target.key, sourceHash: target.hash, proposedText })
     };
     const response = await fetch("/assist-rule", {
       method: "POST", signal: controller.signal,
@@ -3689,10 +4106,13 @@ async function sendRuleAssistance(retryTurn = null) {
     const answer = await response.json();
     controller.signal.throwIfAborted();
     if (!isCurrentRuleAssistanceRequest(chat, active)) return;
-    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(proposedText))), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const hash = isIssue ? null : Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(proposedText))), (byte) => byte.toString(16).padStart(2, "0")).join("");
     const expectedIds = [...state.bundle.catalog.rules.filter((rule) => rule.status === "active"), ...state.bundle.catalog.protectedRules].map((rule) => rule.id).sort();
-    if (answer?.schemaVersion !== 1 || answer.requestId !== request.requestId || answer.candidateKey !== candidate.key
-      || answer.authoritySha256 !== request.authoritySha256 || answer.proposedTextSha256 !== hash
+    const targetMatches = isIssue
+      ? answer?.ruleIssueId === target.id && answer.ruleIssuesSha256 === request.ruleIssuesSha256 && answer.suggestedWording === null
+      : answer?.candidateKey === target.key && answer.proposedTextSha256 === hash;
+    if (answer?.schemaVersion !== 1 || answer.requestId !== request.requestId || answer.viewKind !== chat.viewKind || !targetMatches
+      || answer.authoritySha256 !== request.authoritySha256
       || answer.catalogSha256 !== profile.catalogSha256 || answer.protectedRulesSha256 !== profile.protectedRulesSha256
       || answer.model !== profile.model || answer.reasoningEffort !== profile.reasoningEffort
       || !Array.isArray(answer.catalogRuleIds) || JSON.stringify([...answer.catalogRuleIds].sort()) !== JSON.stringify(expectedIds)
@@ -3769,7 +4189,7 @@ async function handleRuleAssistanceClick(event) {
     setRuleAssistanceExpanded(false);
     elements["assist-panel-toggle"].focus({ preventScroll: true });
   } else if (event.target.closest("[data-assist-clear]") && !chat.active) {
-    const viewLabel = chat.viewKind === "assessment-results" ? "Assessment" : "Candidate";
+    const viewLabel = chat.viewKind === "rule-issues" ? "Rule Issue" : chat.viewKind === "assessment-results" ? "Assessment" : "Candidate";
     openNewRuleAssistanceDialog(chat, event.target.closest("[data-assist-clear]"), {
       title: `Start a New AI ${viewLabel} Chat?`,
       message: `This will permanently clear the ${viewLabel} AI chat history from this Workbench. Future AI requests in this chat will not include that history.`
@@ -3912,10 +4332,7 @@ function renderAssessment() {
               </fieldset>
             </div>
           </div>` : ""}
-          <div class="field-stack control-group rationale-control-group">
-            <div class="rationale-heading"><span class="control-subtitle" id="decision-rationale-label">Decision Rationale:</span><button class="titlebar-icon clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" data-workbench-tooltip="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" disabled>${icon("save")}</button></div>
-            <label><textarea class="evidence-box scroll-surface" data-decision-field="rationale" maxlength="${DECISION_RATIONALE_MAX_LENGTH}" aria-labelledby="decision-rationale-label" aria-describedby="decision-rationale-limit" placeholder="${rationaleDisabled ? rationalePlaceholder : "Record why this action is appropriate."}" ${rationaleDisabled ? "disabled" : ""}>${escapeHtml(rationaleDisabled ? "" : decision.rationale)}</textarea><small class="rationale-limit" id="decision-rationale-limit">${rationaleDisabled ? 0 : decision.rationale.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters</small></label>
-          </div>
+          ${renderRationaleField({ id: "decision-rationale", label: "Decision Rationale:", value: rationaleDisabled ? "" : decision.rationale, disabled: rationaleDisabled, placeholder: rationaleDisabled ? rationalePlaceholder : "Record why this action is appropriate.", className: "rationale-control-group", textareaAttributes: { "data-decision-field": "rationale" }, actionsMarkup: `<button class="titlebar-icon clickable rationale-save" type="button" data-rationale-save aria-label="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" data-workbench-tooltip="${state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision"}" disabled>${icon("save")}</button>` })}
         </div>
       </div>
     </div>
@@ -4039,8 +4456,7 @@ function handleAssessmentInput(event) {
       syncProposedRuleControls(candidate);
     }
     if (event.target.dataset.decisionField === "rationale") {
-      const counter = elements["assessment-panel"].querySelector(".rationale-limit");
-      if (counter) counter.textContent = `${value.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters`;
+      syncRationaleCounter(event.target);
       syncDecisionSaveState(candidate);
     }
   }
@@ -4108,14 +4524,13 @@ function syncDecisionSaveState(candidate = getActiveCandidate()) {
 
 function syncAssessmentRationaleControls(action, candidate = getActiveCandidate()) {
   const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
-  const limit = elements["assessment-panel"].querySelector(".rationale-limit");
   const save = elements["assessment-panel"].querySelector("[data-rationale-save]");
   if (!rationale) return;
   const noChange = action === "no-change" && (!candidate || getDecision(candidate).retireHostedRuleIds.length === 0);
   if (noChange) rationale.value = "";
   rationale.disabled = noChange;
   rationale.placeholder = noChange ? "No rationale is required for No Change." : "Record why this action is appropriate.";
-  if (limit) limit.textContent = `${noChange ? 0 : rationale.value.length} / ${DECISION_RATIONALE_MAX_LENGTH} characters`;
+  syncRationaleCounter(rationale);
   if (save) {
     if (noChange) save.disabled = true;
     else syncDecisionSaveState(candidate);
@@ -5071,49 +5486,29 @@ function handlePreviewFileNavigation(event) {
   elements["preview-summary"].querySelectorAll("[data-preview-file-jump]").forEach((item) => item.classList.toggle("active", item === button));
 }
 
-function setPreviewTreeWidth(value) {
+function getPreviewTreeBounds() {
   const layout = elements["preview-tree-resizer"].parentElement;
   const availableMaximum = layout.clientWidth > 0 ? layout.clientWidth - 640 - 16 : PREVIEW_TREE_MAX_WIDTH;
-  const maximum = Math.max(PREVIEW_TREE_MIN_WIDTH, Math.min(PREVIEW_TREE_MAX_WIDTH, availableMaximum));
-  const width = Math.round(Math.max(PREVIEW_TREE_MIN_WIDTH, Math.min(maximum, value || PREVIEW_TREE_DEFAULT_WIDTH)));
-  layout.style.setProperty("--preview-tree-width", `${width}px`);
-  elements["preview-tree-resizer"].setAttribute("aria-valuemax", String(maximum));
-  elements["preview-tree-resizer"].setAttribute("aria-valuenow", String(width));
-  elements["preview-tree-resizer"].setAttribute("aria-valuetext", `Pane width ${width} pixels`);
+  return { min: PREVIEW_TREE_MIN_WIDTH, max: Math.max(PREVIEW_TREE_MIN_WIDTH, Math.min(PREVIEW_TREE_MAX_WIDTH, availableMaximum)) };
 }
 
-function handlePreviewTreeResizeStart(event) {
-  previewTreeResizePointerId = event.pointerId;
-  elements["preview-tree-resizer"].setPointerCapture(event.pointerId);
-  elements["preview-tree-resizer"].parentElement.classList.add("preview-tree-resizing");
-  event.preventDefault();
+function setPreviewTreeWidth(value) {
+  const bounds = getPreviewTreeBounds();
+  const width = Math.round(Math.max(bounds.min, Math.min(bounds.max, value || PREVIEW_TREE_DEFAULT_WIDTH)));
+  elements["preview-tree-resizer"].parentElement.style.setProperty("--preview-tree-width", `${width}px`);
+  previewTreeSplitter?.sync();
 }
 
-function handlePreviewTreeResizeMove(event) {
-  if (event.pointerId !== previewTreeResizePointerId) return;
-  const layout = elements["preview-tree-resizer"].parentElement;
-  setPreviewTreeWidth(event.clientX - layout.getBoundingClientRect().left);
+function getRuleIssuesListBounds() {
+  const width = elements["rule-issues-panel"].querySelector(".rule-issues-layout").clientWidth;
+  return { min: 260, max: Math.max(260, Math.min(640, width > 0 ? width - 480 : 640)) };
 }
 
-function handlePreviewTreeResizeEnd(event) {
-  if (event.pointerId !== previewTreeResizePointerId) return;
-  if (elements["preview-tree-resizer"].hasPointerCapture(event.pointerId)) elements["preview-tree-resizer"].releasePointerCapture(event.pointerId);
-  previewTreeResizePointerId = null;
-  elements["preview-tree-resizer"].parentElement.classList.remove("preview-tree-resizing");
-  refreshPreviewBodyVirtualizer();
-}
-
-function handlePreviewTreeResizeKeyboard(event) {
-  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-  event.preventDefault();
-  const current = Number(elements["preview-tree-resizer"].getAttribute("aria-valuenow"));
-  const value = event.key === "Home"
-    ? PREVIEW_TREE_MIN_WIDTH
-    : event.key === "End"
-      ? PREVIEW_TREE_MAX_WIDTH
-      : current + (event.key === "ArrowLeft" ? -PREVIEW_TREE_KEYBOARD_STEP : PREVIEW_TREE_KEYBOARD_STEP);
-  setPreviewTreeWidth(value);
-  refreshPreviewBodyVirtualizer();
+function setRuleIssuesListWidth(value) {
+  const bounds = getRuleIssuesListBounds();
+  ruleIssuesListWidth = Math.round(Math.max(bounds.min, Math.min(bounds.max, value)));
+  elements["rule-issues-panel"].querySelector(".rule-issues-layout").style.setProperty("--rule-issues-list-width", `${ruleIssuesListWidth}px`);
+  ruleIssuesListSplitter?.sync();
 }
 
 function setPreviewFileCollapsed(file, collapsed) {
@@ -5733,7 +6128,8 @@ function setWorkspaceTab(tab) {
   const protectedTarget = tab === "candidate-sources" && Boolean(state.activeProtectedRuleId);
   dismissNotification();
   state.workspaceTab = tab;
-  setRuleAssistanceCandidate(!protectedTarget && key ? state.assessedCandidates.find(candidate => candidate.key === key) || null : null);
+  if (tab === "rule-issues") setRuleAssistanceIssue(state.ruleIssues.find(issue => issue.id === state.activeRuleIssueKey) || null);
+  else setRuleAssistanceCandidate(!protectedTarget && key ? state.assessedCandidates.find(candidate => candidate.key === key) || null : null);
   document.querySelectorAll("[data-workspace-tab]").forEach((button) => {
     const active = button.dataset.workspaceTab === tab;
     button.classList.toggle("active", active);

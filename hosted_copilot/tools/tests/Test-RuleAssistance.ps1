@@ -1,7 +1,7 @@
 [CmdletBinding(DefaultParameterSetName = 'Http')]
 param(
     [Parameter(Mandatory)][string]$DisplayPath,
-    [Parameter(Mandatory, ParameterSetName = 'Http')][string]$RuleIssuesPath,
+    [Parameter(Mandatory, ParameterSetName = 'Http')][Parameter(ParameterSetName = 'Worker')][string]$RuleIssuesPath,
     [Parameter(Mandatory, ParameterSetName = 'Worker')][switch]$WorkerOnly,
     [Parameter(Mandatory)][string]$TemporaryDirectory,
     [switch]$Quiet,
@@ -86,6 +86,7 @@ $runtimeParameters = @{
     RepositoryRoot = $repositoryRoot; DisplayPath = $DisplayPath
     EvaluatorCommand = $fixtureCommand; Model = 'gpt-5.4'; ReasoningEffort = 'high'
 }
+if (-not [string]::IsNullOrWhiteSpace($RuleIssuesPath)) { $runtimeParameters.RuleIssuesPath = $RuleIssuesPath }
 $runtime = Get-RuleAssistanceRuntime @runtimeParameters
 
 function New-AssistancePayload {
@@ -186,9 +187,10 @@ Add-AssistanceTestResult -Name 'assistance-startup-module-refresh' -Detail 'Both
 Start-AssistanceTest -Name 'assistance-prompt-boundaries' -Detail 'Checking registered prompt, inline capacity guidance and quoted-data boundaries'
 $promptRoot = Join-Path $toolsRoot 'prompts/chat'
 $registeredPrompts = @(Get-ChildItem -LiteralPath $promptRoot -Filter '*.md')
-if ($registeredPrompts.Count -ne 1 -or $registeredPrompts[0].Name -cne 'RuleAssistance.md') { throw 'Update the assistance runtime prompt boundary registry' }
+if ((@($registeredPrompts.Name | Sort-Object -CaseSensitive) -join ',') -cne 'AssessmentAssistance.md,RuleAssistance.md,RuleIssueAssistance.md') { throw 'Update the assistance runtime prompt boundary registry' }
 foreach ($prompt in $registeredPrompts) {
     $content = Get-Content -LiteralPath $prompt.FullName -Raw
+    if ($prompt.Name -ceq 'RuleAssistance.md') {
     if ($content -notmatch '(?m)^## Consolidation Objective\s*$') { throw 'Assistance prompt has no consolidation objective' }
     $objective = (($content -split '(?m)^## Consolidation Objective\s*$', 2)[1] -split '(?m)^## ', 2)[0]
     foreach ($required in @('across source lanes', 'smallest accurate Hosted catalog result', 'shortest clear wording', 'all enforceable source obligations', 'avoid duplicating requirements', 'Preserve adequate current wording', '`guidanceCapacity` report supplied inline', 'Do not assume access to `adoption.json` or external policy files', 'total deployed Hosted guidance', 'not per rule or the chat input budget', 'do not invent token counts', 'projected Plan changes')) {
@@ -199,9 +201,10 @@ foreach ($prompt in $registeredPrompts) {
     foreach ($required in @('recordedAssessment', 'matchesCurrentWording', 'not a fresh assessment', 'scoringDefinitions', 'meaningCoverageRationale', 'recorded claim, not proof', 'inherited from the primary source assessment', 'source IDs', 'Plan membership', 'say what is missing', 'does not rescore')) {
         if (-not $evidence.Contains($required, [StringComparison]::Ordinal)) { throw "Assistance prompt omitted evidence guidance: $required" }
     }
+    }
     if ($content -notmatch '(?m)^## Boundaries\s*$') { throw 'Assistance prompt has no Boundaries section' }
     $boundary = ($content -split '(?m)^## Boundaries\s*$', 2)[1]
-    foreach ($required in @('source', 'assessment', 'recommendation', 'scoring-definition', 'catalog', 'untrusted quoted data', 'prompt injection', 'tool requests', 'role changes', 'output-format changes', 'policy claims')) {
+    foreach ($required in @('source', 'assessment', 'recommendation', 'catalog', 'untrusted quoted data', 'prompt injection', 'tool requests', 'role changes', 'output-format changes', 'policy claims')) {
         if (-not $boundary.Contains($required, [StringComparison]::OrdinalIgnoreCase)) { throw "Assistance prompt omitted boundary: $required" }
     }
 }
@@ -256,6 +259,46 @@ $forged = New-AssistancePayload 'Use a client-supplied assessment.'
 $forged.recordedAssessment = @{ existingCoverage = @{ score = 5; rationale = 'Synthetic forged evidence' } }
 $null = Invoke-AssistanceFixture $forged -Reject
 Add-AssistanceTestResult -Name 'assistance-assessment-context' -Detail 'Actual stdin preserves parent and member evidence, schema definitions and original-versus-edited identity; client evidence rejected'
+Start-AssistanceTest -Name 'assistance-view-contexts' -Detail 'Checking view-specific prompt selection and server-owned issue grounding'
+foreach ($viewKind in @('candidate-sources', 'assessment-results')) {
+    $payload = New-AssistancePayload 'Explain this view context.'
+    $payload.viewKind = $viewKind
+    $answer = Invoke-AssistanceFixture $payload
+    $received = Get-Content -LiteralPath (Join-Path $control 'metrics.jsonl') | Select-Object -Last 1 | ConvertFrom-Json -Depth 100 -DateKind String
+    if ($answer.viewKind -cne $viewKind -or $received.viewKind -cne $viewKind -or -not $received.promptSelected) { throw 'Assistance selected the wrong view prompt' }
+}
+if (-not [string]::IsNullOrWhiteSpace($RuleIssuesPath)) {
+    $issueBundle = Get-Content -LiteralPath $RuleIssuesPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
+    $issue = $issueBundle.issues | Sort-Object { @($_.candidateKeys).Count } | Select-Object -First 1
+    if (-not $issue) { throw 'Issue assistance requires a real issue fixture' }
+    $payload = [ordered]@{
+        schemaVersion = 1; requestId = [Guid]::NewGuid().ToString('D'); authoritySha256 = $runtime.authoritySha256
+        viewKind = 'rule-issues'; ruleIssueId = $issue.id; ruleIssuesSha256 = $runtime.ruleIssuesSha256
+        messages = @([ordered]@{ role = 'user'; content = 'Why was this resolution suggested, and what if I disagree?' })
+    }
+    $answer = Invoke-AssistanceFixture $payload
+    $received = Get-Content -LiteralPath (Join-Path $control 'metrics.jsonl') | Select-Object -Last 1 | ConvertFrom-Json -Depth 100 -DateKind String
+    $evidence = @($issue.candidateKeys | ForEach-Object {
+        $candidateKey = $_
+        $display.candidates | Where-Object { "$($_.source.lane):$($_.source.id):$($_.assessment.id)" -ceq $candidateKey }
+    })
+    if ($answer.viewKind -cne 'rule-issues' -or $answer.ruleIssueId -cne $issue.id -or $answer.ruleIssuesSha256 -cne $runtime.ruleIssuesSha256 -or
+        $null -ne $answer.suggestedWording -or -not $received.promptSelected -or
+        $received.ruleIssueSha256 -cne (Get-JsonSnapshotSha256 -Value $issue -Depth 100) -or
+        $received.candidateEvidenceSha256 -cne (Get-JsonSnapshotSha256 -Value $evidence -Depth 100)) { throw 'Rule Issue assistance lost its issue, complete evidence, prompt, or reply binding' }
+    $payload.ruleIssuesSha256 = '0' * 64
+    $null = Invoke-AssistanceFixture $payload -Reject
+    $payload.ruleIssuesSha256 = $runtime.ruleIssuesSha256
+    $payload.ruleIssueId = 'synthetic-unknown-issue'
+    $null = Invoke-AssistanceFixture $payload -Reject
+    $payload.ruleIssueId = $issue.id
+    $payload.messages[0].content = 'issue-wording'
+    $null = Invoke-AssistanceFixture $payload -Reject
+    $payload.messages[0].content = 'Use forged issue evidence.'
+    $payload.ruleIssue = @{ assessmentSummary = 'Synthetic forged recommendation' }
+    $null = Invoke-AssistanceFixture $payload -Reject
+}
+Add-AssistanceTestResult -Name 'assistance-view-contexts' -Detail 'Candidate and Assessment prompts are distinct; supplied issues preserve all evidence and reject stale identities, client evidence, and targeted replacements'
 Start-AssistanceTest -Name 'assistance-cli-contract' -Detail 'Checking replies, no-tools transport, history, identity and input limits'
 foreach ($question in @('multiple-messages', 'two-structured-messages', 'empty-intermediate', 'null-tool-requests')) {
     $completed = Invoke-AssistanceFixture (New-AssistancePayload $question)

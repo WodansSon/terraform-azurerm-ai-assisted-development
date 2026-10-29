@@ -2,6 +2,132 @@ const { openWorkbench } = require("../helpers/workbench.cjs");
 
 const behaviorIds = ["WB-UX-EDITING-001", "WB-UX-EDITING-002", "WB-UX-EDITING-003"];
 
+async function exerciseResolutionDialog(page, assert, candidateKey) {
+  const viewport = page.viewportSize();
+  const fixture = await page.evaluate((key) => {
+    const candidate = state.assessedCandidates.find(item => item.key === key);
+    const ruleId = candidate.catalogMapping.hostedRuleId;
+    const originalText = getCurrentHostedText(candidate);
+    const updatedText = `${originalText} Preserve the maintainer's explicit wording.`;
+    const related = state.bundle.catalog.rules.find(item => item.status === "active" && item.id !== ruleId);
+    globalThis.__resolutionFixture = { session: structuredClone(state.session), issues: state.ruleIssues };
+    state.session.decisions[key] = { ...getDecision(candidate), proposedText: updatedText, ...createPlanMembership(), sourceHash: candidate.hash };
+    const issue = {
+      id: `relationship:${ruleId}:fixture-resolution`, classification: "overlap", label: "Overlap",
+      title: `${related.id} preserves ${ruleId}`, bannerTitle: "Hosted rule retirement is recommended",
+      bannerMessage: `${related.id} preserves the enforceable meaning of ${ruleId}.`, blocking: false,
+      ruleIds: [ruleId, related.id], protectedRuleIds: [], candidateKeys: [key],
+      rules: [
+        { id: ruleId, status: "active", disposition: "retire", text: originalText, candidateKeys: [key] },
+        { id: related.id, status: "active", disposition: "keep", text: related.text, candidateKeys: [] }
+      ],
+      relationships: [{ sourceRuleId: ruleId, relatedRuleId: related.id, relationship: "assessment-narrows-hosted", kind: "overlap", rationale: `${related.id} preserves ${ruleId}.`, candidateKey: key }],
+      assessmentSummary: `${related.id} preserves ${ruleId}.`,
+      wording: { status: "selected", label: "Suggested Consolidated Wording", presentation: "member", text: related.text, sourceRuleId: related.id },
+      recommendedMaintainerAction: { summary: `Retire ${ruleId} and retain ${related.id}.`, operations: [{ candidateKey: key, ruleId, action: "retire", proposedText: originalText, retireHostedRuleIds: [] }] }
+    };
+    state.ruleIssues = [issue];
+    state.activeRuleIssueKey = issue.id;
+    setWorkspaceTab("rule-issues");
+    renderRuleIssues();
+    return { key, ruleId, originalText, updatedText, before: JSON.stringify(state.session) };
+  }, candidateKey);
+  const open = async () => {
+    await page.locator(`[data-rule-issue-rule="${fixture.ruleId}"]`).click();
+    await page.locator("[data-rule-resolution-dialog]").waitFor();
+  };
+  try {
+    await open();
+    const dialog = page.locator("[data-rule-resolution-dialog]");
+    const rationale = dialog.locator("#rule-resolution-rationale");
+    const save = dialog.locator("[data-resolution-save]");
+    const reset = dialog.locator("[data-resolution-reset]");
+    const initial = await dialog.evaluate(element => {
+      const panels = [...element.querySelectorAll(".rule-resolution-text")];
+      const heading = element.querySelector(".modal-dialog-heading");
+      return {
+        width: element.getBoundingClientRect().width,
+        titles: panels.map(panel => panel.querySelector(".rule-resolution-text-title").textContent),
+        weights: panels.map(panel => getComputedStyle(panel.querySelector(".rule-resolution-text-title")).fontWeight),
+        choicesInside: panels.every(panel => panel.querySelector("h3").nextElementSibling.classList.contains("rule-resolution-wording-choice")),
+        sharedFill: getComputedStyle(panels[0].querySelector(".rule-resolution-wording-choice")).backgroundColor === getComputedStyle(element.querySelector(".rule-resolution-state .action-plan-group")).backgroundColor,
+        mainHeaderFill: getComputedStyle(heading).backgroundColor === getComputedStyle(document.querySelector(".topbar")).backgroundColor,
+        footerBorder: getComputedStyle(element.querySelector(".modal-dialog-actions")).borderTopWidth,
+        resetLeft: element.querySelector("[data-resolution-reset]").nextElementSibling.matches("[data-dialog-close]"),
+        oldTools: element.querySelectorAll("[data-resolution-action], [data-rule-resolution-text-toggle]").length,
+        sharedRationale: element.querySelector("#rule-resolution-rationale").closest(".rationale-field") !== null
+      };
+    });
+    assert(initial.width <= 768 && initial.titles.join("|") === "UPDATED TEXT|ORIGINAL TEXT"
+      && initial.weights.every(weight => weight === "600"), "Resolution comparison size, order, or heading styling differs from the accepted design");
+    assert(initial.choicesInside && initial.sharedFill && initial.mainHeaderFill && initial.footerBorder === "0px"
+      && initial.resetLeft && initial.oldTools === 0 && initial.sharedRationale, "Resolution dialog does not reuse the accepted panel, header, or rationale presentation");
+    assert(await dialog.getByRole("radio", { name: "Retire", exact: true }).isChecked()
+      && await dialog.getByRole("radio", { name: "Keep Updated Text", exact: true }).isChecked()
+      && await save.isDisabled() && await reset.isDisabled(), "Resolution defaults do not match the adjudicated action and saved wording");
+    await dialog.getByRole("radio", { name: "Keep Original Text", exact: true }).check();
+    assert(await save.isEnabled() && await reset.isEnabled()
+      && !(await dialog.getByRole("radio", { name: "Keep Updated Text", exact: true }).isChecked()), "Wording selection is not exclusive or does not dirty the resolution");
+    await dialog.getByRole("radio", { name: "Keep Updated Text", exact: true }).check();
+    assert(await save.isDisabled() && await reset.isDisabled(), "Returning to the initial wording leaves Save or Reset enabled");
+    await rationale.fill("x".repeat(500));
+    assert(await dialog.locator(".rationale-limit").innerText() === "500 / 500 characters"
+      && await rationale.getAttribute("maxlength") === "500", "Shared rationale counter or limit is incorrect");
+    await reset.click();
+    assert(await rationale.inputValue() === "" && await dialog.locator(".rationale-limit").innerText() === "0 / 500 characters"
+      && await save.isDisabled() && await reset.isDisabled(), "Reset failed to restore the baseline and rationale counter");
+    await page.setViewportSize({ width: 768, height: 900 });
+    const narrow = await dialog.evaluate(element => ({ width: element.getBoundingClientRect().width, overflow: element.scrollWidth > element.clientWidth, footer: element.querySelector(".modal-dialog-actions").getBoundingClientRect().bottom <= innerHeight }));
+    assert(narrow.width === 736 && !narrow.overflow && narrow.footer, "Resolution does not fit the minimum supported viewport");
+    await page.setViewportSize(viewport);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert(await page.evaluate(before => JSON.stringify(state.session) === before, fixture.before), "Cancelling resolution changed the saved draft");
+
+    await open();
+    await rationale.fill("Synthetic resolution persistence failure");
+    await page.evaluate(() => { globalThis.__resolutionDatabase = openDatabase; openDatabase = () => Promise.reject(new Error("Synthetic resolution persistence failure")); });
+    try {
+      await save.click();
+      await page.getByText("Resolution was not saved: Synthetic resolution persistence failure", { exact: true }).waitFor();
+      assert(await page.evaluate(before => JSON.stringify(state.session) === before, fixture.before), "Failed resolution persistence changed the draft");
+    } finally {
+      await page.evaluate(() => { openDatabase = __resolutionDatabase; delete globalThis.__resolutionDatabase; });
+    }
+    await open();
+    await rationale.fill("Preserve concurrent draft work.");
+    await page.evaluate(() => { state.session.updatedAt = toUtcTimestamp(); state.session.approverName = "Concurrent fixture edit"; });
+    const concurrent = await page.evaluate(() => JSON.stringify(state.session));
+    await save.click();
+    await page.getByText("Resolution was not saved: The resolution changed or is not valid. Review the current draft and protected integrity.", { exact: true }).waitFor();
+    assert(await page.evaluate(before => JSON.stringify(state.session) === before, concurrent), "Stale resolution overwrote a concurrent draft");
+
+    await open();
+    await dialog.getByRole("radio", { name: "Keep Original Text", exact: true }).check();
+    await rationale.fill("Retain the original rule wording without approving the Plan.");
+    await save.click();
+    await page.getByText("Resolution saved.", { exact: true }).waitFor();
+    const saved = await page.evaluate(async (key) => {
+      const candidate = state.assessedCandidates.find(item => item.key === key);
+      const decision = getDecision(candidate);
+      const stored = await readSession(state.session.id);
+      return { text: decision.proposedText, action: decision.action, rationale: decision.rationale, inPlan: decision.inPlan, stored: stored.decisions[key].proposedText };
+    }, fixture.key);
+    assert(saved.text === fixture.originalText && saved.stored === fixture.originalText && saved.action === "retire"
+      && saved.rationale === "Retain the original rule wording without approving the Plan." && !saved.inPlan,
+    "Saving a resolution lost its wording or action, or silently approved Plan membership");
+  } finally {
+    await page.setViewportSize(viewport);
+    await page.evaluate(async () => {
+      document.querySelector("[data-rule-resolution-dialog]")?.close();
+      state.session = __resolutionFixture.session;
+      state.ruleIssues = __resolutionFixture.issues;
+      delete globalThis.__resolutionFixture;
+      await persistSession();
+      renderAll();
+    });
+  }
+}
+
 async function run({ page, baseUrl, assert }) {
   let relationshipRequests = 0;
   const pageErrors = [];
@@ -118,6 +244,8 @@ async function run({ page, baseUrl, assert }) {
 
     await page.locator('[data-rule-action="update"]').check();
     await page.locator('[data-decision-field="rationale"]').fill("Explicit maintainer wording for the v1 promotion preview.");
+    assert(await page.locator('.rationale-field #decision-rationale-limit').innerText() === `${"Explicit maintainer wording for the v1 promotion preview.".length} / 500 characters`,
+      "Details does not use the shared rationale field and live counter");
     await page.locator("[data-rationale-save]").click();
     await page.evaluate(() => persistencePromise);
     const plan = await page.evaluate((key) => {
@@ -181,6 +309,7 @@ async function run({ page, baseUrl, assert }) {
         && !document.querySelector("[data-assessment-recommendation]").textContent.includes("Maintainer edited");
     }, { ...fixture, ...beforeReset });
     assert(reset, "Reset did not persist original wording, restore its pill, or preserve independent decision fields");
+    await exerciseResolutionDialog(page, assert, fixture.key);
     assert(relationshipRequests === 0, "Editing, saving, restoring, or previewing requested AI relationship evaluation");
     assert(pageErrors.length === 0, `Editing raised an uncaught browser error: ${pageErrors.join("; ")}`);
   } finally {

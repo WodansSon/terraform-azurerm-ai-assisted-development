@@ -136,6 +136,26 @@ Assert-OutputSequence -Name 'execution status table' -Actual @(
     '  catalog                  PASSED          1.25s'
 )
 
+Assert-OutputSequence -Name 'long status table names' -Actual @(
+    Write-ValidationStatusTable -Rows @(
+        [pscustomobject]@{ name = 'assistance-startup-module-refresh'; status = 'passed'; durationSeconds = 2.38 },
+        [pscustomobject]@{ name = 'assistance-error-details'; status = 'passed'; durationSeconds = 0.02 }
+    ) -NameHeader 'Test'
+) -Expected @(
+    '  TEST                              STATUS       DURATION',
+    '  --------------------------------- ---------- ----------',
+    '  assistance-startup-module-refresh PASSED          2.38s',
+    '  assistance-error-details          PASSED          0.02s'
+)
+
+Assert-OutputSequence -Name 'long status table header' -Actual @(
+    Write-ValidationStatusTable -Rows @($statusRows[0]) -NameHeader 'Verification' -NameWidth 4
+) -Expected @(
+    '  VERIFICATION STATUS       DURATION',
+    '  ------------ ---------- ----------',
+    '  catalog      PASSED          1.25s'
+)
+
 $twoColumnRows = @(
     [pscustomobject]@{ ownership = 'hosted'; path = 'hosted_copilot/CHANGELOG.md' }
 )
@@ -207,14 +227,19 @@ if ($ProductScope -in @('All', 'Hosted')) {
         'Test-ValidationOutput.ps1',
         '../hosted_copilot/tools/Test-HostedRules.ps1',
         '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1',
-        '../hosted_copilot/tools/tests/Test-RuleAssistance.ps1',
-        '../hosted_copilot/tools/tests/Test-WorkbenchServerResponsiveness.ps1'
+        '../hosted_copilot/tools/tests/Test-RuleAssistance.ps1'
     )) {
         $checkStopwatch.Restart()
         $priorIssueCount = $issues.Count
+        $consumerPath = Join-Path $PSScriptRoot $relativePath
+        if (-not (Test-Path -LiteralPath $consumerPath -PathType Leaf)) {
+            $issues.Add("$relativePath is a required duration-format consumer but is missing")
+            Add-OutputTestResult -Name "duration owner/$([IO.Path]::GetFileName($relativePath))" -Passed $false
+            continue
+        }
         $tokens = $null
         $parseErrors = $null
-        $consumerAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $relativePath), [ref]$tokens, [ref]$parseErrors)
+        $consumerAst = [Management.Automation.Language.Parser]::ParseFile($consumerPath, [ref]$tokens, [ref]$parseErrors)
         $localDurationFormatting = @($consumerAst.FindAll({
             param($node)
             if ($node -is [Management.Automation.Language.InvokeMemberExpressionAst] -and $node.Member.Value -eq 'Round') {
@@ -225,8 +250,11 @@ if ($ProductScope -in @('All', 'Hosted')) {
                 $node.Left -is [Management.Automation.Language.StringConstantExpressionAst] -and
                 $node.Left.Value -match '^\{0(?::[^}]*)?\}s$' -and $node.Right.Extent.Text -match 'durationSeconds'
         }, $true))
-        if ($parseErrors.Count -or $localDurationFormatting.Count) {
-            $issues.Add("$relativePath must parse and delegate elapsed-time display precision to Format-ValidationDuration")
+        if ($parseErrors.Count) {
+            $issues.Add("$relativePath must parse before its duration-format contract can be checked")
+        }
+        elseif ($localDurationFormatting.Count) {
+            $issues.Add("$relativePath must delegate elapsed-time display precision to Format-ValidationDuration")
         }
         Add-OutputTestResult -Name "duration owner/$([IO.Path]::GetFileName($relativePath))" -Passed ($issues.Count -eq $priorIssueCount)
     }

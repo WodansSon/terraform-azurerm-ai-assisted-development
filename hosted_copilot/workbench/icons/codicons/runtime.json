@@ -12,7 +12,7 @@
       "chevron-down", "chevron-right-compact", "chevron-up", "circle-slash-compact", "close",
       "cloud-upload", "collection", "copilot", "copy", "debug-restart", "diff", "diff-modified",
       "discard", "download", "edit", "edit-compact", "ellipsis", "error", "folder", "git-branch-compact",
-      "git-pull-request-draft", "git-stash-apply", "inbox", "info", "json", "layout-sidebar-right",
+      "git-branch-conflicts", "git-pull-request-draft", "git-stash-apply", "inbox", "info", "json", "kebab-vertical", "layout-sidebar-right",
       "layout-sidebar-right-off", "list-selection", "lock", "new-session", "open-in-window",
       "open-preview", "pass", "pass-compact", "pass-filled", "question", "save", "search", "shield",
       "shield-compact", "sign-out", "stop-circle", "tasklist", "terminal-compact", "tools", "trash", "warning", "warning-compact"

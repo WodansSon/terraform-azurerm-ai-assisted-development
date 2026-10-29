@@ -57,8 +57,85 @@ async function clickHierarchyNode(page, nodeId) {
   }, nodeId);
 }
 
+async function assertIconSpriteValidation(page, baseUrl, assert) {
+  const namespace = "http://www.w3.org/2000/svg";
+  const fixtureRoot = new URL("__icon-validation/", baseUrl).href;
+  const fixtures = new Map([
+    ["valid.svg", { body: `<svg xmlns="${namespace}"><symbol id="fixture-present" viewBox="0 0 16 16"><path d="M1 1h14v14H1z"/></symbol><symbol id="fixture-other" viewBox="0 0 16 16"><circle cx="8" cy="8" r="4"/></symbol></svg>` }],
+    ["missing.svg", { body: `<svg xmlns="${namespace}"><symbol id="fixture-other" viewBox="0 0 16 16"><path d="M1 1h14v14H1z"/></symbol></svg>`, expected: "missing required symbol" }],
+    ["malformed.svg", { body: `<svg xmlns="${namespace}"><symbol`, expected: "not valid SVG" }],
+    ["wrong-root.svg", { body: `<root xmlns="${namespace}"/>`, expected: "not valid SVG" }],
+    ["wrong-namespace.svg", { body: '<svg xmlns="urn:invalid-icon-namespace"/>', expected: "not valid SVG" }],
+    ["not-symbol.svg", { body: `<svg xmlns="${namespace}"><g id="fixture-present"><path d="M1 1h14v14H1z"/></g></svg>`, expected: "missing required symbol" }],
+    ["foreign-symbol.svg", { body: `<svg xmlns="${namespace}"><symbol xmlns="urn:invalid-icon-namespace" id="fixture-present"/></svg>`, expected: "missing required symbol" }],
+    ["not-found.svg", { status: 404, body: "Synthetic missing sprite", expected: "with 404" }],
+    ["failed.svg", { status: 503, body: "Synthetic sprite service failure", expected: "with 503" }]
+  ]);
+  const requests = [];
+  const routePattern = `${fixtureRoot}*`;
+  await page.route(routePattern, async route => {
+    const name = new URL(route.request().url()).pathname.split("/").at(-1);
+    const fixture = fixtures.get(name);
+    if (!fixture) throw new Error(`Unknown icon validation fixture: ${name}`);
+    requests.push({ name, resourceType: route.request().resourceType() });
+    await route.fulfill({ status: fixture.status || 200, contentType: "image/svg+xml", body: fixture.body });
+  });
+  try {
+    const result = await page.evaluate(async fixtureRoot => {
+      const sprites = await preloadIconSprites();
+      const originalSize = sprites.size;
+      const references = [[`${fixtureRoot}valid.svg`, "fixture-present"], [`${fixtureRoot}valid.svg`, "fixture-other"]];
+      await validateIconSpriteReferences(references, sprites);
+      await validateIconSpriteReferences(references, sprites);
+      const fixture = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      fixture.classList.add("candidate-decoration-icon");
+      const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+      use.setAttribute("href", `${fixtureRoot}valid.svg#fixture-present`);
+      fixture.appendChild(use);
+      elements["candidate-list"].appendChild(fixture);
+      let missingDecorationError = null;
+      try {
+        await validateCandidateDecorationIcons(sprites);
+        use.setAttribute("href", `${fixtureRoot}valid.svg#fixture-missing`);
+        try { await validateCandidateDecorationIcons(sprites); }
+        catch (error) { missingDecorationError = error.message; }
+      } finally {
+        fixture.remove();
+      }
+      let crossOriginError = null;
+      try { await validateIconSpriteReferences([["https://icons.example.invalid/sprite.svg", "fixture-present"]]); }
+      catch (error) { crossOriginError = error.message; }
+      return {
+        originalSize,
+        spriteCount: sprites.size,
+        missingDecorationError,
+        crossOriginError,
+        usesRendering: [validateIconSpriteReferences, preloadIconSprites, validateCandidateDecorationIcons]
+          .some(operation => /getBBox|requestAnimationFrame/.test(operation.toString()))
+      };
+    }, fixtureRoot);
+    assert(result.originalSize >= 4 && result.spriteCount === result.originalSize + 1, "valid runtime sprites or shared sprite cache were not preserved");
+    assert(requests.filter(request => request.name === "valid.svg" && request.resourceType === "fetch").length === 1, `repeated validation references fetched the same sprite more than once (${JSON.stringify(requests)})`);
+    assert(result.missingDecorationError?.includes("missing required symbol: fixture-missing"), "candidate decorations did not validate their referenced symbol");
+    assert(result.crossOriginError?.includes("Workbench origin"), "sprite validation accepted a cross-origin reference");
+    assert(!result.usesRendering, "startup sprite validation still depends on rendering frames or SVG geometry");
+    for (const [name, fixture] of fixtures) {
+      if (!fixture.expected) continue;
+      const error = await page.evaluate(async path => {
+        try { await validateIconSpriteReferences([[path, "fixture-present"]]); }
+        catch (error) { return error.message; }
+        return null;
+      }, `${fixtureRoot}${name}`);
+      assert(error?.includes(fixture.expected) && error.includes(name), `invalid sprite ${name} did not fail clearly (${error})`);
+    }
+  } finally {
+    await page.unroute(routePattern);
+  }
+}
+
 async function run({ page, baseUrl, assert, playback }) {
   await openWorkbench(page, baseUrl);
+  await assertIconSpriteValidation(page, baseUrl, assert);
   await playback.show(page, "Candidate decorations · 768px viewport");
   const accentColor = await getCssTokenColor(page, "--accent-bright");
   const addedColor = await getCssTokenColor(page, "--added-resource");
@@ -89,6 +166,11 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(needsInput.parents.every((parent) => parent.color === modifiedColor && parent.description === "1 selected, 1 needs input"), "needs-input state did not propagate to ancestors");
 
   await row.locator(".candidate-tree-copy").click();
+  const assistancePanel = page.locator("#rule-assistance-panel");
+  await assistancePanel.waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "Hide AI assistance", exact: true }).click();
+  await assistancePanel.waitFor({ state: "hidden" });
+  assert(await page.locator("#assist-panel-toggle").getAttribute("aria-expanded") === "false", "Hide AI assistance did not collapse the sidebar before editing at 768px");
   await page.locator('#assessment-panel [data-rule-action="add"]').click();
   await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("Playwright journey confirms the selected rule is ready for promotion.");
   await page.locator("#assessment-panel [data-rationale-save]").click();

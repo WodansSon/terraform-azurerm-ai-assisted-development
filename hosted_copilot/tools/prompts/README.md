@@ -13,7 +13,9 @@ All authored instructions for local AI evaluation live in this task-organized li
 | Recommendation synthesis | [AssessmentReconciliation-v4.md](reconciliation/AssessmentReconciliation-v4.md) |
 | Rule Issue adjudication | [RuleIssueAdjudication-v4.md](reconciliation/RuleIssueAdjudication-v4.md) |
 | Saved-rule relationship discovery | [ManualRuleRelationship-v4.md](reconciliation/ManualRuleRelationship-v4.md) |
-| Rule assistance chat | [RuleAssistance.md](chat/RuleAssistance.md) |
+| Candidate assistance chat | [RuleAssistance.md](chat/RuleAssistance.md) |
+| Assessment assistance chat | [RuleAssistance.md](chat/RuleAssistance.md) plus [AssessmentAssistance.md](chat/AssessmentAssistance.md) |
+| Rule Issue assistance chat | [RuleIssueAssistance.md](chat/RuleIssueAssistance.md) |
 | File-based evaluation transport | [FileEvaluation.md](shared/FileEvaluation.md) |
 | Inline evaluation transport | [InlineEvaluation.md](shared/InlineEvaluation.md) |
 | Validation retry correction | [RetryCorrection.md](shared/RetryCorrection.md) |

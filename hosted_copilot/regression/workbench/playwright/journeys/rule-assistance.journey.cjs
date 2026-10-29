@@ -35,6 +35,45 @@ async function run({ page, baseUrl, assert }) {
     }
   }));
   assert(invalidCatalogs.every(Boolean), "Invalid waiting-phrase catalog entries were accepted");
+  const phraseBags = await page.evaluate(() => {
+    const catalog = ruleAssistanceWaitingPhrases;
+    const bag = ruleAssistanceWaitingPhraseBag;
+    const lastPhrase = ruleAssistanceLastWaitingPhrase;
+    const random = Math.random;
+    const results = [];
+    try {
+      for (const boundary of [0, 0.999999]) {
+        Math.random = () => boundary;
+        for (const phrases of [catalog, ["First waiting message.", "Second waiting message."], ["Only waiting message."]]) {
+          const expectedCatalog = JSON.stringify(phrases);
+          ruleAssistanceWaitingPhrases = validateRuleAssistanceWaitingPhrases(phrases);
+          ruleAssistanceWaitingPhraseBag = [];
+          ruleAssistanceLastWaitingPhrase = null;
+          const cycles = Array.from({ length: 3 }, (_, cycleIndex) => {
+            Math.random = () => cycleIndex % 2 === 0 ? boundary : 0.999999 - boundary;
+            return Array.from({ length: phrases.length }, () => nextRuleAssistanceWaitingPhrase());
+          });
+          const selections = cycles.flat();
+          results.push({
+            boundary,
+            size: phrases.length,
+            completeCycles: cycles.every(cycle => cycle.length === new Set(cycle).size && cycle.every(phrase => phrases.includes(phrase))),
+            noAdjacentRepeats: phrases.length === 1 || selections.every((phrase, index) => index === 0 || phrase !== selections[index - 1]),
+            catalogUnchanged: JSON.stringify(ruleAssistanceWaitingPhrases) === expectedCatalog,
+            singletonStable: phrases.length !== 1 || selections.every(phrase => phrase === phrases[0])
+          });
+        }
+      }
+      return results;
+    } finally {
+      Math.random = random;
+      ruleAssistanceWaitingPhrases = catalog;
+      ruleAssistanceWaitingPhraseBag = bag;
+      ruleAssistanceLastWaitingPhrase = lastPhrase;
+    }
+  });
+  assert(phraseBags.every(result => result.completeCycles && result.catalogUnchanged), `Waiting phrases repeated within a shuffle cycle or mutated the catalog (${JSON.stringify(phraseBags)})`);
+  assert(phraseBags.every(result => result.noAdjacentRepeats && result.singletonStable), `Waiting phrase cycle boundaries or singleton catalogs are incorrect (${JSON.stringify(phraseBags)})`);
   assert(await page.evaluate(() => JSON.stringify(llmBrandMap)) === JSON.stringify(expectedBrandMap), "The presentation branding map did not load");
   const branding = await page.evaluate(async () => {
     const cases = [["gpt-example", "llm-openai"], ["claude-example", "llm-claude"], ["gemini-example", "llm-gemini"], ["grok-example", "llm-grok"], ["future-example", "codicon-question"]];
@@ -69,7 +108,7 @@ async function run({ page, baseUrl, assert }) {
     document.body.append(probe);
     try {
       const notes = [];
-      for (const iconName of [undefined, "terminal-compact", "edit-compact"]) {
+      for (const iconName of ["tools", "terminal-compact", "edit-compact"]) {
         probe.innerHTML = renderAssistanceContextNote(message, iconName);
         const note = probe.querySelector(".assist-chat-scope");
         const glyph = note.querySelector("svg");
@@ -98,15 +137,17 @@ async function run({ page, baseUrl, assert }) {
           contained: note.scrollWidth <= note.clientWidth
         });
       }
+      let missingIconRejected = false;
+      try { renderAssistanceContextNote(message); } catch { missingIconRejected = true; }
       let invalidIconRejected = false;
       try { renderAssistanceContextNote(message, 'tools" onload="alert(1)'); } catch { invalidIconRejected = true; }
-      return { notes, invalidIconRejected, unchanged: JSON.stringify(state.session) === session && JSON.stringify(ruleAssistance) === chat };
+      return { notes, missingIconRejected, invalidIconRejected, unchanged: JSON.stringify(state.session) === session && JSON.stringify(ruleAssistance) === chat };
     } finally { probe.remove(); }
   });
   assert(contextNotes.notes.every((note, index) => note.reference === `icons/codicons/sprite.svg#codicon-${["tools", "terminal-compact", "edit-compact"][index]}`
-    && note.painted && note.iconFirst && note.decorative), "Context-note helper lost its default, override, painted, or decorative Codicon");
-  assert(contextNotes.notes.every(note => note.escaped) && contextNotes.invalidIconRejected && contextNotes.unchanged,
-    "Context-note helper accepted markup, accepted an unsafe icon name, or mutated chat or draft state");
+    && note.painted && note.iconFirst && note.decorative), "Context-note helper lost its explicit, painted, or decorative Codicon");
+  assert(contextNotes.notes.every(note => note.escaped) && contextNotes.missingIconRejected && contextNotes.invalidIconRejected && contextNotes.unchanged,
+    "Context-note helper accepted markup, a missing or unsafe icon name, or mutated chat or draft state");
   assert(contextNotes.notes.every(note => note.color === "rgb(115, 115, 115)" && note.iconColor === note.color
     && note.width === 14 && note.height === 14 && Math.abs(note.gap - 8) < 1 && note.wrapped && note.contained),
     "Context notes lost their approved muted-gray inline layout, stable icon size, gap, or aligned wrapping");
@@ -292,7 +333,6 @@ async function run({ page, baseUrl, assert }) {
   assert(await resizer.getAttribute("aria-orientation") === "vertical"
     && await resizer.getAttribute("aria-controls") === "rule-assistance-panel"
     && await resizer.getAttribute("aria-valuemin") === "320", "Sidebar resizing lost accessible separator semantics");
-  await resizer.evaluate((node) => node.scrollIntoView({ block: "center" }));
   let edge = await resizer.boundingBox();
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
   await page.mouse.down();
@@ -303,25 +343,35 @@ async function run({ page, baseUrl, assert }) {
     && await root.locator(".assist-chat-composer").evaluate((node) => node.getBoundingClientRect().height) === 160,
   "Dragging the sidebar divider did not resize the panel without changing the composer");
   await resizer.focus();
-  assert(await sidebar.evaluate((node) => getComputedStyle(node).borderLeftColor) === await getCssTokenColor(page, "--accent")
+  await page.keyboard.down("ArrowLeft");
+  await page.waitForFunction(() => getComputedStyle(document.getElementById("assist-sidebar-resizer"), "::before").opacity === "1");
+  assert(await resizer.getAttribute("data-splitter-edge") === "left"
+    && await resizer.evaluate(node => node.getBoundingClientRect().width) === 8
+    && await resizer.evaluate(node => getComputedStyle(node, "::before").width) === "4px"
+    && await resizer.evaluate(node => getComputedStyle(node, "::before").backgroundColor) === await getCssTokenColor(page, "--accent")
     && await resizer.evaluate(node => getComputedStyle(node).backgroundColor) === "rgba(0, 0, 0, 0)"
     && await sidebar.evaluate(node => parseFloat(getComputedStyle(node).borderLeftWidth) <= 1),
-    "The sidebar resize focus filled the grab area instead of highlighting only its thin divider");
-  await resizer.evaluate((node) => node.scrollIntoView({ block: "center" }));
+    "The shared sidebar splitter lost its left edge, 8px hit area, transparent background, or 4px active highlight");
+  await page.keyboard.up("ArrowLeft");
+  await page.keyboard.press("ArrowRight");
+  await resizer.evaluate(node => node.addEventListener("pointerdown", event => {
+    node.dataset.testPointerId = String(event.pointerId);
+  }, { once: true }));
   edge = await resizer.boundingBox();
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
   await page.mouse.down();
   await page.mouse.move(edge.x + edge.width / 2 - 16, edge.y + edge.height / 2);
   const canceledHeight = await resizer.getAttribute("aria-valuenow");
   await resizer.evaluate((node) => node.dispatchEvent(new PointerEvent("pointercancel", {
-    bubbles: true, pointerId: ruleAssistanceSidebarResize.pointerId
+    bubbles: true, pointerId: Number(node.dataset.testPointerId)
   })));
   await page.mouse.move(edge.x + edge.width / 2 - 48, edge.y + edge.height / 2);
   await page.mouse.up();
   assert(await resizer.getAttribute("aria-valuenow") === canceledHeight
-    && await page.evaluate(() => !ruleAssistanceSidebarResize),
+    && await resizer.evaluate(node => !node.hasPointerCapture(Number(node.dataset.testPointerId)))
+    && await page.evaluate(() => !document.documentElement.hasAttribute("data-workbench-splitter-dragging")),
   "Pointer cancellation left a captured or moving sidebar resize");
-  await resizer.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  await resizer.evaluate(node => delete node.dataset.testPointerId);
   edge = await resizer.boundingBox();
   await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
   await page.mouse.down();
@@ -330,7 +380,7 @@ async function run({ page, baseUrl, assert }) {
   await page.evaluate(() => syncRuleAssistance());
   await page.mouse.up();
   assert(await resizer.getAttribute("aria-valuenow") === rerenderHeight
-    && await page.evaluate(() => !ruleAssistanceSidebarResize),
+    && await page.evaluate(() => !document.documentElement.hasAttribute("data-workbench-splitter-dragging")),
   "Rerendering during a drag lost the chosen width or left pointer state behind");
   await resizer.press("Home");
   await resizer.press("ArrowRight");
@@ -389,7 +439,7 @@ async function run({ page, baseUrl, assert }) {
       const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(request.proposedText))), (byte) => byte.toString(16).padStart(2, "0")).join("");
       const profile = globalThis.__HOSTED_RULE_WORKBENCH__.ruleAssistance;
       return {
-        schemaVersion: 1, requestId: request.requestId, candidateKey: request.candidateKey, authoritySha256: request.authoritySha256,
+        schemaVersion: 1, requestId: request.requestId, candidateKey: request.candidateKey, viewKind: request.viewKind, authoritySha256: request.authoritySha256,
         proposedTextSha256: hash, model: profile.model, reasoningEffort: profile.reasoningEffort,
         catalogSha256: profile.catalogSha256, protectedRulesSha256: profile.protectedRulesSha256,
         elapsedMilliseconds: 9000, catalogRuleIds: [...state.bundle.catalog.rules.filter((rule) => rule.status === "active"), ...state.bundle.catalog.protectedRules].map((rule) => rule.id),
@@ -439,7 +489,7 @@ async function run({ page, baseUrl, assert }) {
     `Running assistance did not use the native border or gray 16px Codicon stop symbol: ${JSON.stringify(running)}`);
   await waitForHeldReply();
   const waiting = root.locator(".assist-chat-operation-message .shimmer-heading");
-  assert(await waiting.locator(".sr-only").textContent() === phrases[0], "The request did not select the first phrase at the lower random boundary");
+  assert(await waiting.locator(".sr-only").textContent() === phrases[0], "The request did not consume the first phrase from the seeded shuffle");
   assert(await waiting.locator(".shimmer-character").first().evaluate((node) => getComputedStyle(node).animationName.startsWith("shimmer-heading-")),
     "Waiting text did not reuse the shared shimmer animation");
   await page.evaluate(() => { Math.random = () => 0.999999; syncRuleAssistance(); });
@@ -557,7 +607,7 @@ async function run({ page, baseUrl, assert }) {
   assert(await input.inputValue() === ""
     && await root.locator(".assist-chat-user-message").last().textContent() === requests[1].messages.at(-1).content,
     "Send did not immediately move submitted text from the composer into the transcript");
-  assert(await waiting.locator(".sr-only").textContent() === phrases.at(-1), "A new request did not independently select the last phrase at the upper random boundary");
+  assert(await waiting.locator(".sr-only").textContent() === phrases.at(-1), "A new request did not consume the next unused phrase from the existing shuffle");
   await page.evaluate(() => { Math.random = globalThis.__assistanceOriginalRandom; delete globalThis.__assistanceOriginalRandom; });
   await pending();
   await page.waitForFunction(() => ruleAssistance?.turns.filter((turn) => turn.answer).length === 2);
@@ -821,7 +871,8 @@ async function run({ page, baseUrl, assert }) {
     const onPreview = panel.hidden && !toggle.disabled;
     switchView("catalog");
     setWorkspaceTab("rule-issues");
-    const onIssues = panel.hidden && !toggle.disabled;
+    const onIssues = !panel.hidden && !toggle.disabled && ruleAssistance !== chat
+      && ruleAssistance.viewKind === "rule-issues" && ruleAssistance.ruleIssueId === state.activeRuleIssueKey;
     setWorkspaceTab("assessment-results");
     const onAssessment = panel.hidden && !toggle.disabled && toggle.parentElement.classList.contains("topbar-actions");
     setWorkspaceTab("candidate-sources");
@@ -981,6 +1032,181 @@ async function run({ page, baseUrl, assert }) {
   await openWorkbench(page, baseUrl);
   assert(await page.evaluate((expected) => JSON.stringify(ruleAssistanceWaitingPhrases) === JSON.stringify(expected), expectedWaitingPhrases),
     "The complete waiting-phrase catalog did not recover after explicit load failures");
+  await assertRuleIssueChat(page, assert, setup.key);
+  await assertRuleIssuePagerResize(page, assert);
+}
+
+async function assertRuleIssuePagerResize(page, assert) {
+  await page.evaluate(() => {
+    const base = state.ruleIssueBundle.issues.find(issue => !issue.protectedRuleIds.length);
+    const source = base?.rules[0];
+    const related = state.bundle.candidates.filter(candidate => candidate.recommendation?.hostedId
+      && candidate.recommendation.hostedId !== source?.id && candidate.catalogMapping.state !== "active").slice(0, 3).map(candidate => ({
+      id: candidate.recommendation.hostedId, status: "proposed", text: candidate.recommendation.ruleText,
+      disposition: candidate.recommendation.action === "add" ? "promote" : candidate.recommendation.action,
+      candidateKeys: [`${candidate.source.lane}:${candidate.source.id}:${candidate.assessment.id}`]
+    }));
+    if (!base || related.length !== 3 || new Set(related.map(rule => rule.id)).size !== 3) {
+      throw new Error("Pagination requires complete issue and distinct candidate fixtures");
+    }
+    globalThis.__issuePagerFixture = {
+      bundle: state.ruleIssueBundle, issues: state.ruleIssues, filter: state.ruleIssueFilter,
+      active: state.activeRuleIssueKey, selections: state.ruleIssueSelections,
+      width: ruleIssuesListWidth, expanded: ruleAssistanceExpanded, tab: state.workspaceTab,
+      session: JSON.stringify(state.session)
+    };
+    const kinds = ["contradiction", "duplicate", "overlap"];
+    const bundle = structuredClone(state.ruleIssueBundle);
+    bundle.issues = related.map((rule, index) => {
+      const issue = structuredClone(base);
+      const kind = kinds[index];
+      issue.id = `pager-fixture:${kind}:${source.id}:${rule.id}`;
+      issue.classification = kind;
+      issue.label = kind;
+      issue.title = `Synthetic ${kind} relationship`;
+      issue.bannerTitle = issue.title;
+      issue.bannerMessage = `Synthetic ${kind} evidence for ${source.id} and ${rule.id}.`;
+      issue.ruleIds = [source.id, rule.id];
+      issue.candidateKeys = [...new Set([...base.candidateKeys, ...rule.candidateKeys])];
+      issue.rules = [structuredClone(source), structuredClone(rule)];
+      issue.relationships = [{ sourceRuleId: source.id, relatedRuleId: rule.id,
+        relationship: kind === "contradiction" ? "conflicts" : kind === "duplicate" ? "equivalent" : "partial-overlap",
+        kind, rationale: issue.bannerMessage, candidateKey: issue.candidateKeys[0] }];
+      issue.assessmentSummary = issue.bannerMessage;
+      issue.wording = { status: "selected", label: "Suggested Consolidated Wording", presentation: "member", text: rule.text, sourceRuleId: rule.id };
+      return issue;
+    });
+    validateRuleIssueBundle(bundle);
+    state.ruleIssueBundle = bundle;
+    state.ruleIssues = structuredClone(bundle.issues);
+    state.ruleIssueFilter = "overlap";
+    state.activeRuleIssueKey = bundle.issues.at(-1).id;
+    state.ruleIssueSelections = {};
+    setRuleAssistanceExpanded(false);
+    setWorkspaceTab("rule-issues");
+  });
+  try {
+    const resizer = page.locator("#rule-issues-list-resizer");
+    async function dragWidth(width) {
+      const current = Number(await resizer.getAttribute("aria-valuenow"));
+      const bounds = await resizer.boundingBox();
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width / 2 + width - current, bounds.y + bounds.height / 2, { steps: 4 });
+      await page.mouse.up();
+    }
+    await dragWidth(620);
+    await page.waitForFunction(() => !elements["rule-issue-tab-pager"].classList.contains("paging"));
+    assert(await page.evaluate(() => elements["rule-issues-previous"].hidden && elements["rule-issues-next"].hidden
+      && [...elements["rule-issues-filters"].children].every(tab => !tab.classList.contains("rule-issue-tab-page-hidden"))),
+    "Widening the issue list did not show all fitting categories and hide both chevrons");
+    await dragWidth(360);
+    await page.waitForFunction(() => elements["rule-issue-tab-pager"].classList.contains("paging")
+      && [...elements["rule-issues-filters"].children].filter(tab => !tab.classList.contains("rule-issue-tab-page-hidden")).length === 2);
+    assert(await page.evaluate(() => {
+      const visible = [...elements["rule-issues-filters"].children].filter(tab => !tab.classList.contains("rule-issue-tab-page-hidden"));
+      const width = visible.reduce((total, tab) => total + tab.getBoundingClientRect().width + parseFloat(getComputedStyle(tab).marginRight || "0"), 0);
+      return state.ruleIssueFilter === "overlap" && visible.at(-1).getAttribute("aria-selected") === "true"
+        && width <= elements["rule-issue-tab-viewport"].clientWidth;
+    }), "The final tab page did not back-fill a fitting neighbor while preserving the selection");
+    await dragWidth(280);
+    await page.waitForFunction(() => {
+      const selected = elements["rule-issues-filters"].querySelector('[aria-selected="true"]');
+      return elements["rule-issue-tab-pager"].classList.contains("paging") && !selected.classList.contains("rule-issue-tab-page-hidden");
+    });
+    assert(await page.evaluate(() => state.ruleIssueFilter === "overlap" && !elements["rule-issues-previous"].disabled),
+      "Shrinking the list did not retain the selected category on its own page");
+    const selectedPage = await page.evaluate(() => state.ruleIssueTabPage);
+    await page.locator("#rule-issues-previous").click();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert(await page.evaluate(selectedPage => state.ruleIssueTabPage === selectedPage - 1 && state.ruleIssueFilter === "overlap", selectedPage),
+      "The container observer snapped manual paging back to the selected category");
+    await dragWidth(290);
+    await page.waitForFunction(() => !elements["rule-issues-filters"].querySelector('[aria-selected="true"]').classList.contains("rule-issue-tab-page-hidden"));
+    assert(await page.evaluate(() => JSON.stringify(state.session) === globalThis.__issuePagerFixture.session),
+      "Issue-list resizing mutated saved decisions");
+  } finally {
+    await page.evaluate(() => {
+      const saved = globalThis.__issuePagerFixture;
+      state.ruleIssueBundle = saved.bundle;
+      state.ruleIssues = saved.issues;
+      state.ruleIssueFilter = saved.filter;
+      state.activeRuleIssueKey = saved.active;
+      state.ruleIssueSelections = saved.selections;
+      setRuleIssuesListWidth(saved.width);
+      setRuleAssistanceExpanded(saved.expanded);
+      setWorkspaceTab(saved.tab);
+      for (const [key, chat] of ruleAssistanceChats) {
+        if (chat.ruleIssueId?.startsWith("pager-fixture:") && !chat.active && !chat.turns.length) ruleAssistanceChats.delete(key);
+      }
+      delete globalThis.__issuePagerFixture;
+    });
+  }
+}
+
+async function assertRuleIssueChat(page, assert, candidateKey) {
+  const before = await page.evaluate(() => JSON.stringify(state.session));
+  let releaseReply = null;
+  let request = null;
+  const handler = async route => {
+    request = JSON.parse(Buffer.from(route.request().postDataJSON().payloadBase64, "base64").toString("utf8"));
+    const answer = await page.evaluate(request => {
+      const profile = globalThis.__HOSTED_RULE_WORKBENCH__.ruleAssistance;
+      return {
+        schemaVersion: 1, requestId: request.requestId, authoritySha256: request.authoritySha256,
+        viewKind: request.viewKind, ruleIssueId: request.ruleIssueId, ruleIssuesSha256: request.ruleIssuesSha256,
+        model: profile.model, reasoningEffort: profile.reasoningEffort,
+        catalogSha256: profile.catalogSha256, protectedRulesSha256: profile.protectedRulesSha256,
+        catalogRuleIds: [...state.bundle.catalog.rules.filter(rule => rule.status === "active"), ...state.bundle.catalog.protectedRules].map(rule => rule.id),
+        message: "Issue advice remains advisory and preserves protected rules.", suggestedWording: null
+      };
+    }, request);
+    await new Promise(resolve => {
+      releaseReply = async () => { await route.fulfill({ json: answer }); resolve(); };
+    });
+  };
+  await page.route("**/assist-rule", handler);
+  try {
+    await page.getByRole("tab", { name: /^Rule Issues/ }).click();
+    const root = page.locator("[data-rule-assistance]");
+    const input = root.locator(".assist-goal");
+    await input.waitFor({ state: "visible" });
+    const issue = await page.evaluate(() => ({ id: ruleAssistance.ruleIssueId, title: getRuleAssistanceTarget().title, candidateKey: ruleAssistance.candidateKey }));
+    assert(issue.id && issue.candidateKey === null && await root.locator(".assist-chat-identity .assist-chat-context-label").textContent() === issue.title,
+      "Rule Issues did not select its own issue identity and shared sidebar");
+    await input.fill("Why was this resolution suggested, and what if I disagree?");
+    await root.locator("[data-assist-send]").click();
+    for (let attempt = 0; !releaseReply && attempt < 200; attempt += 1) await page.waitForTimeout(25);
+    assert(Boolean(releaseReply) && request.viewKind === "rule-issues" && request.ruleIssueId === issue.id
+      && !Object.hasOwn(request, "candidateKey") && !Object.hasOwn(request, "proposedText") && !Object.hasOwn(request, "ruleIssue"),
+      "Issue assistance sent candidate or client-supplied evidence instead of its bound issue identity");
+    await page.getByRole("tab", { name: "Candidate Sources", exact: true }).click();
+    await page.evaluate(key => { selectCandidate(key); showCandidatePane("details"); }, candidateKey);
+    await input.fill("Preserve this separate candidate question.");
+    await releaseReply();
+    releaseReply = null;
+    await page.waitForFunction(id => !ruleAssistanceChats.get(JSON.stringify(["rule-issues", id])).active, issue.id);
+    assert(await input.inputValue() === "Preserve this separate candidate question." && !await root.locator(".assist-chat-ai-message").count(),
+      "An inactive issue reply overwrote the selected candidate chat");
+    await page.getByRole("tab", { name: /^Rule Issues/ }).click();
+    assert(await root.locator(".assist-chat-ai-message").textContent().then(text => text.includes("Issue advice remains advisory"))
+      && !await root.locator(".assist-chat-inline-wording").count(), "Returning to the issue lost its reply or exposed a targeted replacement");
+    await input.fill("Retain this unsent issue question.");
+    await page.getByRole("tab", { name: "Candidate Sources", exact: true }).click();
+    await page.getByRole("tab", { name: /^Rule Issues/ }).click();
+    assert(await input.inputValue() === "Retain this unsent issue question.", "Issue navigation discarded its unsent question");
+    await root.locator("[data-assist-clear]").click();
+    await page.getByRole("heading", { name: "Start a New AI Rule Issue Chat?", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Clear Chat", exact: true }).click();
+    assert(!await root.locator(".assist-chat-ai-message").count() && await input.inputValue() === "Retain this unsent issue question.",
+      "Clearing an issue chat lost its unsent input or retained its old reply");
+    await page.getByRole("tab", { name: "Candidate Sources", exact: true }).click();
+    assert(await input.inputValue() === "Preserve this separate candidate question.", "Clearing an issue conversation cleared the candidate conversation");
+    assert(await page.evaluate(before => JSON.stringify(state.session) === before, before), "Issue chat changed saved maintainer decisions");
+  } finally {
+    if (releaseReply) await releaseReply();
+    await page.unroute("**/assist-rule", handler);
+  }
 }
 
 module.exports = { name: "rule assistance", behaviorIds, viewport: { width: 1440, height: 900 }, run };

@@ -106,6 +106,7 @@ function Get-RuleAssistanceRuntime {
     param(
         [Parameter(Mandatory)][string]$RepositoryRoot,
         [Parameter(Mandatory)][string]$DisplayPath,
+        [string]$RuleIssuesPath,
         [Parameter(Mandatory)][string]$EvaluatorCommand,
         [Parameter(Mandatory)][string]$Model,
         [Parameter(Mandatory)][string]$ReasoningEffort
@@ -113,13 +114,17 @@ function Get-RuleAssistanceRuntime {
 
     $files = @(
         'hosted_copilot/tools/prompts/chat/RuleAssistance.md',
+        'hosted_copilot/tools/prompts/chat/AssessmentAssistance.md',
+        'hosted_copilot/tools/prompts/chat/RuleIssueAssistance.md',
         'hosted_copilot/contracts/workbench/rule-assistance-result.schema.json',
         'hosted_copilot/contracts/workbench/workbench-display-v4.schema.json',
+        'hosted_copilot/contracts/workbench/workbench-rule-issues-v4.schema.json',
         'hosted_copilot/tools/modules/workbench/RuleAssistance.psm1',
         'hosted_copilot/tools/internal/workbench/Invoke-RuleAssistance.ps1'
         'hosted_copilot/tools/modules/shared/HostedCli.psm1'
     ) | ForEach-Object { [ordered]@{ path = $_; sha256 = Get-Sha256 -Path (Join-Path $RepositoryRoot $_) } }
     $display = Get-Content -LiteralPath $DisplayPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
+    $ruleIssuesSha256 = if ([string]::IsNullOrWhiteSpace($RuleIssuesPath)) { $null } else { Get-Sha256 -Path $RuleIssuesPath }
     return [ordered]@{
         model = $Model
         reasoningEffort = $ReasoningEffort
@@ -127,8 +132,10 @@ function Get-RuleAssistanceRuntime {
         displaySha256 = Get-Sha256 -Path $DisplayPath
         catalogSha256 = $display.catalog.contentSha256
         protectedRulesSha256 = $display.catalog.protectedRulesContentSha256
+        ruleIssuesSha256 = $ruleIssuesSha256
         authoritySha256 = Get-JsonSnapshotSha256 -Value ([ordered]@{
             files = @($files); display = Get-Sha256 -Path $DisplayPath
+            ruleIssues = $ruleIssuesSha256
             evaluator = $EvaluatorCommand; model = $Model; effort = $ReasoningEffort
         })
     }

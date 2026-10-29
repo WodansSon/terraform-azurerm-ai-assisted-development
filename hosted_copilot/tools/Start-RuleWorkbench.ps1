@@ -297,6 +297,7 @@ $stagedDisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
 $stagedRuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
 $assistanceParameters = @{
     RepositoryRoot = $repositoryRoot; DisplayPath = $stagedDisplayPath
+    RuleIssuesPath = $stagedRuleIssuesPath
     EvaluatorCommand = $EvaluatorCommand; Model = $Model; ReasoningEffort = $AssessmentReasoningEffort
 }
 $assessmentResult = $null

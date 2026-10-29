@@ -111,6 +111,8 @@ async function run({ page, baseUrl, assert, playback }) {
     const overrideForm = page.locator(".override-form");
     assert(await overrideForm.isVisible(), "Contest Assessment did not open the override form");
     await overrideForm.locator("textarea").fill(initialRationale);
+    assert(await overrideForm.locator(".rationale-field .rationale-limit").innerText() === `${initialRationale.length} / 500 characters`,
+      "New override does not use the shared rationale field and live counter");
     assert(!await overrideForm.locator("[data-override-apply]").isDisabled(), "Override rationale did not enable Apply Override");
     await overrideForm.locator("[data-override-apply]").click();
     await page.locator("#candidate-sources-panel").waitFor({ state: "visible" });
@@ -182,6 +184,8 @@ async function run({ page, baseUrl, assert, playback }) {
     const savedRationale = page.locator("[data-saved-override-rationale]");
     assert(await savedRationale.isEditable(), "Edit Override Rationale did not make the saved rationale editable");
     await savedRationale.fill(updatedRationale);
+    assert(await page.locator(".override-record .rationale-field .rationale-limit").innerText() === `${updatedRationale.length} / 500 characters`,
+      "Saved override does not use the shared rationale field and live counter");
     await page.locator("[data-override-save]").click();
     await page.waitForFunction(() => document.querySelector("[data-saved-override-rationale]")?.readOnly === true);
     assert(await page.locator("[data-saved-override-rationale]").inputValue() === updatedRationale, "Override rationale edit was not saved");

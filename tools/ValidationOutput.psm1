@@ -109,6 +109,8 @@ function Write-ValidationStatusTable {
         [string]$DetailProperty = 'detail'
     )
 
+    $names = @($NameHeader.ToUpperInvariant()) + @($Rows | ForEach-Object { [string]$_.$NameProperty })
+    $NameWidth = [Math]::Max($NameWidth, (Get-ValidationNameWidth -Names $names))
     Write-Output ("  {0,-$NameWidth} {1,-10} {2,10}" -f $NameHeader.ToUpperInvariant(), 'STATUS', 'DURATION')
     Write-Output ("  {0,-$NameWidth} {1,-10} {2,10}" -f ('-' * $NameWidth), ('-' * 10), ('-' * 10))
     foreach ($row in $Rows) {

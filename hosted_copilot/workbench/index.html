@@ -176,7 +176,8 @@
               </div>
               <div class="rule-issues-list scroll-surface" id="rule-issues-list"></div>
             </aside>
-            <article class="rule-issues-detail scroll-surface" id="rule-issues-detail" aria-live="polite"></article>
+            <div class="rule-issues-list-resizer" id="rule-issues-list-resizer" role="separator" aria-label="Resize rule issues list" aria-orientation="vertical" aria-controls="rule-issues-list rule-issues-detail" tabindex="0"></div>
+            <article class="rule-issues-detail scroll-surface" id="rule-issues-detail" data-sidebar-enabled="true" aria-live="polite"></article>
           </div>
         </div>
 
@@ -268,7 +269,7 @@
           <section class="preview-summary scroll-surface type-ui">
             <div id="preview-summary"></div>
           </section>
-          <div class="preview-tree-resizer" id="preview-tree-resizer" role="slider" aria-label="Draggable pane splitter" aria-orientation="vertical" aria-valuemin="296" aria-valuemax="520" aria-valuenow="380" aria-valuetext="Pane width 380 pixels" tabindex="0"></div>
+          <div class="preview-tree-resizer" id="preview-tree-resizer" role="separator" aria-label="Resize preview file tree" aria-orientation="vertical" aria-controls="preview-summary preview-code" tabindex="0"></div>
           <section class="preview-code scroll-surface type-editor" id="preview-code">
             <section class="preview-proposed-review">
               <div class="preview-diff" id="preview-diff"></div>

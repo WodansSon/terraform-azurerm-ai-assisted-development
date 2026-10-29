@@ -21,14 +21,24 @@ $offset = $prompt.LastIndexOf($marker, [StringComparison]::Ordinal)
 if ($offset -lt 0 -or -not $prompt.Contains('## Boundaries', [StringComparison]::Ordinal)) { throw 'Assistance prompt boundaries are missing' }
 $context = $prompt.Substring($offset + $marker.Length) | ConvertFrom-Json -Depth 100 -DateKind String
 $question = [string]$context.messages[-1].content
+$isRuleIssue = $context.viewKind -ceq 'rule-issues'
 $control = [Environment]::GetEnvironmentVariable('HOSTED_ASSISTANCE_TEST_CONTROL')
 if ([string]::IsNullOrWhiteSpace($control)) { throw 'Synthetic assistance requires an isolated test control directory' }
 $metrics = [ordered]@{
     model = $arguments[$modelIndex + 1]; effort = $arguments[$effortIndex + 1]
     bytes = [Text.Encoding]::UTF8.GetByteCount($prompt)
     ruleIds = @($context.catalog.id); messageCount = @($context.messages).Count
-    sourceCount = @($context.sources).Count; workingDirectory = (Get-Location).Path
+    sourceCount = if ($isRuleIssue) { @($context.candidateEvidence | ForEach-Object { $_.members }).Count } else { @($context.sources).Count }; workingDirectory = (Get-Location).Path
     guidanceCapacity = $context.guidanceCapacity
+    viewKind = $context.viewKind
+}
+if ($isRuleIssue) {
+    $metrics.ruleIssueSha256 = Get-JsonSnapshotSha256 -Value $context.ruleIssue -Depth 100
+    $metrics.candidateEvidenceSha256 = Get-JsonSnapshotSha256 -Value @($context.candidateEvidence) -Depth 100
+    $metrics.promptSelected = $prompt.StartsWith('# Hosted Rule Issue Assistance', [StringComparison]::Ordinal)
+} else {
+    $metrics.promptSelected = if ($context.viewKind -ceq 'assessment-results') { $prompt.Contains('# Hosted Assessment Assistance', [StringComparison]::Ordinal) } else { -not $prompt.Contains('# Hosted Assessment Assistance', [StringComparison]::Ordinal) }
+    $evidenceMetrics = [ordered]@{
     parentAssessmentSha256 = Get-JsonSnapshotSha256 -Value $context.recordedAssessment.assessment -Depth 100
     recommendationSha256 = Get-JsonSnapshotSha256 -Value $context.recordedAssessment.recommendation -Depth 100
     sourceEvidenceSha256 = Get-JsonSnapshotSha256 -Value @($context.sources) -Depth 100
@@ -38,6 +48,8 @@ $metrics = [ordered]@{
     baselineTextSha256 = Get-Sha256 -Content $context.currentRule.baselineText
     proposedTextSha256 = Get-Sha256 -Content $context.currentRule.proposedText
     matchesCurrentWording = $context.recordedAssessment.matchesCurrentWording
+    }
+    foreach ($entry in $evidenceMetrics.GetEnumerator()) { $metrics[$entry.Key] = $entry.Value }
 }
 [IO.File]::AppendAllText((Join-Path $control 'metrics.jsonl'), (($metrics | ConvertTo-Json -Depth 100 -Compress) + "`n"))
 if ($question -ceq 'hold') {
@@ -58,7 +70,7 @@ if ($question -ceq 'cli-failure') { throw 'Synthetic CLI failure' }
 if ($question -ceq 'warning') { [Console]::Error.WriteLine('Synthetic legitimate warning; stdout remains JSONL.') }
 if ($question -ceq 'tool-event') { '{"type":"tool.execution_start","data":{}}' }
 if ($question -ceq 'no-answer') { '{"type":"session.error","data":{"message":"SYNTHETIC_SENSITIVE_VALUE"}}'; return }
-$answer = [ordered]@{ message = 'Synthetic catalog advice <img src=x onerror=alert(1)>.'; suggestedWording = 'Preserve the selected rule obligations and review the complete proposed wording.' }
+$answer = [ordered]@{ message = 'Synthetic catalog advice <img src=x onerror=alert(1)>.'; suggestedWording = if ($isRuleIssue -and $question -cne 'issue-wording') { $null } else { 'Preserve the selected rule obligations and review the complete proposed wording.' } }
 if ($question -ceq 'invalid-shape') { $answer.Remove('message') }
 $event = [ordered]@{ type = 'assistant.message'; data = [ordered]@{
     model = if ($question -ceq 'wrong-model') { 'unexpected-model' } else { $arguments[$modelIndex + 1] }

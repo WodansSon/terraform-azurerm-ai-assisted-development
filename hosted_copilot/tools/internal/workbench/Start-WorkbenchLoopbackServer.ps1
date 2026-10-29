@@ -28,6 +28,7 @@ $null = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ norm
 $EvaluatorCommand = $cliLaunch.commandPath
 $assistanceParameters = @{
     RepositoryRoot = $RepositoryRoot; DisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'
+    RuleIssuesPath = Join-Path $resolvedSiteDirectory 'workbench-rule-issues.json'
     EvaluatorCommand = $EvaluatorCommand; Model = $AssistanceModel; ReasoningEffort = $AssistanceReasoningEffort
 }
 $url = "http://127.0.0.1:$Port/"
