@@ -2375,8 +2375,14 @@ function openWorkbenchDialog({ name, title, iconMarkup, bodyHtml, trigger, warni
   }
   dialog.addEventListener("close", () => {
     dialog.remove();
+    hideStatusTooltip();
     const target = focusTarget();
-    if (target?.isConnected && !target.disabled) target.focus({ preventScroll: true });
+    if (target?.isConnected && !target.disabled) {
+      const owner = getWorkbenchTooltipOwner(target);
+      workbenchTooltip.suppressedOwner = owner;
+      target.focus({ preventScroll: true });
+      if (!owner?.matches(":hover")) workbenchTooltip.suppressedOwner = null;
+    }
   }, { once: true });
   dialog.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
@@ -2389,6 +2395,7 @@ function openWorkbenchDialog({ name, title, iconMarkup, bodyHtml, trigger, warni
     const rect = dialog.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
   });
+  hideStatusTooltip();
   document.body.append(dialog);
   dialog.showModal();
   (dialog.querySelector(".modal-dialog-actions button") || close).focus();
@@ -4061,7 +4068,7 @@ function renderRuleAssistance(target) {
     ${renderInformationPanel(`<p>${profile?.model ? "This response is AI-generated. Please review it for accuracy and relevance before use." : "AI assistance is unavailable. Restart the Workbench with the current source."}</p>`, { iconMarkup: fluentIcon("info-20-regular"), className: "section-guidance" })}
     <div class="assist-chat-reply-window">
       <div class="assist-chat-conversation-toolbar">
-        <span class="assist-chat-identity">${icon("copilot")}<span>Copilot ·</span><em class="assist-chat-context-label">${escapeHtml(contextLabel)}</em></span>
+        <span class="assist-chat-identity">${icon("copilot")}<span>Copilot ·</span><em class="assist-chat-context-label">Chat</em></span>
       </div>
       <div class="assist-chat-response scroll-surface" id="rule-assistance-conversation" role="region" aria-label="AI assistance conversation">${messages}</div>
       <button class="scroll-edge-button assist-chat-scroll-latest clickable" type="button" data-assist-scroll-latest aria-label="Scroll to latest reply" data-workbench-tooltip="Scroll to latest reply" aria-controls="rule-assistance-conversation" hidden>${icon("chevron-down")}</button>

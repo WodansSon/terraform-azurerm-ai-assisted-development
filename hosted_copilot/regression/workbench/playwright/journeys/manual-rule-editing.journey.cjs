@@ -30,7 +30,7 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
     state.activeRuleIssueKey = issue.id;
     setWorkspaceTab("rule-issues");
     renderRuleIssues();
-    return { key, ruleId, originalText, updatedText, before: JSON.stringify(state.session) };
+    return { key, ruleId, originalText, updatedText, rationale: getDecision(candidate).rationale, before: JSON.stringify(state.session) };
   }, candidateKey);
   const open = async () => {
     await page.locator(`[data-rule-issue-rule="${fixture.ruleId}"]`).click();
@@ -64,6 +64,7 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
       && initial.resetLeft && initial.oldTools === 0 && initial.sharedRationale, "Resolution dialog does not reuse the accepted panel, header, or rationale presentation");
     assert(await dialog.getByRole("radio", { name: "Retire", exact: true }).isChecked()
       && await dialog.getByRole("radio", { name: "Keep Updated Text", exact: true }).isChecked()
+      && await rationale.inputValue() === fixture.rationale
       && await save.isDisabled() && await reset.isDisabled(), "Resolution defaults do not match the adjudicated action and saved wording");
     await dialog.getByRole("radio", { name: "Keep Original Text", exact: true }).check();
     assert(await save.isEnabled() && await reset.isEnabled()
@@ -74,13 +75,40 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
     assert(await dialog.locator(".rationale-limit").innerText() === "500 / 500 characters"
       && await rationale.getAttribute("maxlength") === "500", "Shared rationale counter or limit is incorrect");
     await reset.click();
-    assert(await rationale.inputValue() === "" && await dialog.locator(".rationale-limit").innerText() === "0 / 500 characters"
+    assert(await rationale.inputValue() === fixture.rationale
+      && await dialog.locator(".rationale-limit").innerText() === `${fixture.rationale.length} / 500 characters`
       && await save.isDisabled() && await reset.isDisabled(), "Reset failed to restore the baseline and rationale counter");
     await page.setViewportSize({ width: 768, height: 900 });
     const narrow = await dialog.evaluate(element => ({ width: element.getBoundingClientRect().width, overflow: element.scrollWidth > element.clientWidth, footer: element.querySelector(".modal-dialog-actions").getBoundingClientRect().bottom <= innerHeight }));
     assert(narrow.width === 736 && !narrow.overflow && narrow.footer, "Resolution does not fit the minimum supported viewport");
     await page.setViewportSize(viewport);
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    const resolve = page.locator(`[data-rule-issue-rule="${fixture.ruleId}"]`);
+    const assertDismissed = async method => {
+      await dialog.waitFor({ state: "detached" });
+      assert(await resolve.evaluate(element => document.activeElement === element), `${method} did not restore keyboard focus to Resolve`);
+      await page.waitForTimeout(await page.evaluate(() => WORKBENCH_TOOLTIP_DELAY_MS + 50));
+      assert(await page.evaluate(() => !elements["status-surface-tooltip"].classList.contains("visible") && workbenchTooltip.showTimer === 0),
+        `${method} left the Resolve tooltip visible or scheduled after focus restoration`);
+      assert(await page.evaluate(before => JSON.stringify(state.session) === before, fixture.before), `${method} changed the saved draft`);
+    };
+    await assertDismissed("Cancel");
+    await page.mouse.move(4, 4);
+    await resolve.hover();
+    await page.waitForFunction(() => elements["status-surface-tooltip"].classList.contains("visible"));
+    assert(await page.locator("#status-surface-tooltip").textContent() === "Resolve rule", "A fresh hover did not restore the Resolve tooltip");
+    for (const method of ["close X", "Escape", "backdrop"]) {
+      await open();
+      assert(await page.evaluate(() => !elements["status-surface-tooltip"].classList.contains("visible")), "Opening a dialog retained its trigger tooltip");
+      if (method === "close X") await dialog.locator("[data-dialog-close]").click();
+      else if (method === "Escape") await page.keyboard.press("Escape");
+      else await page.mouse.click(4, 4);
+      await assertDismissed(method);
+    }
+    await page.keyboard.press("Tab");
+    await resolve.focus();
+    await page.waitForFunction(() => elements["status-surface-tooltip"].classList.contains("visible"));
+    assert(await page.locator("#status-surface-tooltip").textContent() === "Resolve rule", "A fresh keyboard focus did not restore the Resolve tooltip");
     assert(await page.evaluate(before => JSON.stringify(state.session) === before, fixture.before), "Cancelling resolution changed the saved draft");
 
     await open();
@@ -154,6 +182,8 @@ async function run({ page, baseUrl, assert }) {
     };
   });
   try {
+    const closeAssistance = page.getByRole("button", { name: "Close AI assistance", exact: true });
+    if (await closeAssistance.isVisible()) await closeAssistance.click();
     const editor = page.locator('#assessment-panel [data-decision-field="proposedText"]');
     const savedText = `${fixture.text} Retain the explicit maintainer wording.`;
     await page.evaluate(() => {
@@ -242,6 +272,7 @@ async function run({ page, baseUrl, assert }) {
     assert(restored.text === savedText && restored.cleared && restored.issues,
       "Reload restored retired checks, lost saved wording, or changed published Rule Issues");
 
+    if (await closeAssistance.isVisible()) await closeAssistance.click();
     await page.locator('[data-rule-action="update"]').check();
     await page.locator('[data-decision-field="rationale"]').fill("Explicit maintainer wording for the v1 promotion preview.");
     assert(await page.locator('.rationale-field #decision-rationale-limit').innerText() === `${"Explicit maintainer wording for the v1 promotion preview.".length} / 500 characters`,

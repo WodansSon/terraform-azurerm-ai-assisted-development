@@ -275,7 +275,8 @@ async function run({ page, baseUrl, assert }) {
       identityPrefix: identity.querySelector("span").textContent,
       muted: getComputedStyle(glyph).color === contextStyle.color
         && getComputedStyle(identity.querySelector("span")).color === contextStyle.color,
-      ruleId: rule.textContent,
+      chatLabel: rule.textContent,
+      composerContext: context.querySelector(".assist-chat-context-label").textContent,
       ruleStyle: getComputedStyle(rule).color === "rgb(255, 255, 255)"
         && getComputedStyle(rule).fontStyle === "italic"
         && getComputedStyle(rule).fontSize === "12px"
@@ -301,7 +302,8 @@ async function run({ page, baseUrl, assert }) {
     && presentation.emphasis, "Assistance guidance lost its approved wording or regular weight");
   assert(presentation.reference === "icons/codicons/sprite.svg#codicon-copilot" && presentation.glyphSize && presentation.decorative
     && presentation.identityPrefix === "Copilot ·" && presentation.muted, "Copilot identity lost its native glyph or muted prefix");
-  assert(presentation.ruleId === setup.ruleId && presentation.ruleStyle && presentation.matchingChip && presentation.newChatInHeader && presentation.matchingHeaderSpacing,
+  assert(presentation.chatLabel === "Chat" && presentation.composerContext === setup.ruleId
+    && presentation.ruleStyle && presentation.matchingChip && presentation.newChatInHeader && presentation.matchingHeaderSpacing,
     `Copilot identity or header New Chat control lost its approved structure: ${JSON.stringify(presentation)}`);
   assert(presentation.transparent, "The assistance reply or composer retained a filled background");
   const geometry = await root.evaluate((node) => {
@@ -1201,7 +1203,8 @@ async function assertRuleIssueChat(page, assert, candidateKey) {
     const input = root.locator(".assist-goal");
     await input.waitFor({ state: "visible" });
     const issue = await page.evaluate(() => ({ id: ruleAssistance.ruleIssueId, title: getRuleAssistanceTarget().title, candidateKey: ruleAssistance.candidateKey }));
-    assert(issue.id && issue.candidateKey === null && await root.locator(".assist-chat-identity .assist-chat-context-label").textContent() === issue.title,
+    assert(issue.id && issue.candidateKey === null && await root.locator(".assist-chat-identity .assist-chat-context-label").textContent() === "Chat"
+      && await root.locator(".assist-chat-context .assist-chat-context-label").textContent() === issue.title,
       "Rule Issues did not select its own issue identity and shared sidebar");
     await input.fill("Why was this resolution suggested, and what if I disagree?");
     await root.locator("[data-assist-send]").click();
