@@ -61,7 +61,7 @@ Import-Module -Name $sourceEvidenceModulePath -Force
 $helpersModulePath = Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1'
 Import-Module -Name $helpersModulePath -Force
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1') -Force
-$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$llmProfile = Resolve-HostedLlmProfile -Profile default -Model $Model -ReasoningEffort $ReasoningEffort
 $Model = $llmProfile.model
 $ReasoningEffort = $llmProfile.reasoningEffort
 $validationOutputModulePath = Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1'

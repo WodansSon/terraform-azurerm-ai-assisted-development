@@ -28,7 +28,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/reconciliation/ReconciliationStageExecutor.psm1')
 
-$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$llmProfile = Resolve-HostedLlmProfile -Profile default -Model $Model -ReasoningEffort $ReasoningEffort
 $Model = $llmProfile.model
 $ReasoningEffort = $llmProfile.reasoningEffort
 

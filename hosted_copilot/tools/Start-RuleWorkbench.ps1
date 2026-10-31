@@ -27,10 +27,10 @@ Specifies the external directory that stores validated hierarchical reconciliati
 Specifies an exact-authority retained source-assessment run to resume during an ordinary rebuild.
 
 .PARAMETER Model
-Overrides the normal model profile in hosted_copilot/tools/config/llm.json for source assessment, reconciliation, and AI Assistance.
+Overrides the default model profile in hosted_copilot/tools/config/llm.json for source assessment, reconciliation, and AI Assistance.
 
 .PARAMETER AssessmentReasoningEffort
-Overrides the normal reasoning-effort profile in hosted_copilot/tools/config/llm.json for source assessment, reconciliation, and AI Assistance.
+Overrides the default reasoning-effort profile in hosted_copilot/tools/config/llm.json for source assessment, reconciliation, and AI Assistance.
 
 .PARAMETER MaxRetries
 Specifies how many times a failed evaluator batch may be retried.
@@ -199,9 +199,11 @@ Import-Module -Name $workbenchGitHubContextModulePath -Force
 Import-Module -Name $hostedToolkitHelpersModulePath -Force
 Import-Module (Join-Path $PSScriptRoot 'modules/shared/HostedCli.psm1') -Force
 
-$normalProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $AssessmentReasoningEffort
-$Model = $normalProfile.model
-$AssessmentReasoningEffort = $normalProfile.reasoningEffort
+$defaultProfile = Resolve-HostedLlmProfile -Profile default -Model $Model -ReasoningEffort $AssessmentReasoningEffort
+$configuredProfiles = Resolve-HostedLlmProfile -All
+$configuredProfiles.default = $defaultProfile
+$Model = $defaultProfile.model
+$AssessmentReasoningEffort = $defaultProfile.reasoningEffort
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
 $workbenchIconSource = Join-Path $workbenchSource 'icons'
@@ -249,7 +251,7 @@ foreach ($requiredPath in @($workbenchSource, $workbenchIconSource, $hostedCatal
 
 if ($OutputFormat -eq 'Text') { Write-ValidationSectionHeader -Title 'LLM Availability' | Write-Host }
 $cliLaunch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
-$cliAvailability = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ normal = $normalProfile })
+$cliAvailability = Get-HostedCliAvailability -Launch $cliLaunch -Profiles $configuredProfiles
 $EvaluatorCommand = $cliLaunch.commandPath
 if ($OutputFormat -eq 'Text') {
     foreach ($profile in $cliAvailability.profiles) {

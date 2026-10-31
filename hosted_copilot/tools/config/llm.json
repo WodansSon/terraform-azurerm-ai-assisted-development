@@ -1,9 +1,9 @@
 {
-  "normal": {
+  "default": {
     "model": "gpt-6.1-sol",
     "reasoningEffort": "high"
   },
-  "savedRuleEvaluation": {
+  "ruleEvaluation": {
     "model": "gpt-6-luna",
     "reasoningEffort": "medium"
   }

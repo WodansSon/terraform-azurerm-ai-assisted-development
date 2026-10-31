@@ -40,7 +40,7 @@ Import-Module $stateModulePath -Force
 Import-Module $executorModulePath -Force
 Import-Module $adjudicationModulePath -Force
 
-$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$llmProfile = Resolve-HostedLlmProfile -Profile default -Model $Model -ReasoningEffort $ReasoningEffort
 $Model = $llmProfile.model
 $ReasoningEffort = $llmProfile.reasoningEffort
 

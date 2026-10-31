@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1') -Force
 
-$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$llmProfile = Resolve-HostedLlmProfile -Profile default -Model $Model -ReasoningEffort $ReasoningEffort
 $Model = $llmProfile.model
 $ReasoningEffort = $llmProfile.reasoningEffort
 

@@ -35,9 +35,11 @@ while ($true) {
         'status.get' { @{ version = '1.0.102'; protocolVersion = $(if ($scenario -ceq 'unsupported-protocol') { 2 } else { 3 }) } }
         'auth.getStatus' { @{ isAuthenticated = $scenario -cne 'unauthenticated' } }
         'models.list' {
-            $models = @($configuration.normal.model, $configuration.savedRuleEvaluation.model, 'fixture-normal-model', 'fixture-saved-model' | Select-Object -Unique | ForEach-Object {
+            $modelIds = @($configuration.PSObject.Properties | ForEach-Object { $_.Value.model })
+            $models = @($modelIds + @('fixture-normal-model', 'fixture-saved-model') | Select-Object -Unique | ForEach-Object {
                 $model = [string]$_
-                if ($scenario -ceq 'missing-model' -and $model -ceq $configuration.normal.model) { return }
+                if ($scenario -ceq 'missing-model' -and $model -ceq $configuration.default.model) { return }
+                if ($scenario -ceq 'missing-rule-model' -and $model -ceq $configuration.ruleEvaluation.model) { return }
                 [ordered]@{
                     id = $model; name = $model
                     policy = @{ state = $(if ($scenario -ceq 'disabled-model') { 'disabled' } elseif ($scenario -ceq 'unknown-policy') { 'unconfigured' } else { 'enabled' }); terms = 'Synthetic policy' }

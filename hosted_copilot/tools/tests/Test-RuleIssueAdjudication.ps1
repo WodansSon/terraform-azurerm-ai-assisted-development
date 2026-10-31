@@ -10,7 +10,7 @@ $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $validationOutputPath = Join-Path $repositoryRoot 'tools/ValidationOutput.psm1'
 Import-Module -Name $validationOutputPath -Force
 Import-Module (Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1') -Force
-$normalProfile = Resolve-HostedLlmProfile -Profile normal
+$normalProfile = Resolve-HostedLlmProfile -Profile default
 $runnerPath = Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Invoke-RuleIssueAdjudication.ps1'
 $exporterPath = Join-Path $repositoryRoot 'hosted_copilot/tools/internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
 $fixturePath = Join-Path $PSScriptRoot 'fixtures/rule-issue-adjudication-evaluator.ps1'

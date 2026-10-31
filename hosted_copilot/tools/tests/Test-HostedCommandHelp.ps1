@@ -176,11 +176,11 @@ try {
         ($helpWithPortOutput | Out-String) -match 'Parameter set cannot be resolved'
     Add-TestResult -Name 'workbench-argument-contract' -Passed $workbenchArgumentContractValid -Detail 'Workbench dependencies fail actionably and native parameter sets reject mutually exclusive help, force, and resume shapes.'
 
-    Write-TestProgress -Name 'workbench-model-profiles' -Detail 'Checking centralized normal and saved-rule profile resolution'
+    Write-TestProgress -Name 'workbench-model-profiles' -Detail 'Checking centralized default and rule-evaluation profile resolution'
     $profileCases = @(
-        @{ Path = $workbenchLauncherPath; Parameters = @('Model', 'AssessmentReasoningEffort'); Profiles = @('normal') },
-        @{ Path = (Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'); Parameters = @('AssistanceModel', 'AssistanceReasoningEffort'); Profiles = @('normal') },
-        @{ Path = (Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-SavedRuleEvaluation.ps1'); Parameters = @('Model', 'ReasoningEffort'); Profiles = @('savedRuleEvaluation') }
+        @{ Path = $workbenchLauncherPath; Parameters = @('Model', 'AssessmentReasoningEffort'); Profiles = @('default') },
+        @{ Path = (Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'); Parameters = @('AssistanceModel', 'AssistanceReasoningEffort'); Profiles = @('default') },
+        @{ Path = (Join-Path $PSScriptRoot '../internal/reconciliation/Invoke-SavedRuleEvaluation.ps1'); Parameters = @('Model', 'ReasoningEffort'); Profiles = @('ruleEvaluation') }
     )
     foreach ($relativePath in @(
         'assessment/Invoke-SourceAssessment.ps1',
@@ -190,7 +190,7 @@ try {
         'reconciliation/Invoke-ManualRuleRelationship.ps1',
         'reconciliation/Invoke-RuleIssueAdjudication.ps1'
     )) {
-        $profileCases += @{ Path = (Join-Path $PSScriptRoot "../internal/$relativePath"); Parameters = @('Model', 'ReasoningEffort'); Profiles = @('normal') }
+        $profileCases += @{ Path = (Join-Path $PSScriptRoot "../internal/$relativePath"); Parameters = @('Model', 'ReasoningEffort'); Profiles = @('default') }
     }
     $profilesValid = $true
     foreach ($profileCase in $profileCases) {
@@ -213,51 +213,67 @@ try {
     $authorityAst = $authorityCommand.ScriptBlock.Ast
     $authorityParameters = $(if ($authorityAst -is [Management.Automation.Language.FunctionDefinitionAst]) { $authorityAst.Body.ParamBlock.Parameters } else { $authorityAst.ParamBlock.Parameters })
     $profilesValid = $profilesValid -and @($authorityParameters | Where-Object { $_.Name.VariablePath.UserPath -cin @('Model', 'ReasoningEffort') -and $null -ne $_.DefaultValue }).Count -eq 0
-    Add-TestResult -Name 'workbench-model-profiles' -Passed $profilesValid -Detail 'All normal and saved entry points resolve their role through the shared loader without literal model or effort defaults.'
+    Add-TestResult -Name 'workbench-model-profiles' -Passed $profilesValid -Detail 'All default and rule-evaluation entry points resolve their role through the shared loader without literal model or effort defaults.'
 
     Write-TestProgress -Name 'llm-configuration' -Detail 'Checking central configuration, independent overrides, and fail-closed invalid inputs'
     $configurationPath = Join-Path $PSScriptRoot '../config/llm.json'
     $configuration = Get-Content -LiteralPath $configurationPath -Raw | ConvertFrom-Json -DateKind String
-    $normalProfile = Resolve-HostedLlmProfile -Profile normal
-    $savedProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation
-    Add-TestResult -Name 'llm-central-defaults' -Passed ($normalProfile.model -ceq $configuration.normal.model -and $normalProfile.reasoningEffort -ceq $configuration.normal.reasoningEffort -and $savedProfile.model -ceq $configuration.savedRuleEvaluation.model -and $savedProfile.reasoningEffort -ceq $configuration.savedRuleEvaluation.reasoningEffort) -Detail 'Both role defaults are read from the single Hosted LLM configuration.'
-    $modelOverride = Resolve-HostedLlmProfile -Profile normal -Model 'fixture-model-override'
-    $effortOverride = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -ReasoningEffort 'xhigh'
+    $normalProfile = Resolve-HostedLlmProfile -Profile default
+    $savedProfile = Resolve-HostedLlmProfile -Profile ruleEvaluation
+    Add-TestResult -Name 'llm-central-defaults' -Passed ($normalProfile.model -ceq $configuration.default.model -and $normalProfile.reasoningEffort -ceq $configuration.default.reasoningEffort -and $savedProfile.model -ceq $configuration.ruleEvaluation.model -and $savedProfile.reasoningEffort -ceq $configuration.ruleEvaluation.reasoningEffort) -Detail 'Both role defaults are read from the single Hosted LLM configuration.'
+    $profiles = Resolve-HostedLlmProfile -All
+    $allProfilesValid = @(Compare-Object @($configuration.PSObject.Properties.Name) @($profiles.Keys) -CaseSensitive).Count -eq 0
+    foreach ($entry in $configuration.PSObject.Properties) {
+        $allProfilesValid = $allProfilesValid -and $profiles[$entry.Name].model -ceq $entry.Value.model -and
+            $profiles[$entry.Name].reasoningEffort -ceq $entry.Value.reasoningEffort
+    }
+    foreach ($startupPath in @($workbenchLauncherPath, (Join-Path $PSScriptRoot '../internal/workbench/Start-WorkbenchLoopbackServer.ps1'))) {
+        $startupContent = Get-Content -LiteralPath $startupPath -Raw
+        $allProfilesValid = $allProfilesValid -and $startupContent.Contains('$configuredProfiles = Resolve-HostedLlmProfile -All') -and
+            $startupContent.Contains('$configuredProfiles.default = $defaultProfile') -and
+            $startupContent.Contains('Get-HostedCliAvailability -Launch $cliLaunch -Profiles $configuredProfiles')
+    }
+    Add-TestResult -Name 'llm-startup-configured-profiles' -Passed $allProfilesValid -Detail 'Startup availability validates the complete JSON-derived collection, including rule evaluation, without a second profile list.'
+    $modelOverride = Resolve-HostedLlmProfile -Profile default -Model 'fixture-model-override'
+    $effortOverride = Resolve-HostedLlmProfile -Profile ruleEvaluation -ReasoningEffort 'xhigh'
     Add-TestResult -Name 'llm-independent-overrides' -Passed ($modelOverride.model -ceq 'fixture-model-override' -and $modelOverride.reasoningEffort -ceq $normalProfile.reasoningEffort -and $effortOverride.model -ceq $savedProfile.model -and $effortOverride.reasoningEffort -ceq 'xhigh') -Detail 'An explicit model or effort overrides only that setting and preserves the selected role.'
     $validConfiguration = [ordered]@{
-        normal = [ordered]@{ model = 'fixture-normal'; reasoningEffort = 'high' }
-        savedRuleEvaluation = [ordered]@{ model = 'fixture-saved'; reasoningEffort = 'medium' }
+        default = [ordered]@{ model = 'fixture-normal'; reasoningEffort = 'high' }
+        ruleEvaluation = [ordered]@{ model = 'fixture-saved'; reasoningEffort = 'medium' }
     }
     $changedConfigurationPath = Join-Path $tempRoot 'llm-valid.json'
     [IO.File]::WriteAllText($changedConfigurationPath, ($validConfiguration | ConvertTo-Json -Depth 5))
-    $changedProfile = Resolve-HostedLlmProfile -Profile normal -ConfigurationPath $changedConfigurationPath
-    $validConfiguration.normal.model = 'fixture-normal-changed'
+    $changedProfile = Resolve-HostedLlmProfile -Profile default -ConfigurationPath $changedConfigurationPath
+    $validConfiguration.default.model = 'fixture-normal-changed'
     [IO.File]::WriteAllText($changedConfigurationPath, ($validConfiguration | ConvertTo-Json -Depth 5))
-    $reloadedProfile = Resolve-HostedLlmProfile -Profile normal -ConfigurationPath $changedConfigurationPath
-    $unchangedSavedProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -ConfigurationPath $changedConfigurationPath
+    $reloadedProfile = Resolve-HostedLlmProfile -Profile default -ConfigurationPath $changedConfigurationPath
+    $unchangedSavedProfile = Resolve-HostedLlmProfile -Profile ruleEvaluation -ConfigurationPath $changedConfigurationPath
     Add-TestResult -Name 'llm-configuration-reload' -Passed ($changedProfile.model -ceq 'fixture-normal' -and $reloadedProfile.model -ceq 'fixture-normal-changed' -and $unchangedSavedProfile.model -ceq 'fixture-saved') -Detail 'A newly resolved profile reads the file without a stale process-global model cache or cross-role changes.'
     $invalidConfigurations = @(
         @{ Name = 'missing'; Json = $null },
         @{ Name = 'malformed'; Json = '{' },
         @{ Name = 'null'; Json = 'null' },
-        @{ Name = 'missing-role'; Json = '{"normal":{"model":"fixture","reasoningEffort":"high"}}' },
-        @{ Name = 'missing-setting'; Json = '{"normal":{"model":"fixture"},"savedRuleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' },
-        @{ Name = 'invalid-effort'; Json = '{"normal":{"model":"fixture","reasoningEffort":"invalid"},"savedRuleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' },
-        @{ Name = 'empty-model'; Json = '{"normal":{"model":" ","reasoningEffort":"high"},"savedRuleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' },
-        @{ Name = 'extra-setting'; Json = '{"normal":{"model":"fixture","reasoningEffort":"high","fallback":"fixture"},"savedRuleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' }
+        @{ Name = 'missing-role'; Json = '{"default":{"model":"fixture","reasoningEffort":"high"}}' },
+        @{ Name = 'missing-setting'; Json = '{"default":{"model":"fixture"},"ruleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' },
+        @{ Name = 'invalid-effort'; Json = '{"default":{"model":"fixture","reasoningEffort":"invalid"},"ruleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' },
+        @{ Name = 'empty-model'; Json = '{"default":{"model":" ","reasoningEffort":"high"},"ruleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' },
+        @{ Name = 'extra-setting'; Json = '{"default":{"model":"fixture","reasoningEffort":"high","fallback":"fixture"},"ruleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' },
+        @{ Name = 'legacy-roles'; Json = '{"normal":{"model":"fixture","reasoningEffort":"high"},"savedRuleEvaluation":{"model":"fixture","reasoningEffort":"medium"}}' }
     )
     foreach ($case in $invalidConfigurations) {
         $path = Join-Path $tempRoot "llm-$($case.Name).json"
         if ($null -ne $case.Json) { [IO.File]::WriteAllText($path, $case.Json) }
         $rejected = $false
-        try { $null = Resolve-HostedLlmProfile -Profile normal -ConfigurationPath $path } catch { $rejected = $true }
-        Add-TestResult -Name "llm-rejects-$($case.Name)" -Passed $rejected -Detail 'Invalid or missing configuration fails rather than falling back to a hidden model.'
+        try { $null = Resolve-HostedLlmProfile -Profile default -ConfigurationPath $path } catch { $rejected = $true }
+        $allRejected = $false
+        try { $null = Resolve-HostedLlmProfile -All -ConfigurationPath $path } catch { $allRejected = $true }
+        Add-TestResult -Name "llm-rejects-$($case.Name)" -Passed ($rejected -and $allRejected) -Detail 'Invalid or missing configuration fails in both resolution modes without a hidden fallback.'
     }
 
     Write-TestProgress -Name 'cli-model-preflight' -Detail 'Checking metadata-only CLI launch, both profiles, and negative outcomes'
     $metadataFixture = Join-Path $PSScriptRoot 'fixtures/copilot-metadata-evaluator.ps1'
     $launch = Resolve-HostedCliLaunch -EvaluatorCommand $metadataFixture
-    $profiles = [ordered]@{ normal = $normalProfile; savedRuleEvaluation = $savedProfile }
+    $profiles = Resolve-HostedLlmProfile -All
     $previousScenario = [Environment]::GetEnvironmentVariable('HOSTED_CLI_TEST_SCENARIO')
     try {
         [Environment]::SetEnvironmentVariable('HOSTED_CLI_TEST_SCENARIO', $null)
@@ -266,6 +282,7 @@ try {
         foreach ($case in @(
             @{ Scenario = 'unauthenticated'; Expected = 'not authenticated' },
             @{ Scenario = 'missing-model'; Expected = 'unavailable for profile' },
+            @{ Scenario = 'missing-rule-model'; Expected = 'unavailable for profile' },
             @{ Scenario = 'disabled-model'; Expected = 'disabled for profile' },
             @{ Scenario = 'unknown-policy'; Expected = 'availability could not be verified' },
             @{ Scenario = 'unsupported-effort'; Expected = 'reasoning effort.*unsupported' },

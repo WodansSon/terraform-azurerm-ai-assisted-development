@@ -21,11 +21,13 @@ Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/RuleAssistance.p
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/RelationshipReview.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1')
-$normalProfile = Resolve-HostedLlmProfile -Profile normal -Model $AssistanceModel -ReasoningEffort $AssistanceReasoningEffort
-$AssistanceModel = $normalProfile.model
-$AssistanceReasoningEffort = $normalProfile.reasoningEffort
+$defaultProfile = Resolve-HostedLlmProfile -Profile default -Model $AssistanceModel -ReasoningEffort $AssistanceReasoningEffort
+$configuredProfiles = Resolve-HostedLlmProfile -All
+$configuredProfiles.default = $defaultProfile
+$AssistanceModel = $defaultProfile.model
+$AssistanceReasoningEffort = $defaultProfile.reasoningEffort
 $cliLaunch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
-$null = Get-HostedCliAvailability -Launch $cliLaunch -Profiles ([ordered]@{ normal = $normalProfile })
+$null = Get-HostedCliAvailability -Launch $cliLaunch -Profiles $configuredProfiles
 $EvaluatorCommand = $cliLaunch.commandPath
 $assistanceParameters = @{
     RepositoryRoot = $RepositoryRoot; DisplayPath = Join-Path $resolvedSiteDirectory 'workbench-display.json'

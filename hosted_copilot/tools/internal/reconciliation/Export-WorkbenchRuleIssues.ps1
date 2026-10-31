@@ -31,7 +31,7 @@ Import-Module -Name $helpersPath -Force
 Import-Module -Name $validationOutputPath -Force
 Import-Module -Name (Join-Path $PSScriptRoot '../../modules/reconciliation/RuleIssueAdjudication.psm1') -Force
 
-$llmProfile = Resolve-HostedLlmProfile -Profile normal -Model $Model -ReasoningEffort $ReasoningEffort
+$llmProfile = Resolve-HostedLlmProfile -Profile default -Model $Model -ReasoningEffort $ReasoningEffort
 $Model = $llmProfile.model
 $ReasoningEffort = $llmProfile.reasoningEffort
 

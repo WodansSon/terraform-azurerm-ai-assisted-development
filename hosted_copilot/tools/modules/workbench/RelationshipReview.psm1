@@ -50,7 +50,7 @@ function Get-RelationshipReviewRuntime {
         'hosted_copilot/tools/internal/workbench/Invoke-RelationshipReview.ps1',
         'hosted_copilot/tools/prompts/reconciliation/RelationshipReview-v1.md'
     )
-    $profile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation
+    $profile = Resolve-HostedLlmProfile -Profile ruleEvaluation
     $authority = [ordered]@{
         display = Get-Sha256 -Path $DisplayPath
         files = @($paths | ForEach-Object { [ordered]@{ path = $_; sha256 = Get-Sha256 -Path (Join-Path $RepositoryRoot $_) } })

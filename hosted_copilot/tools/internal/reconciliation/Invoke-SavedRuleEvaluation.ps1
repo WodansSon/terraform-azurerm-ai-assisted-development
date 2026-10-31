@@ -23,7 +23,7 @@ Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpe
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/SavedRuleEvaluation.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/reconciliation/RuleIssueAdjudication.psm1')
 
-$llmProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
+$llmProfile = Resolve-HostedLlmProfile -Profile ruleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
 $Model = $llmProfile.model
 $ReasoningEffort = $llmProfile.reasoningEffort
 

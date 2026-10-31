@@ -2,10 +2,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Resolve-HostedLlmProfile {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'Single')]
     param(
-        [Parameter(Mandatory = $true)][ValidateSet('normal', 'savedRuleEvaluation')][string]$Profile,
+        [Parameter(Mandatory = $true, ParameterSetName = 'Single')][ValidateSet('default', 'ruleEvaluation')][string]$Profile,
+        [Parameter(Mandatory = $true, ParameterSetName = 'All')][switch]$All,
+        [Parameter(ParameterSetName = 'Single')]
         [string]$Model,
+        [Parameter(ParameterSetName = 'Single')]
         [string]$ReasoningEffort,
         [string]$ConfigurationPath = (Join-Path $PSScriptRoot '../../config/llm.json')
     )
@@ -19,9 +22,9 @@ function Resolve-HostedLlmProfile {
     }
     catch { throw 'Hosted LLM configuration must contain a bounded valid JSON object' }
 
-    $profiles = @('normal', 'savedRuleEvaluation')
+    $profiles = @('default', 'ruleEvaluation')
     if ($null -eq $configuration -or (@($configuration.PSObject.Properties.Name | Sort-Object -CaseSensitive) -join "`0") -cne ($profiles -join "`0")) {
-        throw 'Hosted LLM configuration must define exactly the normal and savedRuleEvaluation profiles'
+        throw 'Hosted LLM configuration must define exactly the default and ruleEvaluation profiles'
     }
     $efforts = @('low', 'medium', 'high', 'xhigh')
     foreach ($name in $profiles) {
@@ -41,6 +44,13 @@ function Resolve-HostedLlmProfile {
     }
     if (-not [string]::IsNullOrEmpty($ReasoningEffort) -and $ReasoningEffort -cnotin $efforts) {
         throw 'Hosted LLM reasoning override must be low, medium, high, or xhigh'
+    }
+    if ($All) {
+        $configuredProfiles = [ordered]@{}
+        foreach ($entry in $configuration.PSObject.Properties) {
+            $configuredProfiles[$entry.Name] = $entry.Value
+        }
+        return $configuredProfiles
     }
     return [pscustomobject][ordered]@{
         model = $(if ([string]::IsNullOrEmpty($Model)) { $configuration.$Profile.model } else { $Model })

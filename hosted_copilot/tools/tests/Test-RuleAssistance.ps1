@@ -73,7 +73,7 @@ trap {
 
 if (-not $Quiet -and $IndentLevel -eq 0) { Write-ValidationSectionHeader -Title 'Hosted rule assistance tests' }
 
-$normalProfile = Resolve-HostedLlmProfile -Profile normal
+$normalProfile = Resolve-HostedLlmProfile -Profile default
 $fixtureCommand = Join-Path $PSScriptRoot 'fixtures/copilot-assistance-evaluator.ps1'
 $display = Get-Content -LiteralPath $DisplayPath -Raw | ConvertFrom-Json -Depth 100 -DateKind String
 $candidate = $display.candidates[0]

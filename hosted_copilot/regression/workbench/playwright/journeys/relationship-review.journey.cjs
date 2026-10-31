@@ -1,5 +1,5 @@
 const { openWorkbench } = require("../helpers/workbench.cjs");
-const reviewProfile = require("../../../../tools/config/llm.json").savedRuleEvaluation;
+const reviewProfile = require("../../../../tools/config/llm.json").ruleEvaluation;
 
 const behaviorIds = ["WB-UX-RELATIONSHIPS-001"];
 

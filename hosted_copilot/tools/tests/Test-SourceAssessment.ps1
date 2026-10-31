@@ -15,7 +15,7 @@ $sourceEvidenceModulePath = Join-Path $PSScriptRoot '../modules/shared/SourceEvi
 Import-Module -Name $sourceEvidenceModulePath -Force
 $helpersModulePath = Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1'
 Import-Module -Name $helpersModulePath -Force
-$normalProfile = Resolve-HostedLlmProfile -Profile normal
+$normalProfile = Resolve-HostedLlmProfile -Profile default
 $assessmentRoot = Join-Path $repositoryRoot 'hosted_copilot/contracts/assessment'
 $builderPath = Join-Path $PSScriptRoot '../internal/assessment/New-SourceAssessmentBaseline.ps1'
 $runnerPath = Join-Path $PSScriptRoot '../internal/assessment/Invoke-SourceAssessment.ps1'

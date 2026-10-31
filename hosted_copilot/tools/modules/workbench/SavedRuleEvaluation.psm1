@@ -16,7 +16,7 @@ function Get-SavedRuleAuthoritySha256 {
         [string]$AdjudicationEvaluatorScriptPath
     )
 
-    $llmProfile = Resolve-HostedLlmProfile -Profile savedRuleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
+    $llmProfile = Resolve-HostedLlmProfile -Profile ruleEvaluation -Model $Model -ReasoningEffort $ReasoningEffort
     $Model = $llmProfile.model
     $ReasoningEffort = $llmProfile.reasoningEffort
     $contractPath = Join-Path $RepositoryRoot 'hosted_copilot/contracts/reconciliation/rule-issue-adjudication-v4.json'
