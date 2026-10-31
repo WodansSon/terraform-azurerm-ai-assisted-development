@@ -148,10 +148,11 @@ async function run({ page, baseUrl, assert }) {
   const retireMutation = fixture.mutations.find((mutation) => mutation.action === "retire");
   assert(retireMutation?.status === "retired" && retireMutation.retirementReason && retireMutation.lastPlacement && retireMutation.placementCount === 0, "Approved Retire mutation does not preserve retirement history while clearing active placement");
 
-  const approvalStatus = await page.evaluate(() => {
+  const approvalStatus = await page.evaluate(async () => {
     let owner = document.querySelector("#preview-status").closest(".status-item");
     const originalRuleIssueBundle = state.ruleIssueBundle;
     const originalRuleIssues = state.ruleIssues;
+    const originalRelationshipReviews = state.session.relationshipReviews;
     const blockedColor = getComputedStyle(owner).color;
     const blockedWidth = owner.getBoundingClientRect().width;
     const expectedBlockedColor = getComputedStyle(document.documentElement).getPropertyValue("--red").trim();
@@ -174,6 +175,27 @@ async function run({ page, baseUrl, assert }) {
     validateRuleIssueBundle(state.ruleIssueBundle);
     state.ruleIssues = structuredClone(state.ruleIssueBundle.issues);
     renderPreview();
+    const relationshipsRequired = !getPreviewReadiness().ready && getPreviewReadiness().missingRelationshipReviewCount > 0;
+    const runtime = (await (await fetch("/runtime-config", { cache: "no-store" })).json()).relationshipReview;
+    globalThis.__HOSTED_RULE_WORKBENCH__.relationshipReview = runtime;
+    const mutations = buildApprovedRules().mutations;
+    const removedRuleIds = mutations.filter(mutation => mutation.action === "retire").map(mutation => mutation.rule.id).sort();
+    const changedRuleIds = mutations.filter(mutation => mutation.action !== "retire").map(mutation => mutation.rule.id).sort();
+    const effectiveRuleIds = [...new Set([
+      ...state.bundle.catalog.rules.filter(rule => rule.status === "active" && !removedRuleIds.includes(rule.id)).map(rule => rule.id),
+      ...state.bundle.catalog.protectedRules.map(rule => rule.id), ...changedRuleIds
+    ])].sort();
+    state.session.relationshipReviews = {};
+    for (const candidate of getPreviewReadiness().planCandidates) {
+      const snapshot = getRelationshipReviewSnapshot(candidate);
+      const snapshotKey = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(snapshot)))].map(byte => byte.toString(16).padStart(2, "0")).join("");
+      state.session.relationshipReviews[candidate.key] = { status: "current", snapshot, result: {
+        schemaVersion: 1, requestId: crypto.randomUUID(), candidateKey: candidate.key, authoritySha256: runtime.authoritySha256,
+        snapshotKey, inputSha256: "d".repeat(64), changedRuleIds, removedRuleIds, effectiveRuleIds, findings: [],
+        elapsedMilliseconds: 42, model: runtime.model, reasoningEffort: runtime.reasoningEffort
+      } };
+    }
+    renderPreview();
     owner = document.querySelector("#preview-status").closest(".status-item");
     const readyColor = getComputedStyle(owner).color;
     const readyWidth = owner.getBoundingClientRect().width;
@@ -195,9 +217,11 @@ async function run({ page, baseUrl, assert }) {
     globalThis.__HOSTED_RULE_WORKBENCH__.maintainerIdentity = approvalIdentity;
     state.ruleIssueBundle = originalRuleIssueBundle;
     state.ruleIssues = originalRuleIssues;
+    state.session.relationshipReviews = originalRelationshipReviews;
     renderPreview();
     return {
       blockedValid,
+      relationshipsRequired,
       blockedDetails,
       readyDetails: Object.fromEntries(Object.entries(readyDetails).filter(([key]) => key !== "planCandidates")),
       blockedColor,
@@ -215,6 +239,7 @@ async function run({ page, baseUrl, assert }) {
     };
   });
   assert(approvalStatus.blockedValid && approvalStatus.blockedColor === "rgb(255, 107, 107)" && approvalStatus.expectedBlockedColor === "#ff6b6b", `Blocked Preview status does not expose pending Rule Issues in red (${JSON.stringify(approvalStatus)})`);
+  assert(approvalStatus.relationshipsRequired, "Clearing Rule Issues bypassed the relationship-review gate for planned mutations");
   assert(approvalStatus.readyValid && approvalStatus.readyColor === "rgb(97, 226, 148)" && approvalStatus.expectedReadyColor === "#61e294", `Ready Preview status is not green (${JSON.stringify(approvalStatus)})`);
   assert(approvalStatus.draftValid && approvalStatus.draftColor === "rgb(229, 186, 125)" && approvalStatus.expectedDraftColor === "#e5ba7d", `Draft Preview status is not amber (${JSON.stringify(approvalStatus)})`);
   assert(approvalStatus.expectedWidth === 72 && [approvalStatus.blockedWidth, approvalStatus.readyWidth, approvalStatus.draftWidth].every((width) => width === approvalStatus.expectedWidth), `Promotion approval status geometry changed between Blocked, Ready, and Draft (${JSON.stringify(approvalStatus)})`);
@@ -306,6 +331,10 @@ async function run({ page, baseUrl, assert }) {
       viewChildren: [...view.children].map((child) => child.className),
       layoutChildren: [...layout.children].map((child) => child.className),
       codeChildren: [...scroller.children].map((child) => child.className),
+      layerOwnership: view.children.length === 3 && ["page-heading", "preview-review-toolbar", "preview-layout"].every((name, index) => view.children[index].classList.contains(name))
+        && layout.children.length === 3 && [["preview-summary", "scroll-surface", "type-ui"], ["preview-tree-resizer"], ["preview-code", "scroll-surface", "type-editor"]]
+          .every((names, index) => names.every(name => layout.children[index].classList.contains(name)))
+        && !scroller.querySelector(".preview-review-toolbar"),
       codeOverflow: getComputedStyle(scroller).overflow,
       codeContainment: getComputedStyle(scroller).contain,
       splitLabels: document.querySelectorAll(".preview-split-labels").length,
@@ -355,7 +384,7 @@ async function run({ page, baseUrl, assert }) {
   assert(reviewModel.folderIcons.length === 4 && reviewModel.folderIcons.every((icon) => icon.endsWith("#octicon-file-directory-open-fill-16")), "Preview tree folders do not use the authenticated open-directory icon");
   assert(reviewModel.displayPaths.every((item) => item.display === item.heading && item.display === item.copy && item.display !== item.internal && /^[A-Z ]+\//.test(item.display)), "Preview file headers do not expose virtual artifact paths while preserving internal navigation identity");
   assert(reviewModel.fileHierarchy.every((item) => item.children.join(",") === "preview-file-heading-wrapper,preview-file-body" && !item.bodyInsideHeader), "Preview file cards do not own sibling sticky-header and diff-body containers");
-  assert(reviewModel.viewChildren.join(",") === "page-heading,preview-review-toolbar,preview-layout" && reviewModel.layoutChildren.join(",") === "preview-summary scroll-surface type-ui,preview-tree-resizer,preview-code scroll-surface type-editor" && !reviewModel.codeChildren.includes("preview-review-toolbar"), "Preview toolbar, tree, and diff scroller do not retain independent layer ownership");
+  assert(reviewModel.layerOwnership, `Preview toolbar, tree, and diff scroller do not retain independent layer ownership (${JSON.stringify({ view: reviewModel.viewChildren, layout: reviewModel.layoutChildren, code: reviewModel.codeChildren })})`);
   assert(reviewModel.codeOverflow === "auto" && reviewModel.codeContainment === "paint", "Preview diff flow is not isolated inside its owned scroll surface");
   assert(Math.abs(reviewModel.toolbarHeight - 60) < 0.001 && reviewModel.fileHeaderHeights.length > 0
     && reviewModel.fileHeaderHeights.every(height => Math.abs(height - 42) < 0.001),
@@ -364,7 +393,7 @@ async function run({ page, baseUrl, assert }) {
     `Preview file headers do not retain changed-file CODEOWNERS controls and the protected reference shield (shields=${reviewModel.codeownerShields}, controls=${JSON.stringify(reviewModel.viewedControls)})`);
   const expectedInitialExpansion = { proposed: true, payload: true, raw: true, protected: true };
   assert(reviewModel.toolbarText === reviewModel.expectedToolbarText && reviewModel.toolbarDiffstat.length === 5 && reviewModel.toolbarDiffstat.includes("add") && reviewModel.toolbarDiffstat.includes("neutral") && JSON.stringify(reviewModel.initialExpansion) === JSON.stringify(expectedInitialExpansion), `Preview toolbar totals, diffstat, or initial tree expansion are not synchronized to changed and protected files (${JSON.stringify(reviewModel)})`);
-  assert(reviewModel.splitter.role === "slider" && reviewModel.splitter.orientation === "vertical" && reviewModel.splitter.minimum === "296" && Number(reviewModel.splitter.maximum) >= Number(reviewModel.splitter.current) && reviewModel.splitter.width === 5, "Preview changed-file tree does not expose an accessible five-pixel splitter");
+  assert(reviewModel.splitter.role === "separator" && reviewModel.splitter.orientation === "vertical" && reviewModel.splitter.minimum === "296" && Number(reviewModel.splitter.maximum) >= Number(reviewModel.splitter.current) && reviewModel.splitter.width === 8, `Preview changed-file tree does not expose an accessible eight-pixel separator (${JSON.stringify(reviewModel.splitter)})`);
 
   const emptyProtectedScope = await page.evaluate(() => {
     const protectedRuleFiles = state.bundle.catalog.protectedRuleFiles;

@@ -73,6 +73,10 @@ function Invoke-SavedRuleEvaluationProcess {
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     $started = $false
+    $deadlineWatch = [Diagnostics.Stopwatch]::StartNew()
+    if ($OperationName -ceq 'Relationship review') {
+        Import-Module (Join-Path $PSScriptRoot 'RelationshipReview.psm1') -DisableNameChecking
+    }
     try {
         if ($null -ne $ClientSocket -and $ClientSocket.Poll(0, [Net.Sockets.SelectMode]::SelectRead) -and $ClientSocket.Available -eq 0) {
             throw [OperationCanceledException]::new("$OperationName cancelled before its worker started")
@@ -82,6 +86,11 @@ function Invoke-SavedRuleEvaluationProcess {
         $stderr = $process.StandardError.ReadToEndAsync()
         do {
             $completed = $process.WaitForExit(100)
+            if ($OperationName -ceq 'Relationship review' -and $deadlineWatch.ElapsedMilliseconds -gt 300000) {
+                $exception = [InvalidOperationException]::new('Relationship review deadline reached')
+                $exception.Data['RelationshipReviewError'] = Get-RelationshipReviewFailure 'deadline'
+                throw $exception
+            }
             if ($null -ne $ClientSocket) {
                 try {
                     $disconnected = $ClientSocket.Poll(0, [Net.Sockets.SelectMode]::SelectRead) -and $ClientSocket.Available -eq 0
@@ -96,6 +105,22 @@ function Invoke-SavedRuleEvaluationProcess {
         } while (-not $completed)
         $output = @($stdout.GetAwaiter().GetResult(), $stderr.GetAwaiter().GetResult()) -split '\r?\n'
         if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $Parameters.OutputPath -PathType Leaf)) {
+            if ($OperationName -ceq 'Relationship review') {
+                $failures = @(
+                    foreach ($line in $output) {
+                        try {
+                            $value = $line | ConvertFrom-Json -Depth 10 -DateKind String
+                            if ($null -ne $value.PSObject.Properties['error'] -and $null -ne $value.error.PSObject.Properties['code']) {
+                                Get-RelationshipReviewFailure ([string]$value.error.code)
+                            }
+                        } catch { }
+                    }
+                )
+                $failure = if ($failures.Count -eq 1) { $failures[0] } else { Get-RelationshipReviewFailure 'unexpected-failure' }
+                $exception = [InvalidOperationException]::new($failure.message)
+                $exception.Data['RelationshipReviewError'] = $failure
+                throw $exception
+            }
             if ($OperationName -ceq 'Rule assistance') {
                 $failures = @(
                     foreach ($line in $output) {
@@ -207,7 +232,14 @@ function Receive-SavedRuleEvaluationRequests {
                     Write-Verbose $exception.Message
                 }
                 else {
-                    if ($request.OperationName -ceq 'Rule assistance') {
+                    if ($request.OperationName -ceq 'Relationship review') {
+                        Import-Module (Join-Path $PSScriptRoot 'RelationshipReview.psm1') -DisableNameChecking
+                        $failure = $exception.Data['RelationshipReviewError']
+                        if ($null -eq $failure) { $failure = Get-RelationshipReviewFailure 'unexpected-failure' }
+                        Write-Warning "Relationship review failed: $($failure.code)"
+                        $failureBody = [ordered]@{ error = $failure } | ConvertTo-Json -Depth 5 -Compress
+                    }
+                    elseif ($request.OperationName -ceq 'Rule assistance') {
                         $failure = $exception.Data['RuleAssistanceError']
                         if ($null -eq $failure) { $failure = [ordered]@{ code = 'rule-assistance-failed'; message = 'The AI chat request could not be completed.'; diagnosticId = $null } }
                         Write-Warning "Rule assistance failed: $($failure.code). Diagnostic reference: $($failure.diagnosticId)"

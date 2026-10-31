@@ -17,6 +17,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path $PSScriptRoot 'ValidationOutput.psm1') -Force
+$suiteStopwatch = [Diagnostics.Stopwatch]::StartNew()
+$validationRows = [Collections.Generic.List[object]]::new()
+
 $resolvedRepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
 $repositoryPrefix = $resolvedRepositoryRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
@@ -36,6 +40,30 @@ if ($PSBoundParameters.ContainsKey('LockPath') -and $AdditionalLockPath.Count -g
     throw 'LockPath cannot be combined with AdditionalLockPath'
 }
 
+function Add-NpmValidationResult {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][bool]$Passed,
+        [Parameter(Mandatory = $true)][Diagnostics.Stopwatch]$Stopwatch,
+        [AllowNull()][object]$Report,
+        [string]$Failure
+    )
+
+    $Stopwatch.Stop()
+    $status = if ($Passed) { 'passed' } else { 'failed' }
+    $validationRows.Add([pscustomobject]@{ name = $Name; status = $status; durationSeconds = $Stopwatch.Elapsed.TotalSeconds })
+    if ($OutputFormat -eq 'Text') {
+        if ($null -ne $Report) {
+            $counts = $Report.counts
+            Write-Host (Format-ValidationStatusLine -Status $Report.securityStatus -Name 'security audit' -Detail "critical=$($counts.critical), high=$($counts.high), moderate=$($counts.moderate), low=$($counts.low)" -IndentLevel 1)
+            $diagnosticDetail = if ($Report.diagnosticsStatus -ceq 'passed') { 'No stderr diagnostics' } else { $Report.diagnostics }
+            Write-Host (Format-ValidationStatusLine -Status $Report.diagnosticsStatus -Name 'npm diagnostics' -Detail $diagnosticDetail -IndentLevel 1)
+        }
+        $detail = if ($Passed) { Format-ValidationDuration -DurationSeconds $Stopwatch.Elapsed.TotalSeconds } else { $Failure }
+        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail $detail -NameWidth $npmValidationNameWidth)
+    }
+}
+
 function Resolve-RepositoryPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -46,17 +74,66 @@ function Resolve-RepositoryPath {
     return $resolvedPath
 }
 
+function Protect-NpmDiagnostic {
+    param([AllowEmptyString()][string]$Text)
+
+    $safe = [regex]::Replace($Text, '(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----', '[REDACTED PRIVATE KEY]')
+    $safe = [regex]::Replace($safe, '(?i)\b(?:Bearer|Basic)\s+[^\s,;]+', '[REDACTED AUTHORIZATION]')
+    $safe = [regex]::Replace($safe, '(?i)\b((?:[A-Za-z_-]*token|password|passwd|secret|api[_-]?key|authorization|accountkey|sharedaccesssignature)\s*[:=]\s*)(?:"[^"]*"|''[^'']*''|[^\s,;]+)', '$1[REDACTED]')
+    $safe = [regex]::Replace($safe, '(?i)https?://[^\s<>"'']+', [Text.RegularExpressions.MatchEvaluator]{
+        param($match)
+        $uri = $null
+        if ([Uri]::TryCreate($match.Value, [UriKind]::Absolute, [ref]$uri) -and ($uri.UserInfo -or $uri.Query -or $uri.Fragment)) { return '[REDACTED URL]' }
+        return $match.Value
+    })
+    return $safe.Trim()
+}
+
+function Invoke-NpmCommand {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+    $worker = [Management.Automation.PowerShell]::Create()
+    try {
+        $null = $worker.AddScript({
+            param($CommandPath, $CommandArguments)
+            $PSNativeCommandUseErrorActionPreference = $false
+            $output = @(& $CommandPath @CommandArguments)
+            [pscustomobject]@{ exitCode = $LASTEXITCODE; stdout = ($output | Out-String).Trim() }
+        }).AddArgument($npmCommand.Source).AddArgument($Arguments)
+        $results = @($worker.Invoke())
+        if ($results.Count -ne 1 -or $null -eq $results[0].exitCode) { throw 'npm execution did not return an exit code and output' }
+        return [pscustomobject]@{
+            exitCode = $results[0].exitCode
+            stdout = $results[0].stdout
+            stderr = Protect-NpmDiagnostic -Text (($worker.Streams.Error | ForEach-Object { $_.ToString() }) -join "`n")
+        }
+    } finally { $worker.Dispose() }
+}
+
+function ConvertFrom-NpmAuditOutput {
+    param([Parameter(Mandatory = $true)][object]$CommandResult)
+
+    $report = try { $CommandResult.stdout | ConvertFrom-Json -ErrorAction Stop } catch { $null }
+    return [pscustomobject]@{
+        exitCode = $CommandResult.exitCode
+        report = $report
+        stderr = $CommandResult.stderr
+    }
+}
+
+function Assert-NpmNoDiagnostics {
+    param([Parameter(Mandatory = $true)][object]$CommandResult)
+
+    if (-not [string]::IsNullOrWhiteSpace($CommandResult.stderr)) {
+        throw "npm diagnostics must be resolved: $($CommandResult.stderr)"
+    }
+}
+
 function Invoke-NpmAudit {
     param([Parameter(Mandatory = $true)][string]$PackageDirectory)
 
-    $output = @(& $npmCommand.Source audit --prefix $PackageDirectory --package-lock-only --ignore-scripts --audit-level=low --json 2>&1)
-    $exitCode = $LASTEXITCODE
-    $report = try { ($output | Out-String) | ConvertFrom-Json -ErrorAction Stop } catch { $null }
-    return [pscustomobject]@{
-        exitCode = $exitCode
-        report = $report
-        output = ($output | Out-String).Trim()
-    }
+    $result = Invoke-NpmCommand -Arguments @('audit', '--prefix', $PackageDirectory, '--package-lock-only', '--ignore-scripts', '--audit-level=low', '--json')
+    return ConvertFrom-NpmAuditOutput -CommandResult $result
 }
 
 function Get-NpmFindings {
@@ -136,8 +213,10 @@ function Invoke-NpmRemediation {
         $stagedLockPath = Join-Path $stagingRoot 'package-lock.json'
         $originalManifest = Get-Content -LiteralPath $stagedManifestPath -Raw | ConvertFrom-Json -AsHashtable -ErrorAction Stop
 
-        $null = @(& $npmCommand.Source audit fix --prefix $stagingRoot --package-lock-only --ignore-scripts --no-fund --json 2>&1)
+        $fixResult = Invoke-NpmCommand -Arguments @('audit', 'fix', '--prefix', $stagingRoot, '--package-lock-only', '--ignore-scripts', '--no-fund', '--json')
+        Assert-NpmNoDiagnostics $fixResult
         $auditResult = Invoke-NpmAudit -PackageDirectory $stagingRoot
+        Assert-NpmNoDiagnostics $auditResult
         $findings = @(Get-NpmFindings -Audit $auditResult.report)
 
         if ($findings.Count -gt 0) {
@@ -155,11 +234,12 @@ function Invoke-NpmRemediation {
                     continue
                 }
 
-                $latestOutput = @(& $npmCommand.Source view $packageName version --json 2>&1)
-                if ($LASTEXITCODE -ne 0) {
+                $latestOutput = Invoke-NpmCommand -Arguments @('view', $packageName, 'version', '--json')
+                Assert-NpmNoDiagnostics $latestOutput
+                if ($latestOutput.exitCode -ne 0) {
                     continue
                 }
-                $latestVersion = try { [string](($latestOutput | Out-String) | ConvertFrom-Json -ErrorAction Stop) } catch { '' }
+                $latestVersion = try { [string]($latestOutput.stdout | ConvertFrom-Json -ErrorAction Stop) } catch { '' }
                 $currentVersion = [string]$lockedPackage['version']
                 $currentSemanticVersion = try { [Management.Automation.SemanticVersion]$currentVersion } catch { $null }
                 $latestSemanticVersion = try { [Management.Automation.SemanticVersion]$latestVersion } catch { $null }
@@ -173,19 +253,23 @@ function Invoke-NpmRemediation {
 
             if ($overrideAdded) {
                 [IO.File]::WriteAllText($stagedManifestPath, (($stagedManifest | ConvertTo-Json -Depth 20) + "`n"), [Text.UTF8Encoding]::new($false))
-                $null = @(& $npmCommand.Source install --prefix $stagingRoot --package-lock-only --ignore-scripts --no-audit --no-fund 2>&1)
-                if ($LASTEXITCODE -ne 0) {
+                $installResult = Invoke-NpmCommand -Arguments @('install', '--prefix', $stagingRoot, '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund')
+                Assert-NpmNoDiagnostics $installResult
+                if ($installResult.exitCode -ne 0) {
                     throw 'npm could not regenerate the staged lockfile after adding transitive overrides'
                 }
                 $auditResult = Invoke-NpmAudit -PackageDirectory $stagingRoot
+                Assert-NpmNoDiagnostics $auditResult
                 $findings = @(Get-NpmFindings -Audit $auditResult.report)
             }
         }
 
         $requiresBreakingFix = @($findings | Where-Object { $null -ne $_.Value.fixAvailable -and $_.Value.fixAvailable -isnot [bool] -and $_.Value.fixAvailable.isSemVerMajor }).Count -gt 0
         if ($findings.Count -gt 0 -and $requiresBreakingFix -and $AllowBreaking) {
-            $null = @(& $npmCommand.Source audit fix --prefix $stagingRoot --package-lock-only --ignore-scripts --force --no-fund --json 2>&1)
+            $fixResult = Invoke-NpmCommand -Arguments @('audit', 'fix', '--prefix', $stagingRoot, '--package-lock-only', '--ignore-scripts', '--force', '--no-fund', '--json')
+            Assert-NpmNoDiagnostics $fixResult
             $auditResult = Invoke-NpmAudit -PackageDirectory $stagingRoot
+            Assert-NpmNoDiagnostics $auditResult
             $findings = @(Get-NpmFindings -Audit $auditResult.report)
         }
         if ($auditResult.exitCode -ne 0 -or $findings.Count -gt 0) {
@@ -253,16 +337,24 @@ foreach ($path in $candidateLockPaths) {
 
 $reports = New-Object 'System.Collections.Generic.List[object]'
 $failures = New-Object 'System.Collections.Generic.List[string]'
+$npmValidationNameWidth = Get-ValidationNameWidth -Names @($lockPaths | ForEach-Object { [IO.Path]::GetRelativePath($resolvedRepositoryRoot, $_).Replace('\', '/') }) -MinimumWidth 30
+if ($OutputFormat -eq 'Text') { Write-ValidationSectionHeader -Title 'npm security validation' }
 foreach ($resolvedLockPath in @($lockPaths | Sort-Object)) {
     $relativeLockPath = [IO.Path]::GetRelativePath($resolvedRepositoryRoot, $resolvedLockPath).Replace('\', '/')
+    $checkStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $failureCountBefore = $failures.Count
+    $currentReport = $null
+    if ($OutputFormat -eq 'Text') { Write-Host (Format-ValidationStatusLine -Status 'running' -Name $relativeLockPath -Detail 'IN PROGRESS' -NameWidth $npmValidationNameWidth) }
     $packageDirectory = Split-Path -Parent $resolvedLockPath
     $manifestPath = Join-Path $packageDirectory 'package.json'
     if (-not (Test-Path -LiteralPath $resolvedLockPath -PathType Leaf)) {
         $failures.Add("npm lockfile was not found: $relativeLockPath")
+        Add-NpmValidationResult -Name $relativeLockPath -Passed $false -Stopwatch $checkStopwatch -Failure $failures[$failures.Count - 1]
         continue
     }
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         $failures.Add("npm lockfile does not have a package.json peer: $relativeLockPath")
+        Add-NpmValidationResult -Name $relativeLockPath -Passed $false -Stopwatch $checkStopwatch -Failure $failures[$failures.Count - 1]
         continue
     }
 
@@ -301,35 +393,55 @@ foreach ($resolvedLockPath in @($lockPaths | Sort-Object)) {
         $findingProperties = @(Get-NpmFindings -Audit $audit)
 
         $findings = @($findingProperties | ForEach-Object { ConvertTo-NpmFindingReport -Finding $_ })
-        $passed = $auditExitCode -eq 0 -and $findings.Count -eq 0
+        $securityPassed = $findings.Count -eq 0
+        $diagnosticsPassed = [string]::IsNullOrWhiteSpace($auditResult.stderr)
+        $passed = $auditExitCode -eq 0 -and $securityPassed -and $diagnosticsPassed
         $remediation = $null
-        if (-not $passed -and $Fix) {
+        if (-not $securityPassed -and $diagnosticsPassed -and $Fix) {
             $remediation = Invoke-NpmRemediation -ManifestPath $manifestPath -LockPath $resolvedLockPath -AllowBreaking:$AllowBreakingFix
             if ($remediation.passed) {
                 $auditResult = Invoke-NpmAudit -PackageDirectory $packageDirectory
                 $audit = $auditResult.report
                 $findingProperties = @(Get-NpmFindings -Audit $audit)
                 $findings = @($findingProperties | ForEach-Object { ConvertTo-NpmFindingReport -Finding $_ })
-                $passed = $auditResult.exitCode -eq 0 -and $findings.Count -eq 0
+                $auditExitCode = $auditResult.exitCode
+                $securityPassed = $findings.Count -eq 0
+                $diagnosticsPassed = [string]::IsNullOrWhiteSpace($auditResult.stderr)
+                $passed = $auditExitCode -eq 0 -and $securityPassed -and $diagnosticsPassed
             }
         }
-        if (-not $passed) {
+        if (-not $securityPassed) {
             $failures.Add("$relativeLockPath contains $($findings.Count) npm vulnerabilities")
         }
-        $reports.Add([ordered]@{
+        if ($auditExitCode -ne 0 -and $securityPassed) {
+            $failures.Add("$relativeLockPath`: npm audit exited with code $auditExitCode")
+        }
+        if (-not $diagnosticsPassed) {
+            $failures.Add("$relativeLockPath`: npm diagnostics must be resolved: $($auditResult.stderr)")
+        }
+        $currentReport = [ordered]@{
             lockPath = $relativeLockPath
             status = if ($passed) { 'passed' } else { 'failed' }
+            securityStatus = if ($securityPassed) { 'passed' } else { 'failed' }
+            diagnosticsStatus = if ($diagnosticsPassed) { 'passed' } else { 'failed' }
+            auditExitCode = $auditExitCode
+            diagnostics = $auditResult.stderr
             counts = $audit.metadata.vulnerabilities
             findings = $findings
             remediationApplied = $null -ne $remediation -and $remediation.passed
             remediationChanges = if ($null -ne $remediation) { @($remediation.changes) } else { @() }
             requiresBreakingFix = $null -ne $remediation -and $remediation.requiresBreakingFix
-        })
+        }
+        $reports.Add($currentReport)
     }
     catch {
         $failures.Add("$relativeLockPath`: $($_.Exception.Message)")
     }
+    $checkPassed = $failures.Count -eq $failureCountBefore
+    $failureDetail = if ($checkPassed) { '' } else { $failures[$failures.Count - 1] }
+    Add-NpmValidationResult -Name $relativeLockPath -Passed $checkPassed -Stopwatch $checkStopwatch -Report $currentReport -Failure $failureDetail
 }
+$suiteStopwatch.Stop()
 
 $result = [ordered]@{
     status = if ($failures.Count -eq 0) { 'passed' } else { 'failed' }
@@ -343,19 +455,26 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 8
 }
 else {
+    Write-ValidationSectionHeader -Title 'npm security validation summary'
+    $passedCount = @($validationRows | Where-Object { $_.status -ceq 'passed' }).Count
+    Write-ValidationSummary -Fields ([ordered]@{
+        Status = $result.status.ToUpperInvariant()
+        Lockfiles = $lockPaths.Count
+        Passed = $passedCount
+        Failed = $validationRows.Count - $passedCount
+        Threshold = 'LOW'
+        Duration = Format-ValidationDuration -DurationSeconds $suiteStopwatch.Elapsed.TotalSeconds
+    })
     foreach ($report in $reports) {
-        $counts = $report.counts
-        Write-Output ("[{0}] {1}: critical={2}, high={3}, moderate={4}, low={5}" -f $report.status.ToUpperInvariant(), $report.lockPath, $counts.critical, $counts.high, $counts.moderate, $counts.low)
         foreach ($change in @($report.remediationChanges)) {
             Write-Output "  - $change"
         }
     }
-    foreach ($failure in $failures) {
-        Write-Output "[FAILED] $failure"
+    if ($failures.Count) {
+        Write-ValidationSectionHeader -Title 'Failures'
+        foreach ($failure in $failures) { Write-Output "  - $failure" }
     }
-    if ($lockPaths.Count -eq 0) {
-        Write-Output '[PASSED] No tracked npm lockfiles were found'
-    }
+    Complete-ValidationTextOutput
 }
 
 if ($failures.Count -gt 0) {

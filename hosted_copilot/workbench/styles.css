@@ -1164,6 +1164,28 @@ html.theme-hosted-dark .rule-issue-banner-reference {
   justify-content: flex-end;
 }
 
+.banner-heading {
+  text-transform: capitalize;
+}
+
+.banner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.error-banner:has(> .banner-actions) {
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+}
+
+.relationship-review-status-slot {
+  display: contents;
+}
+
+.relationship-review-panel {
+  margin-top: 10px;
+}
+
 .information-panel {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);

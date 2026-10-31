@@ -135,6 +135,8 @@ let llmBrandMap = [];
 const expandedEvidencePanels = new Set();
 const sourceRuleDisclosureStates = new Map();
 const activeRuleIssueRecommendations = new Set();
+const activeRelationshipReviews = new Map();
+const dismissedRelationshipFailures = new Set();
 const shimmerHeadingAnimations = new Set();
 let shimmerHeadingStyleSheet;
 const waitingPanels = new Map();
@@ -329,6 +331,10 @@ function octicon(name) {
 function fluentIcon(name, className = "") {
   if (typeof name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*-(16|20)-(regular|filled)$/.test(name)) throw new Error(`Invalid Fluent icon name: ${name}`);
   return `<svg class="fluent-icon ${escapeHtml(className)}" aria-hidden="true"><use href="icons/fluent/sprite.svg#fluent-${name}"></use></svg>`;
+}
+
+function renderBannerHeading(label) {
+  return `<strong class="banner-heading">${escapeHtml(String(label).trim().replace(/[:.]+$/, ""))}:</strong>`;
 }
 
 function renderInformationPanel(content, { iconMarkup, className = "", dataAttributes = {} } = {}) {
@@ -540,7 +546,7 @@ function createWorkbenchSplitter({ element, owner, edge, label, controls, getSiz
 function captureElements() {
   for (const id of [
     "target-chip", "status-target", "status-surface-tooltip", "close-button", "draft-menu", "export-button", "import-input", "catalog-count", "plan-count",
-    "assist-panel-toggle", "rule-assistance-panel", "assist-sidebar-content", "assist-sidebar-resizer",
+    "assist-panel-toggle", "relationship-review-stop", "rule-assistance-panel", "assist-sidebar-content", "assist-sidebar-resizer",
     "promotion-plan-stage", "promotion-plan-stage-icon", "plan-activity-count",
     "status-excluded", "status-mapped", "status-unmapped", "status-headroom", "preview-status", "save-indicator", "search-input",
     "candidate-list", "candidate-panel", "candidate-sticky-stack", "assessment-panel", "candidate-pane-candidates", "candidate-pane-details", "candidate-sources-panel", "assessment-results-panel", "rule-issues-panel",
@@ -574,6 +580,10 @@ function bindEvents() {
   elements["plan-undo-menu"].addEventListener("click", handlePlanUndoMenuClick);
   elements["plan-undo-menu"].addEventListener("mouseleave", () => elements["plan-undo-menu"].removeAttribute("open"));
   elements["close-button"].addEventListener("click", closeWorkbench);
+  elements["relationship-review-stop"].addEventListener("click", () => {
+    const active = activeRelationshipReviews.get(getActiveCandidate()?.key) || [...activeRelationshipReviews.values()].at(-1);
+    active?.controller.abort();
+  });
   elements["assist-panel-toggle"].addEventListener("click", () => setRuleAssistanceExpanded(!ruleAssistanceExpanded));
   assistanceSidebarSplitter = createWorkbenchSplitter({
     element: elements["assist-sidebar-resizer"],
@@ -1479,8 +1489,20 @@ function isRuleIssueRecommendationStaged(issue) {
   return operationStates.length > 0 && operationStates.every((entry) => entry.applied);
 }
 
+function isRuleIssueSupersededByReview(issue) {
+  if (issue.blocking || issue.classification === "protected-integrity" || !issue.relationships?.length) return false;
+  return state.assessedCandidates.some(candidate => {
+    const current = getRelationshipReviewState(candidate);
+    if (!["current", "findings"].includes(current.status)) return false;
+    const result = current.review.result;
+    const present = new Set([...result.effectiveRuleIds, ...result.removedRuleIds]);
+    return issue.relationships.every(relationship => present.has(relationship.sourceRuleId) && present.has(relationship.relatedRuleId)
+      && (result.changedRuleIds.includes(relationship.sourceRuleId) || result.changedRuleIds.includes(relationship.relatedRuleId) || result.removedRuleIds.includes(relationship.sourceRuleId) || result.removedRuleIds.includes(relationship.relatedRuleId)));
+  });
+}
+
 function getOpenRuleIssues() {
-  return state.ruleIssues.filter((issue) => !isRuleIssueRecommendationStaged(issue));
+  return state.ruleIssues.filter(issue => !isRuleIssueRecommendationStaged(issue) && !isRuleIssueSupersededByReview(issue));
 }
 
 function renderRuleIssuePlanAction(issue) {
@@ -1829,7 +1851,7 @@ function renderRuleIssueContent(issue, { candidateDetails = false, proposedText 
     : "";
   const ordinaryRelationship = candidateDetails && !issue.blocking && !issue.classification.includes("conflict") && issue.classification !== "contradiction";
   const banner = state.dismissedRuleIssueBannerKeys.has(issue.id) ? "" : `
-    <div class="rule-issue-banner ${escapeHtml(issue.classification)}${ordinaryRelationship ? " relationship-review" : ""}">${icon(ordinaryRelationship ? "info" : issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "chat-sparkle-error" : "warning")}<div><strong>${ordinaryRelationship ? `Rule Relationship Review &middot; ${escapeHtml(formatRuleIssueTitle(issue.classification))}` : escapeHtml(formatRuleIssueTitle(issue.bannerTitle))}</strong><p>${renderRuleReferences(issue.bannerMessage, issue.ruleIds, "rule-issue-banner-reference")}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.id)}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
+    <div class="rule-issue-banner ${escapeHtml(issue.classification)}${ordinaryRelationship ? " relationship-review" : ""}">${icon(ordinaryRelationship ? "info" : issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "chat-sparkle-error" : "warning")}<div>${renderBannerHeading(ordinaryRelationship ? `Rule Relationship Review / ${formatRuleIssueTitle(issue.classification)}` : formatRuleIssueTitle(issue.bannerTitle))}<p>${renderRuleReferences(issue.bannerMessage, issue.ruleIds, "rule-issue-banner-reference")}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.id)}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
   return `
     ${banner}
     ${protectedNotice}
@@ -1922,7 +1944,8 @@ function createSession(id, display) {
     approverName: "",
     decisions: {},
     applicabilityOverrides: {},
-    bulkOperations: []
+    bulkOperations: [],
+    relationshipReviews: {}
   };
 }
 
@@ -1930,6 +1953,7 @@ function migrateSession(session, candidates, display) {
   if (!session) return null;
   if (session.id !== "current" || session.schemaVersion !== SESSION_SCHEMA_VERSION || !sourceFilesEqual(session.sourceFiles, display.sourceFiles)) return null;
   const { manualRelationshipChecks, savedRuleEvaluations, ...currentSession } = session;
+  currentSession.relationshipReviews ||= {};
   return currentSession;
 }
 
@@ -2119,6 +2143,38 @@ function syncProposedRuleControls(candidate) {
   if (reset) reset.disabled = !hasMaintainerEditedRuleText(candidate, textarea.value) && !hasMaintainerEditedRuleText(candidate);
   const dirty = textarea.value !== decision.proposedText;
   save.disabled = !dirty;
+  const allowedActions = getAllowedActions(candidate, textarea.value);
+  let action = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction;
+  if (!allowedActions.includes(action)) action = null;
+  const actionFieldset = elements["assessment-panel"].querySelector(".action-options");
+  const renderedActions = [...actionFieldset.querySelectorAll("[data-rule-action]")].map(control => control.dataset.ruleAction);
+  if (JSON.stringify(renderedActions) !== JSON.stringify(allowedActions)) {
+    actionFieldset.innerHTML = '<legend class="sr-only">Rule action</legend>' + allowedActions.map(value => renderRuleActionChoice(value, action)).join("");
+  }
+  elements["assessment-panel"].querySelectorAll("[data-rule-action]").forEach(control => {
+    const allowed = allowedActions.includes(control.dataset.ruleAction);
+    control.disabled = !allowed;
+    control.closest(".action-option").hidden = !allowed;
+    if (!allowed && control.checked) {
+      control.checked = false;
+      action = null;
+    }
+  });
+  syncAssessmentActionControls(candidate, action || null);
+  syncAssessmentRationaleControls(action || null, candidate);
+  syncImplementationModelControls(candidate, action || null);
+  const guidance = elements["assessment-panel"].querySelector(".rule-actions-guidance p");
+  if (guidance) guidance.textContent = getCatalogStatus(candidate).key === "mapped" && !hasHostedTextChange(candidate, textarea.value)
+    ? "Current and proposed Hosted rule text are identical, so Update is unavailable."
+    : "Choose one action. Hosted catalog status determines which actions are available.";
+  const active = activeRelationshipReviews.get(candidate.key);
+  if (active && textarea.value !== decision.proposedText) {
+    active.reason = "snapshot-changed";
+    active.controller.abort();
+  }
+  syncRelationshipReviewControls(candidate, textarea.value);
+  renderPlan();
+  renderPreview();
 }
 
 async function loadWorkbenchRuntimeConfig(signal) {
@@ -2127,7 +2183,181 @@ async function loadWorkbenchRuntimeConfig(signal) {
   const config = await response.json();
   if (!/^[0-9a-f]{64}$/.test(config?.operationToken || "")) throw new Error("Workbench runtime configuration is invalid");
   globalThis.__HOSTED_RULE_WORKBENCH__ = config;
+  globalThis.__HOSTED_RULE_WORKBENCH__ = { ...globalThis.__HOSTED_RULE_WORKBENCH__, ...config };
   return config;
+}
+
+function getRelationshipReviewProposals(candidate, proposedText = getDecision(candidate).proposedText) {
+  return state.assessedCandidates.map(item => {
+    const decision = getDecision(item);
+    return {
+      candidateKey: item.key, sourceHash: item.hash, action: decision.action, inPlan: decision.inPlan,
+      proposedText: item.key === candidate.key ? proposedText : decision.proposedText,
+      retireHostedRuleIds: [...decision.retireHostedRuleIds].sort()
+    };
+  }).filter(proposal => {
+    const item = state.assessedCandidates.find(candidate => candidate.key === proposal.candidateKey);
+    return Boolean(item.catalogMapping.hostedRuleId || item.recommendation?.hostedId);
+  }).sort((first, second) => first.candidateKey < second.candidateKey ? -1 : first.candidateKey > second.candidateKey ? 1 : 0);
+}
+
+function getRelationshipReviewSnapshot(candidate, proposedText = getDecision(candidate).proposedText) {
+  return JSON.stringify({
+    authoritySha256: globalThis.__HOSTED_RULE_WORKBENCH__?.relationshipReview?.authoritySha256 || null,
+    candidateKey: candidate.key, sourceFiles: state.bundle.sourceFiles, catalog: state.bundle.catalog,
+    proposals: getRelationshipReviewProposals(candidate, proposedText)
+  });
+}
+
+function getRelationshipReviewWording(candidate) {
+  const editor = elements["assessment-panel"]?.querySelector('[data-decision-field="proposedText"]');
+  return getActiveCandidate()?.key === candidate.key && editor ? editor.value : getDecision(candidate).proposedText;
+}
+
+function getRelationshipReviewState(candidate, proposedText = getRelationshipReviewWording(candidate)) {
+  const active = activeRelationshipReviews.get(candidate.key);
+  const review = state.session.relationshipReviews?.[candidate.key];
+  const decision = getDecision(candidate);
+  const existingRelationship = (state.ruleIssues || []).some(issue => !issue.blocking && issue.relationships?.length && issue.candidateKeys.includes(candidate.key));
+  const required = hasMaintainerEditedRuleText(candidate, proposedText) || (decision.inPlan && isPromotionAction(decision.action))
+    || decision.retireHostedRuleIds.length > 0 || existingRelationship || Boolean(review) || Boolean(active);
+  if (!required) return { status: "unchanged", required: false, review: null };
+  const snapshot = getRelationshipReviewSnapshot(candidate, proposedText);
+  if (active) return { status: active.snapshot === snapshot ? "checking" : "stale", required: true, review };
+  if (!review) return { status: "required", required: true, review: null };
+  if (review.snapshot !== snapshot) return { status: "stale", required: true, review };
+  if (review.status === "failed") return { status: "failed", required: true, review };
+  if (review.status !== "current" || !Array.isArray(review.result?.findings)) return { status: "required", required: true, review: null };
+  return { status: review.result.findings.length ? "findings" : "current", required: review.result.findings.length > 0, review };
+}
+
+function getRelationshipReviewAttention(candidate, proposedText = getRelationshipReviewWording(candidate)) {
+  const current = getRelationshipReviewState(candidate, proposedText);
+  if (!current.required) return null;
+  const labels = { checking: "Checking Relationships", stale: "Revalidation Required", required: "Relationship Check Required", failed: "Relationship Check Failed", findings: "Relationships Need Review" };
+  return { reason: "relationships", label: labels[current.status], actionIcon: "edit", target: current.status === "required" || current.status === "stale" ? "[data-relationship-review-status]" : "[data-relationship-review-panel]", review: current };
+}
+
+function renderRelationshipReviewStatus(candidate, proposedText) {
+  const current = getRelationshipReviewState(candidate, proposedText);
+  if (current.status === "unchanged") return "";
+  if (current.status === "current") return '<span class="ui-badge status-capsule status-badge success" data-relationship-review-status>Relationships Checked</span>';
+  const attention = getRelationshipReviewAttention(candidate, proposedText);
+  return `<button class="ui-badge status-capsule status-badge warning clickable" type="button" data-relationship-review-status data-relationship-review-open aria-label="${escapeHtml(attention.label)}" data-workbench-tooltip="${escapeHtml(attention.label)}">${escapeHtml(attention.label)}</button>`;
+}
+
+function getRelationshipReviewElapsed(candidate) {
+  const elapsed = Math.floor((performance.now() - activeRelationshipReviews.get(candidate.key).startedAt) / 1000);
+  return `[Elapsed: ${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}]`;
+}
+
+function renderRelationshipReviewPanel(candidate, proposedText = getRelationshipReviewWording(candidate)) {
+  const current = getRelationshipReviewState(candidate, proposedText);
+  if (current.status === "checking") {
+    return renderWaitingPanel({ title: "Checking Rule Relationships...", body: "Comparing the saved wording with the proposed catalog.", elapsed: getRelationshipReviewElapsed(candidate), action: `<button class="titlebar-icon clickable waiting-panel-stop" type="button" data-relationship-review-cancel aria-label="Cancel relationship check" data-workbench-tooltip="Cancel relationship check">${icon("stop-circle")}</button>` });
+  }
+  if (current.status === "failed" && !dismissedRelationshipFailures.has(current.review)) {
+    const failure = current.review.failure;
+    return `<div class="error-banner" role="alert" aria-atomic="true">${icon("error").replace('class="codicon"', 'class="codicon error-banner-icon"')}<div class="error-banner-message">${renderBannerHeading("Relationship Check Failed")} <span>${escapeHtml(failure.message)}</span></div><div class="banner-actions" role="group" aria-label="Error banner actions">${failure.retryable ? `<button class="banner-action error-banner-dismiss clickable" type="button" data-relationship-review-run aria-label="Retry relationship check" data-workbench-tooltip="Retry relationship check">${icon("debug-restart")}</button>` : ""}<button class="banner-action error-banner-dismiss clickable" type="button" data-relationship-review-dismiss aria-label="Dismiss relationship check error" data-workbench-tooltip="Dismiss error">${icon("close")}</button></div></div>`;
+  }
+  if (current.status === "findings") {
+    return current.review.result.findings.map(finding => renderInformationPanel(`<div>${renderBannerHeading("Relationships Need Review")}<p>${escapeHtml(finding.ruleId)} / ${escapeHtml(finding.relatedRuleId)}: ${escapeHtml(formatTitleCase(finding.relationship.replaceAll("-", " ")))}</p><p>${escapeHtml(finding.rationale)}</p><blockquote>${escapeHtml(finding.ruleQuote)}</blockquote><blockquote>${escapeHtml(finding.relatedQuote)}</blockquote></div>`, { iconMarkup: fluentIcon("info-20-regular"), className: "warning" })).join("");
+  }
+  return "";
+}
+
+function syncRelationshipReviewControls(candidate, proposedText = getRelationshipReviewWording(candidate)) {
+  const panel = elements["assessment-panel"];
+  const status = panel.querySelector("[data-relationship-review-status-slot]");
+  const content = panel.querySelector("[data-relationship-review-panel]");
+  const statusMarkup = renderRelationshipReviewStatus(candidate, proposedText);
+  if (status && status.dataset.reviewMarkup !== statusMarkup) {
+    status.innerHTML = statusMarkup;
+    status.dataset.reviewMarkup = statusMarkup;
+  }
+  if (content) {
+    if (getRelationshipReviewState(candidate, proposedText).status === "checking" && content.querySelector(".waiting-panel")) {
+      content.querySelector(".waiting-panel-elapsed").textContent = getRelationshipReviewElapsed(candidate);
+    } else {
+      content.innerHTML = renderRelationshipReviewPanel(candidate, proposedText);
+      content.hidden = !content.innerHTML;
+    }
+  }
+  const stop = elements["relationship-review-stop"];
+  if (stop) stop.hidden = activeRelationshipReviews.size === 0;
+}
+
+function isRelationshipReviewResponse(result, request, runtime) {
+  const keys = ["schemaVersion", "requestId", "candidateKey", "authoritySha256", "snapshotKey", "inputSha256", "changedRuleIds", "removedRuleIds", "effectiveRuleIds", "findings", "elapsedMilliseconds", "model", "reasoningEffort"];
+  return result && JSON.stringify(Object.keys(result).sort()) === JSON.stringify(keys.sort())
+    && result.schemaVersion === 1 && result.requestId === request.requestId && result.candidateKey === request.candidateKey
+    && result.snapshotKey === request.snapshotKey && result.authoritySha256 === runtime.authoritySha256
+    && result.model === runtime.model && result.reasoningEffort === runtime.reasoningEffort
+    && /^[a-f0-9]{64}$/.test(result.inputSha256) && Number.isInteger(result.elapsedMilliseconds) && result.elapsedMilliseconds >= 0 && result.elapsedMilliseconds <= 300000
+    && Array.isArray(result.findings) && Array.isArray(result.changedRuleIds) && Array.isArray(result.removedRuleIds) && Array.isArray(result.effectiveRuleIds)
+    && result.findings.every(finding => result.changedRuleIds.includes(finding.ruleId) && result.effectiveRuleIds.includes(finding.relatedRuleId)
+      && finding.ruleId !== finding.relatedRuleId && ["equivalent", "partial-overlap", "conflicts"].includes(finding.relationship)
+      && [finding.ruleQuote, finding.relatedQuote, finding.rationale].every(value => typeof value === "string" && value.length > 0));
+}
+
+async function checkRuleRelationships(candidate) {
+  if (activeRelationshipReviews.has(candidate.key)) return;
+  const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+  if (getActiveCandidate()?.key === candidate.key && editor && editor.value !== getDecision(candidate).proposedText) {
+    showToast("Save the current wording before checking relationships.", true);
+    return;
+  }
+  const prior = getRelationshipReviewState(candidate);
+  if (prior.status === "failed" && !prior.review.failure.retryable) return;
+  const controller = new AbortController();
+  const active = { controller, candidate, snapshot: getRelationshipReviewSnapshot(candidate), startedAt: performance.now(), reason: null };
+  activeRelationshipReviews.set(candidate.key, active);
+  const deadline = setTimeout(() => { active.reason = "deadline"; controller.abort(); }, 300000);
+  const timer = setInterval(() => { if (getActiveCandidate()?.key === candidate.key) syncRelationshipReviewControls(candidate); }, 1000);
+  try {
+    syncRelationshipReviewControls(candidate);
+    if (elements["relationship-review-stop"]) elements["relationship-review-stop"].hidden = false;
+    renderDecisionOutputs();
+    const config = await loadWorkbenchRuntimeConfig(controller.signal);
+    const runtime = config.relationshipReview;
+    if (!runtime || !/^[a-f0-9]{64}$/.test(runtime.authoritySha256)) throw new Error("runtime-unavailable");
+    if (getRelationshipReviewSnapshot(candidate) !== active.snapshot) throw new Error("snapshot-changed");
+    const request = { schemaVersion: 1, requestId: crypto.randomUUID(), authoritySha256: runtime.authoritySha256,
+      snapshotKey: Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(active.snapshot))), byte => byte.toString(16).padStart(2, "0")).join(""),
+      candidateKey: candidate.key, sourceFiles: state.bundle.sourceFiles,
+      proposals: getRelationshipReviewProposals(candidate).map(({ proposedText, ...proposal }) => ({ ...proposal, proposedTextBase64: encodeBase64Utf8(proposedText) })) };
+    controller.signal.throwIfAborted();
+    if (getRelationshipReviewSnapshot(candidate) !== active.snapshot) throw new Error("snapshot-changed");
+    const response = await fetch("/check-relationships", { method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json", "X-Workbench-Operation-Token": config.operationToken }, body: JSON.stringify({ payloadBase64: encodeBase64Utf8(JSON.stringify(request)) }) });
+    const result = await response.json();
+    if (!response.ok) {
+      const failure = result.error;
+      if (typeof failure?.code !== "string" || typeof failure.message !== "string" || typeof failure.retryable !== "boolean" || typeof failure.recovery !== "string") throw new Error("unexpected-failure");
+      throw Object.assign(new Error(failure.code), { reviewFailure: failure });
+    }
+    controller.signal.throwIfAborted();
+    if (getRelationshipReviewSnapshot(candidate) !== active.snapshot) throw new Error("snapshot-changed");
+    if (!isRelationshipReviewResponse(result, request, runtime)) throw new Error("invalid-response");
+    state.session.relationshipReviews[candidate.key] = { status: "current", snapshot: active.snapshot, result, checkedAt: toUtcTimestamp() };
+    await persistSession();
+  } catch (error) {
+    if (controller.signal.aborted && !active.reason) return;
+    const code = active.reason || error.message;
+    const transient = ["invalid-response", "deadline"].includes(code);
+    const fallback = code === "snapshot-changed" ? "The rule or catalog changed. Save the current wording or reload, then run a new check."
+      : transient ? "The checker could not complete a usable result. Your saved rule is unchanged. Try again."
+        : "The relationship checker could not complete this request. Check Workbench diagnostics before trying again.";
+    const failure = error.reviewFailure || { code: ["snapshot-changed", "runtime-unavailable", "invalid-response", "deadline"].includes(code) ? code : "unexpected-failure", message: fallback, retryable: transient, recovery: transient ? "retry" : "correct-and-recheck" };
+    state.session.relationshipReviews[candidate.key] = { status: "failed", snapshot: active.snapshot, failure, checkedAt: toUtcTimestamp() };
+    await persistSession();
+  } finally {
+    clearTimeout(deadline);
+    clearInterval(timer);
+    activeRelationshipReviews.delete(candidate.key);
+    if (getActiveCandidate()?.key === candidate.key) syncRelationshipReviewControls(candidate);
+    if (elements["relationship-review-stop"]) elements["relationship-review-stop"].hidden = activeRelationshipReviews.size === 0;
+    renderDecisionOutputs();
+  }
 }
 
 function isActionableDecision(decision) {
@@ -2182,16 +2412,21 @@ function renderCurrentHostedRules(catalogStatus) {
   }).join("");
 }
 
+function renderRuleActionChoice(action, selectedAction) {
+  return `<label class="action-option clickable ${selectedAction === action ? "selected" : ""}"><input type="radio" name="rule-action" data-rule-action="${escapeHtml(action)}" value="${escapeHtml(action)}" ${selectedAction === action ? "checked" : ""}><span>${escapeHtml(formatRecommendation(action))}</span></label>`;
+}
+
 function getAllowedActions(candidate, proposedText = defaultDecision(candidate).proposedText) {
   const catalogStatus = getCatalogStatus(candidate).key;
+  const noChangeActions = hasMaintainerEditedRuleText(candidate, proposedText) ? [] : ["no-change"];
   if (catalogStatus === "mapped") {
     const hasRetirements = state.session.decisions[candidate.key]?.retireHostedRuleIds?.length > 0;
-    const actions = isCurrentMappedNoChangeNoOp(candidate) && !hasRetirements ? [] : ["no-change"];
+    const actions = isCurrentMappedNoChangeNoOp(candidate) && !hasRetirements ? [] : noChangeActions;
     if (hasHostedTextChange(candidate, proposedText)) actions.push("update");
     return [...actions, "retire", "defer"];
   }
-  if (catalogStatus === "retired") return ["no-change", "restore", "defer"];
-  return ["no-change", "add", "exclude", "defer"];
+  if (catalogStatus === "retired") return [...noChangeActions, "restore", "defer"];
+  return [...noChangeActions, "add", "exclude", "defer"];
 }
 
 function isCurrentMappedNoChangeNoOp(candidate) {
@@ -3733,7 +3968,7 @@ function renderRelatedHostedCoverage(candidate, assessment, view = "details") {
   const evidence = assessment || getBaselineAssessment(candidate, getDecision(candidate));
   const coverage = evidence.relatedHostedCoverage;
   if (!coverage.length) return "";
-  const content = `${assessment ? "" : '<p class="coverage-summary"><strong>Original assessment coverage:</strong> Edited wording has not yet been reassessed.</p>'}${coverage.length ? `<div class="related-hosted-coverage">${coverage.map((item) => `<p><strong class="rule-reference">${escapeHtml(item.hostedRuleId)}</strong> ${escapeHtml(item.rationale)}</p>`).join("")}</div>` : ""}`;
+  const content = `${assessment ? "" : `<p class="coverage-summary">${renderBannerHeading("Original Assessment Coverage")} Edited wording has not yet been reassessed.</p>`}${coverage.length ? `<div class="related-hosted-coverage">${coverage.map((item) => `<p><strong class="rule-reference">${escapeHtml(item.hostedRuleId)}</strong> ${escapeHtml(item.rationale)}</p>`).join("")}</div>` : ""}`;
   return renderEvidenceDisclosure(candidate, "coverage", "Related Hosted Coverage", coverage.length, content, view);
 }
 
@@ -3751,8 +3986,8 @@ function renderProposedRuleRecommendation(candidate, assessment, proposedText = 
 
 function renderAssessmentExplanation(candidate, assessment, proposedText = getDecision(candidate).proposedText, compact = false) {
   const evidence = assessment || getBaselineAssessment(candidate, getDecision(candidate));
-  const label = hasMaintainerEditedRuleText(candidate, proposedText) ? "Original assessment rationale" : "Assessment rationale";
-  return renderInformationPanel(`<p><strong>${label}:</strong> ${escapeHtml(evidence.rationale)}</p>`, {
+  const label = hasMaintainerEditedRuleText(candidate, proposedText) ? "Original Assessment Rationale" : "Assessment Rationale";
+  return renderInformationPanel(`<p>${renderBannerHeading(label)} ${escapeHtml(evidence.rationale)}</p>`, {
     iconMarkup: fluentIcon("info-20-regular"),
     className: "assessment-explanation",
     dataAttributes: { "assessment-explanation": "" }
@@ -4324,6 +4559,7 @@ function renderAssessment() {
           <span class="section-label">Proposed Hosted Rule:</span>
           <span class="proposed-rule-statuses" role="group" aria-label="Proposed rule status">
             ${renderProposedRuleRecommendation(candidate, assessment)}
+            <span class="relationship-review-status-slot" data-relationship-review-status-slot>${renderRelationshipReviewStatus(candidate, decision.proposedText)}</span>
           </span>
           <span class="proposed-rule-actions" role="group" aria-label="Proposed rule actions">
             <button class="titlebar-icon proposed-rule-save" type="button" data-proposed-text-save aria-label="Save proposed Hosted rule" data-workbench-tooltip="Save proposed Hosted rule" disabled>${icon("save")}</button>
@@ -4332,6 +4568,7 @@ function renderAssessment() {
         </div>
         <div data-proposed-rule-explanation>${renderAssessmentExplanation(candidate, assessment)}</div>
         <label><textarea class="evidence-box proposed-rule scroll-surface" data-decision-field="proposedText" data-proposed-candidate-key="${escapeHtml(candidate.key)}" aria-label="Proposed Hosted rule wording">${escapeHtml(decision.proposedText || "")}</textarea></label>
+        <div class="relationship-review-panel" data-relationship-review-panel ${renderRelationshipReviewPanel(candidate) ? "" : "hidden"}>${renderRelationshipReviewPanel(candidate)}</div>
       </div>
 
       <div class="section-block rule-actions">
@@ -4342,12 +4579,7 @@ function renderAssessment() {
           <div class="control-group action-plan-group">
             <fieldset class="action-options">
               <legend class="sr-only">Rule action</legend>
-              ${allowedActions.map((action) => `
-                <label class="action-option clickable ${decision.action === action ? "selected" : ""}">
-                  <input type="radio" name="rule-action" data-rule-action="${escapeHtml(action)}" value="${escapeHtml(action)}" ${decision.action === action ? "checked" : ""}>
-                  <span>${escapeHtml(formatRecommendation(action))}</span>
-                </label>
-              `).join("")}
+              ${allowedActions.map(action => renderRuleActionChoice(action, decision.action)).join("")}
             </fieldset>
           </div>
           ${candidate.recommendation?.category === "implementation" ? `<div class="control-group implementation-model-control-group">
@@ -4397,7 +4629,7 @@ function renderAssessmentEvidence(candidate, assessment, decision) {
     <div class="assessment-details-heading">
       <div class="assessment-details-title-row"><strong class="section-label">Assessment Details:</strong><button class="titlebar-icon clickable scoring-legend-trigger" type="button" data-scoring-legend-open aria-label="Show assessment details legend" data-workbench-tooltip="Show assessment details legend">${icon("question")}</button></div>
     </div>
-    ${renderInformationPanel(`<p ${assessment && !hasMaintainerEditedRuleText(candidate) ? "" : "data-assessment-history"}><strong>Assessment:</strong> ${assessment && !hasMaintainerEditedRuleText(candidate) ? "Priority and factor scores are AI-adjudicated evidence. Maintainers can review these values but cannot edit them." : `Priority and factor scores describe the original rebuild proposal, whose recommendation was ${escapeHtml(formatRecommendation(evidence.recommendation))}; they do not validate the maintainer-edited wording.`} Token Cost and Token Headroom reflect the current draft.</p>`, { iconMarkup: fluentIcon("info-20-regular"), className: "assessment-context section-guidance" })}
+    ${renderInformationPanel(`<p ${assessment && !hasMaintainerEditedRuleText(candidate) ? "" : "data-assessment-history"}>${renderBannerHeading("Assessment")} ${assessment && !hasMaintainerEditedRuleText(candidate) ? "Priority and factor scores are AI-adjudicated evidence. Maintainers can review these values but cannot edit them." : `Priority and factor scores describe the original rebuild proposal, whose recommendation was ${escapeHtml(formatRecommendation(evidence.recommendation))}; they do not validate the maintainer-edited wording.`} Token Cost and Token Headroom reflect the current draft.</p>`, { iconMarkup: fluentIcon("info-20-regular"), className: "assessment-context section-guidance" })}
     <div class="score-strip">
       <div class="score-item impact"><span class="control-subtitle">Priority Score:</span><strong class="${getPriorityClass(priority)}">${priority}</strong></div>
       <div class="score-item cost"><span class="control-subtitle">Token Cost:</span><strong>${cost === 0 ? "0" : formatSignedNumber(cost)}</strong></div>
@@ -4537,8 +4769,8 @@ function syncAssessmentActionControls(candidate, action = getDecision(candidate)
   });
   const badge = elements["assessment-panel"].querySelector(":scope > .assessment-title .decision-badge");
   if (badge) {
-    badge.className = `ui-badge status-capsule decision-badge ${action}`;
-    badge.textContent = formatRecommendation(action);
+    badge.className = `ui-badge status-capsule decision-badge ${action || "warning"}`;
+    badge.textContent = action ? formatRecommendation(action) : "Action Required";
   }
   refreshAssessmentScores(candidate, action);
 }
@@ -4557,16 +4789,18 @@ function syncDecisionSaveState(candidate = getActiveCandidate()) {
   const save = elements["assessment-panel"].querySelector("[data-rationale-save]");
   const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
   const action = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction;
-  if (!save || !rationale || !candidate || !action) return;
+  if (!save || !rationale || !candidate) return;
+  if (!action) {
+    save.disabled = true;
+    return;
+  }
   const persisted = getDecision(candidate);
   const value = rationale.value.trim();
-  const removesDecision = !value && Boolean(state.session.decisions[candidate.key]);
   const dirty = action !== persisted.action || value !== persisted.rationale.trim();
-  save.disabled = !(removesDecision || (Boolean(value) && dirty));
+  save.disabled = action === "no-change" || !value || !dirty;
   const saveLabel = state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision";
-  const label = removesDecision ? "Remove saved decision" : saveLabel;
-  save.setAttribute("aria-label", label);
-  setWorkbenchTooltip(save, label);
+  save.setAttribute("aria-label", saveLabel);
+  setWorkbenchTooltip(save, saveLabel);
 }
 
 function syncAssessmentRationaleControls(action, candidate = getActiveCandidate()) {
@@ -4575,16 +4809,35 @@ function syncAssessmentRationaleControls(action, candidate = getActiveCandidate(
   if (!rationale) return;
   const noChange = action === "no-change" && (!candidate || getDecision(candidate).retireHostedRuleIds.length === 0);
   if (noChange) rationale.value = "";
-  rationale.disabled = noChange;
-  rationale.placeholder = noChange ? "No rationale is required for No Change." : "Record why this action is appropriate.";
+  rationale.disabled = !action || noChange;
+  rationale.placeholder = !action ? "Select a rule action to record rationale."
+    : noChange ? "No rationale is required for No Change." : "Record why this action is appropriate.";
   syncRationaleCounter(rationale);
   if (save) {
-    if (noChange) save.disabled = true;
+    if (!action || noChange) save.disabled = true;
     else syncDecisionSaveState(candidate);
   }
 }
 
 async function handleAssessmentClick(event) {
+  const reviewControl = event.target.closest("[data-relationship-review-open], [data-relationship-review-run], [data-relationship-review-cancel], [data-relationship-review-dismiss]");
+  if (reviewControl) {
+    const candidate = getActiveCandidate();
+    if (!candidate) return;
+    const current = getRelationshipReviewState(candidate);
+    if (reviewControl.hasAttribute("data-relationship-review-cancel")) activeRelationshipReviews.get(candidate.key)?.controller.abort();
+    else if (reviewControl.hasAttribute("data-relationship-review-dismiss")) {
+      dismissedRelationshipFailures.add(current.review);
+      syncRelationshipReviewControls(candidate);
+    } else if (reviewControl.hasAttribute("data-relationship-review-run") || ["required", "stale"].includes(current.status)) await checkRuleRelationships(candidate);
+    else {
+      dismissedRelationshipFailures.delete(current.review);
+      syncRelationshipReviewControls(candidate);
+      const target = elements["assessment-panel"].querySelector("[data-relationship-review-panel]");
+      scrollCandidateDetailTargetIntoView(target);
+    }
+    return;
+  }
   const resetTrigger = event.target.closest("[data-proposed-text-reset]");
   if (resetTrigger) {
     const candidate = getActiveCandidate();
@@ -4628,20 +4881,18 @@ async function handleAssessmentClick(event) {
   const candidate = getActiveCandidate();
   if (!candidate) return;
   const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]')?.value.trim() || "";
-  const savedDecision = state.session.decisions[candidate.key];
   if (!rationale) {
-    if (!savedDecision) return;
-    removeCandidateFromBulkOperations(candidate.key);
-    saveDecision(candidate, null);
-    await persistencePromise;
-    renderAssessment();
-    showToast("Decision removed");
+    showToast("Record a decision rationale before saving this action.", true);
     return;
   }
   const action = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction;
   if (!action) return;
   const current = getDecision(candidate);
   const proposedText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value || current.proposedText;
+  if (!getAllowedActions(candidate, proposedText).includes(action)) {
+    showToast("Choose an action that applies to the current rule wording.", true);
+    return;
+  }
   const retireHostedRuleIds = [...elements["assessment-panel"].querySelectorAll("[data-retire-hosted-rule]:checked")]
     .map((control) => control.dataset.retireHostedRule);
   const { assessment, ...maintainerDecision } = current;
@@ -4797,13 +5048,14 @@ function getPlanReadiness(candidate) {
   const attention = actionRequired ? { reason: "action", label: "Needs action", actionIcon: "edit", target: ".action-options input:checked, .action-options input" }
     : resourceTypeRequired ? { reason: "resource-type", label: "Needs resource type", actionIcon: "edit", target: "[data-implementation-model]" }
     : rationaleRequired ? { reason: "rationale", label: "Needs rationale", actionIcon: "edit", target: '[data-decision-field="rationale"]' }
-    : !assessment ? { reason: "assessment", label: "Needs AI assessment", actionIcon: "edit", target: "[data-assessment-evidence]" } : null;
+    : !assessment ? { reason: "assessment", label: "Needs AI assessment", actionIcon: "edit", target: "[data-assessment-evidence]" }
+      : getRelationshipReviewAttention(candidate);
   return {
     actionRequired,
     rationaleRequired,
     resourceTypeRequired,
     attention,
-    ready: Boolean(assessment) && !actionRequired && !rationaleRequired && !resourceTypeRequired,
+    ready: Boolean(assessment) && !attention,
     label: attention?.label || "Ready"
   };
 }
@@ -5743,6 +5995,7 @@ function getPreviewReadiness() {
   }).length;
   const missingAssessmentCount = planCandidates.filter((candidate) => !getAssessment(candidate)).length;
   const missingRationaleCount = planCandidates.filter((candidate) => !getDecision(candidate).rationale.trim()).length;
+  const missingRelationshipReviewCount = planCandidates.filter(candidate => getRelationshipReviewAttention(candidate)).length;
   const missingRationale = missingRationaleCount > 0;
   const unsavedRuleText = Boolean(getUnsavedApprovalEditor());
   const mutationRuleIds = planCandidates.flatMap(getCandidateMutationRuleIds);
@@ -5756,6 +6009,7 @@ function getPreviewReadiness() {
   else if (missingResourceTypeCount) status = "needs resource type";
   else if (missingAssessmentCount) status = "needs assessment";
   else if (missingRationale) status = "needs rationale";
+  else if (missingRelationshipReviewCount) status = "needs relationship review";
   else if (unsavedRuleText) status = "unsaved rule wording";
   else if (mutationCount === 0) status = "no catalog mutations";
   else if (conflictingMutationCount) status = "conflicting mutations";
@@ -5768,11 +6022,12 @@ function getPreviewReadiness() {
     missingResourceTypeCount,
     missingAssessmentCount,
     missingRationaleCount,
+    missingRelationshipReviewCount,
     unsavedRuleText,
     mutationCount,
     conflictingMutationCount,
     status,
-    ready: openRuleIssueCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && missingAssessmentCount === 0 && !missingRationale && !unsavedRuleText && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approvalIdentity)
+    ready: openRuleIssueCount === 0 && planCandidates.length > 0 && missingActionCount === 0 && missingResourceTypeCount === 0 && missingAssessmentCount === 0 && !missingRationale && !missingRelationshipReviewCount && !unsavedRuleText && mutationCount > 0 && conflictingMutationCount === 0 && Boolean(approvalIdentity)
   };
 }
 
@@ -5791,10 +6046,11 @@ function getApprovalRequirements(readiness) {
     { id: "assessments", label: "Rebuild assessments", value: missingAssessment ? "Not available" : hasPlan ? "Available" : "Not required", status: missingAssessment ? "failed" : "passed", description: missingAssessment ? "Required rebuild assessment evidence is missing or invalid. Close Workbench, relaunch with -Rebuild, then reload this page." : "" },
     { id: "rationales", label: "Decision rationales", value: hasPlan ? readiness.missingRationaleCount ? `${readiness.missingRationaleCount} missing` : "Complete" : "None selected", status: hasPlan && !readiness.missingRationaleCount ? "passed" : "pending" },
     { id: "wording", label: "Rule wording", value: readiness.unsavedRuleText ? "Unsaved changes" : "Saved", status: readiness.unsavedRuleText ? "pending" : "passed" },
+    { id: "relationships", label: "Rule relationships", value: readiness.missingRelationshipReviewCount ? `${readiness.missingRelationshipReviewCount} pending` : "Complete", status: readiness.missingRelationshipReviewCount ? "pending" : "passed" },
     { id: "mutations", label: "Catalog mutations", value: readiness.mutationCount ? formatCountLabel(readiness.mutationCount, "mutation") : "None", status: readiness.mutationCount ? "passed" : "pending" },
     { id: "targets", label: "Mutation targets", value: hasPlan ? readiness.conflictingMutationCount ? `${readiness.conflictingMutationCount} conflicting` : "Unique" : "None selected", status: hasPlan && !readiness.conflictingMutationCount ? "passed" : "pending" },
     { id: "identity", label: "GitHub identity", value: readiness.approvalIdentity?.login || metadata?.login || "Unavailable", status: readiness.approvalIdentity ? "passed" : "failed", description: readiness.approvalIdentity ? "" : identityReason }
-  ];
+  ].sort((first, second) => first.id === "identity" ? 1 : second.id === "identity" ? -1 : first.label.localeCompare(second.label, "en", { sensitivity: "base" }));
 }
 
 function renderApprovalRequirements(readiness) {
@@ -5835,6 +6091,7 @@ function getApprovalRepairTarget(requirementId, readiness = getPreviewReadiness(
     "rule-actions": (candidate) => !isActionableDecision(getDecision(candidate)),
     "resource-types": (candidate) => getPlanReadiness(candidate).resourceTypeRequired,
     rationales: (candidate) => !getDecision(candidate).rationale.trim(),
+    relationships: candidate => Boolean(getRelationshipReviewAttention(candidate)),
     mutations: (candidate) => getCandidateMutationRuleIds(candidate).length === 0
   };
   let candidate;
@@ -5848,6 +6105,7 @@ function getApprovalRepairTarget(requirementId, readiness = getPreviewReadiness(
   if (!candidate) return null;
   const selector = requirementId === "resource-types" ? "[data-implementation-model]:not(:disabled)"
     : requirementId === "rationales" ? '[data-decision-field="rationale"]'
+      : requirementId === "relationships" ? getRelationshipReviewAttention(candidate).target
       : ".action-options input:not(:disabled)";
   return { kind: "candidate", candidate, selector };
 }
@@ -6309,7 +6567,8 @@ function deserializeDraft(draft, candidates) {
     bulkOperations: (draft.bulkOperations || []).map((operation) => ({
       ...operation,
       candidateKeys: operation.candidateKeys.filter((key) => candidatesByKey.has(key))
-    }))
+    })),
+    relationshipReviews: {}
   };
 }
 
@@ -6338,8 +6597,9 @@ function exportDraft() {
 }
 
 async function approveAndExport() {
+  let config;
   try {
-    await loadWorkbenchRuntimeConfig();
+    config = await loadWorkbenchRuntimeConfig();
   } catch (error) {
     showToast(error.message, true);
     return;
@@ -6351,6 +6611,29 @@ async function approveAndExport() {
   }
   elements["approve-export-button"].disabled = true;
   try {
+    const reviewedCandidates = readiness.planCandidates.filter(candidate => getRelationshipReviewState(candidate).review);
+    if (reviewedCandidates.length) {
+      const runtime = config.relationshipReview;
+      const subject = reviewedCandidates[0];
+      const snapshot = getRelationshipReviewSnapshot(subject);
+      const request = { schemaVersion: 1, authoritySha256: runtime?.authoritySha256, sourceFiles: state.bundle.sourceFiles,
+        proposals: getRelationshipReviewProposals(subject).map(({ proposedText, ...proposal }) => ({ ...proposal, proposedTextBase64: encodeBase64Utf8(proposedText) })),
+        receipts: reviewedCandidates.map(candidate => ({ candidateKey: candidate.key, requestId: getRelationshipReviewState(candidate).review.result.requestId })) };
+      const response = await fetch("/verify-relationship-reviews", { method: "POST", headers: { "Content-Type": "application/json", "X-Workbench-Operation-Token": config.operationToken }, body: JSON.stringify({ payloadBase64: encodeBase64Utf8(JSON.stringify(request)) }) });
+      const verification = await response.json();
+      if (!response.ok || verification.valid !== true || getRelationshipReviewSnapshot(subject) !== snapshot) {
+        reviewedCandidates.forEach(candidate => { delete state.session.relationshipReviews[candidate.key]; });
+        await persistSession();
+        if (getActiveCandidate()) syncRelationshipReviewControls(getActiveCandidate());
+        renderDecisionOutputs();
+        showToast("The relationship review is no longer valid. Run a fresh check before exporting.", true);
+        return;
+      }
+    }
+    if (!getPreviewReadiness().ready) {
+      showToast("The draft changed. Review the approval requirements before exporting.", true);
+      return;
+    }
     const approvedRules = buildApprovedRules();
     if (!approvedRules) {
       showToast("A verified CODEOWNER identity is required before exporting.", true);

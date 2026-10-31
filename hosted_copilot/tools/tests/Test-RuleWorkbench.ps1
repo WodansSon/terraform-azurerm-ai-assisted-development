@@ -66,6 +66,8 @@ $ruleIssuesSchemaPath = Join-Path $PSScriptRoot '../../contracts/workbench/workb
 $results = New-Object 'System.Collections.Generic.List[object]'
 $issues = New-Object 'System.Collections.Generic.List[string]'
 $testStartTimes = @{}
+$activePreparationStage = $null
+$activePreparationParent = $null
 $dependencyAuditFindings = New-Object 'System.Collections.Generic.List[object]'
 $dependencyAuditCounts = $null
 $dependencyAuditError = $null
@@ -80,6 +82,8 @@ $mandatoryTestNames = @('npm audit', 'npm-packages', 'run-selection')
 $browserRuntimeTestNames = @('locked-browser-runtime', 'portable-icon-generation', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage')
 $serverTestNames = @('loopback-host-validation', 'server-owned-runtime-config', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
 $staticTestNames = @(
+    'npm-audit-continuation',
+    'relationship-review',
     'rule-assistance',
     'saved-rule-evaluation',
     'saved-rule-wording-review',
@@ -88,6 +92,7 @@ $staticTestNames = @(
     'fixture-display-valid',
     'assessment-factor-range',
     'local-icon-family-sprites',
+    'runtime-icon-staging',
     'portable-icon-generation',
     'browser-state-contract',
     'tooltip-sentence-case',
@@ -168,13 +173,19 @@ function Test-ShouldRun {
     return [string]::IsNullOrWhiteSpace($Run) -or $Run -eq $Name -or $Name -in $mandatoryTestNames
 }
 
+function Test-ShouldReport {
+    param([Parameter(Mandatory = $true)][string]$Name)
+
+    return (Test-ShouldRun -Name $Name) -or ($Name -eq 'locked-browser-runtime' -and $Run -in $browserRuntimeTestNames)
+}
+
 function Start-TestResult {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
         [string]$RunningDetail = 'IN PROGRESS'
     )
 
-    if (-not (Test-ShouldRun -Name $Name)) {
+    if (-not (Test-ShouldReport -Name $Name)) {
         return
     }
     $testStartTimes[$Name] = Get-Date
@@ -191,7 +202,7 @@ function Add-TestResult {
         [string]$SuccessDetail
     )
 
-    if (-not (Test-ShouldRun -Name $Name)) {
+    if (-not (Test-ShouldReport -Name $Name)) {
         return
     }
     $durationSeconds = 0
@@ -212,6 +223,29 @@ function Add-TestResult {
     if (-not $Passed) {
         $issues.Add("$Name`: $Detail")
     }
+}
+
+function Write-PreparationStatus {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet('running', 'passed', 'failed')][string]$Status,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [string]$Detail,
+        [string]$Parent
+    )
+
+    $label = if ($Parent) { $Name } else { "prepare/$Name" }
+    $timerKey = if ($Parent) { "prepare/$Parent/$Name" } else { $label }
+    if ($Status -eq 'running') {
+        $script:activePreparationStage = $Name
+        $script:activePreparationParent = $Parent
+        $testStartTimes[$timerKey] = Get-Date
+    } else {
+        if ($Status -eq 'passed') { $Detail = Format-ValidationDuration -DurationSeconds ((Get-Date) - $testStartTimes[$timerKey]).TotalSeconds }
+        $testStartTimes.Remove($timerKey)
+        $script:activePreparationStage = if ($Parent) { $Parent } else { $null }
+        $script:activePreparationParent = $null
+    }
+    if ($OutputFormat -eq 'Text') { Write-Host (Format-ValidationStatusLine -Status $Status -Name $label -Detail $Detail -IndentLevel $(if ($Parent) { 1 } else { 0 })) }
 }
 
 function Test-NpmPackageGraphCurrent {
@@ -452,13 +486,7 @@ try {
     $matchingAuditReports = @(if ($null -ne $auditResult) { $auditResult.reports | Where-Object { $_.lockPath -eq $nodePackageLockRelativePath } })
     $hostedAuditReport = if ($matchingAuditReports.Count -gt 0) { $matchingAuditReports[0] } else { $null }
     $auditPassed = $auditExitCode -eq 0 -and $null -ne $hostedAuditReport -and $hostedAuditReport.status -eq 'passed'
-    $auditFailures = @(if ($null -ne $auditResult) { $auditResult.failures })
-    $expectedIncompleteAuditFailure = "$nodePackageLockRelativePath`: npm audit did not return a complete vulnerability report"
-    $dependencyAuditInconclusive = -not [string]::IsNullOrWhiteSpace($Run) -and
-        $null -ne $auditResult -and
-        $null -eq $hostedAuditReport -and
-        $auditFailures.Count -eq 1 -and
-        [string]$auditFailures[0] -ceq $expectedIncompleteAuditFailure
+    $dependencyAuditInconclusive = -not $auditPassed -and $null -eq $hostedAuditReport
     if ($null -ne $hostedAuditReport) {
         $dependencyAuditCounts = $hostedAuditReport.counts
         foreach ($finding in @($hostedAuditReport.findings)) { $dependencyAuditFindings.Add($finding) }
@@ -469,11 +497,8 @@ try {
     if (-not $auditPassed) {
         $dependencyAuditError = if ($null -ne $auditResult -and @($auditResult.failures).Count -gt 0) { @($auditResult.failures) -join '; ' } else { 'Shared npm security validation did not return a passing Hosted lockfile report' }
     }
-    $dependencyAuditContinuation = $ContinueAfterNpmAuditFailure -and -not $auditPassed -and -not $dependencyAuditInconclusive
-    $auditDetail = if ($dependencyAuditInconclusive) {
-        "$dependencyAuditError; focused validation is continuing with the existing locked dependency graph"
-    }
-    elseif ($dependencyAuditContinuation) {
+    $dependencyAuditContinuation = $ContinueAfterNpmAuditFailure -and -not $auditPassed
+    $auditDetail = if ($dependencyAuditContinuation) {
         "$dependencyAuditError; focused validation is continuing without dependency installation and remains unverified"
     }
     elseif (-not $auditPassed) {
@@ -485,8 +510,8 @@ try {
     else {
         "Lockfile passed the shared npm audit at the low threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
     }
-    Add-TestResult -Name 'npm audit' -Passed ($auditPassed -or $dependencyAuditInconclusive) -Detail $auditDetail
-    if (-not $auditPassed -and -not $dependencyAuditInconclusive -and -not $dependencyAuditContinuation) {
+    Add-TestResult -Name 'npm audit' -Passed $auditPassed -Detail $auditDetail
+    if (-not $auditPassed -and -not $dependencyAuditContinuation) {
         $failureAlreadyReported = $true
         throw 'npm audit failed before dependency installation'
     }
@@ -495,7 +520,7 @@ try {
     $dependencyOutput = @()
     $dependencyExitCode = 0
     $packageGraphCurrent = Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath
-    if (-not $packageGraphCurrent -and ($dependencyAuditInconclusive -or $dependencyAuditContinuation)) {
+    if (-not $packageGraphCurrent -and $dependencyAuditContinuation) {
         $dependencyExitCode = 1
         $dependencyOutput = @('npm audit did not pass and the installed package graph does not match the lockfile; dependency installation and focused execution are blocked')
     }
@@ -550,6 +575,7 @@ try {
             throw 'locked browser runtimes could not be installed'
         }
     }
+    Write-PreparationStatus -Status running -Name 'display-fixture' -Detail 'Building policy-bound capacity and Workbench display fixtures'
     $displayPath = Join-Path $tempRoot 'workbench-display.json'
     $ruleIssuesPath = Join-Path $tempRoot 'workbench-rule-issues.json'
     $capacityOutput = @(& pwsh -NoProfile -File (Join-Path $toolsRoot 'internal/workbench/Get-GuidanceCapacity.ps1') -OutputFormat Json)
@@ -795,7 +821,142 @@ try {
     $displayJson = $display | ConvertTo-Json -Depth 30
     [IO.File]::WriteAllText($displayPath, $displayJson + "`n", [Text.UTF8Encoding]::new($false))
     Add-TestResult -Name 'fixture-display-valid' -Passed ([bool]($displayJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench display satisfies the v4 display schema.'
+    Write-PreparationStatus -Status passed -Name 'display-fixture'
 
+    if (Test-ShouldRun 'npm-audit-continuation') {
+        Start-TestResult -Name 'npm-audit-continuation' -RunningDetail 'Checking strict defaults and explicit continuation against the production audit gate'
+        $policyTokens = $null
+        $policyErrors = $null
+        $policyAst = [Management.Automation.Language.Parser]::ParseFile($PSCommandPath, [ref]$policyTokens, [ref]$policyErrors)
+        if ($policyErrors.Count) { throw 'The Workbench continuation policy does not parse' }
+        $inconclusiveAssignment = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Extent.Text.StartsWith('$dependencyAuditInconclusive = -not ', [StringComparison]::Ordinal) }, $false)
+        $continuationAssignment = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Extent.Text.StartsWith('$dependencyAuditContinuation = $ContinueAfterNpmAuditFailure ', [StringComparison]::Ordinal) }, $false)
+        $auditRecording = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.Extent.Text.StartsWith("Add-TestResult -Name 'npm audit' -Passed ", [StringComparison]::Ordinal) }, $false)
+        $auditGate = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Clauses[0].Item1.Extent.Text.Contains('$auditPassed', [StringComparison]::Ordinal) -and $node.Extent.Text.Contains("throw 'npm audit failed before dependency installation'", [StringComparison]::Ordinal) }, $false)
+        if ($null -eq $inconclusiveAssignment -or $null -eq $continuationAssignment -or $null -eq $auditRecording -or $null -eq $auditGate) { throw 'The production npm audit policy could not be located' }
+        $policyFrame = [scriptblock]::Create(@'
+param($auditPassed, $ContinueAfterNpmAuditFailure, $hostedAuditReport)
+$observed = @{ passed = $null }
+$auditDetail = 'Synthetic policy check'
+function Add-TestResult { param($Name, $Passed, $Detail) $observed.passed = $Passed }
+'@ + "`n" + $inconclusiveAssignment.Extent.Text + "`n" + $continuationAssignment.Extent.Text + "`n" + $auditRecording.Extent.Text + "`n" +
+            '$blocked = $false' + "`ntry {`n" + $auditGate.Extent.Text + "`n} catch { `$blocked = `$true }`n" +
+            '[pscustomobject]@{ blocked = $blocked; continued = $dependencyAuditContinuation; passed = $observed.passed; inconclusive = $dependencyAuditInconclusive }')
+        $policyCaseCount = 0
+        foreach ($passed in @($true, $false)) {
+            foreach ($continueRequested in @($false, $true)) {
+                foreach ($hasReport in @($false, $true)) {
+                    if ($passed -and -not $hasReport) { continue }
+                    $fixtureReport = if ($hasReport) { [pscustomobject]@{ status = if ($passed) { 'passed' } else { 'failed' } } } else { $null }
+                    $observedPolicy = & $policyFrame $passed $continueRequested $fixtureReport
+                    if ($observedPolicy.passed -ne $passed -or $observedPolicy.blocked -ne (-not $passed -and -not $continueRequested) -or
+                        $observedPolicy.continued -ne (-not $passed -and $continueRequested) -or $observedPolicy.inconclusive -ne (-not $passed -and -not $hasReport)) {
+                        throw 'Npm audit continuation bypassed the explicit flag or changed the failed audit result'
+                    }
+                    $policyCaseCount++
+                }
+            }
+        }
+        $dependencyGate = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.IfStatementAst] -and
+            $node.Clauses[0].Item1.Extent.Text.Contains('$packageGraphCurrent', [StringComparison]::Ordinal) -and
+            $node.Extent.Text.Contains('$dependencyExitCode = 1', [StringComparison]::Ordinal) }, $false)
+        if ($null -eq $dependencyGate) { throw 'The production locked-dependency gate could not be located' }
+        $dependencyFrame = [scriptblock]::Create(@'
+param($packageGraphCurrent, $dependencyAuditContinuation)
+$invocation = @{ called = $false }
+function Invoke-FixtureNpm { $invocation.called = $true }
+$npmCommand = @{ Source = 'Invoke-FixtureNpm' }
+$npmRoot = 'synthetic-fixture'
+$LASTEXITCODE = 0
+$dependencyExitCode = 0
+$dependencyOutput = @()
+'@ + "`n" + $dependencyGate.Extent.Text + "`n" + '[pscustomobject]@{ installed = $invocation.called; exitCode = $dependencyExitCode }')
+        foreach ($graphMatches in @($false, $true)) {
+            foreach ($continueRequested in @($false, $true)) {
+                $dependencyPolicy = & $dependencyFrame $graphMatches $continueRequested
+                if ($dependencyPolicy.installed -ne (-not $graphMatches -and -not $continueRequested) -or
+                    $dependencyPolicy.exitCode -ne $(if (-not $graphMatches -and $continueRequested) { 1 } else { 0 })) {
+                    throw 'Explicit npm continuation installed dependencies or accepted a mismatched locked graph'
+                }
+                $policyCaseCount++
+            }
+        }
+        Add-TestResult -Name 'npm-audit-continuation' -Passed $true -Detail "$policyCaseCount production-policy cases keep default audits strict, preserve failure during explicit continuation, and prohibit dependency installation or a mismatched graph during continuation."
+    }
+
+    if (Test-ShouldRun 'relationship-review') {
+        Start-TestResult -Name 'relationship-review' -RunningDetail 'Checking bounded projection, strict findings, and trusted receipts with offline evaluator'
+        Import-Module (Join-Path $toolsRoot 'modules/workbench/RelationshipReview.psm1') -Force -DisableNameChecking
+        $completedTask = [Threading.Tasks.TaskCompletionSource[object]]::new()
+        $completedTask.SetResult('Synthetic completed transport')
+        if ((Wait-RelationshipReviewTask -Task $completedTask.Task -Watch ([Diagnostics.Stopwatch]::StartNew()) -DeadlineMilliseconds 1000) -cne 'Synthetic completed transport') {
+            throw 'Completed relationship transport did not preserve its result'
+        }
+        foreach ($transportCase in @('blocked', 'expired')) {
+            $pendingTask = [Threading.Tasks.TaskCompletionSource[object]]::new()
+            $remainingBudget = if ($transportCase -ceq 'expired') { 0 } else { 1 }
+            $deadlineRejected = $false
+            try { $null = Wait-RelationshipReviewTask -Task $pendingTask.Task -Watch ([Diagnostics.Stopwatch]::StartNew()) -DeadlineMilliseconds $remainingBudget }
+            catch { $deadlineRejected = $_.Exception.GetBaseException().Data['RelationshipReviewCode'] -ceq 'deadline' }
+            if (-not $deadlineRejected) { throw "Relationship transport accepted a $transportCase deadline" }
+        }
+        $reviewWorker = Join-Path $toolsRoot 'internal/workbench/Invoke-RelationshipReview.ps1'
+        $reviewEvaluator = Join-Path $PSScriptRoot 'fixtures/relationship-review-evaluator.ps1'
+        $reviewPrompt = Get-Content (Join-Path $toolsRoot 'prompts/reconciliation/RelationshipReview-v1.md') -Raw
+        foreach ($boundary in @('## Boundaries', 'untrusted quoted data', 'prompt injection', 'tool requests', 'role changes', 'output-format changes', 'policy claims')) {
+            if (-not $reviewPrompt.Contains($boundary, [StringComparison]::OrdinalIgnoreCase)) { throw "Relationship review prompt is missing $boundary" }
+        }
+        $owned = @($display.candidates | Where-Object { $null -ne $_.recommendation -and -not [string]::IsNullOrWhiteSpace([string]$_.recommendation.hostedId) })
+        $subject = @($owned | Where-Object { $_.catalogMapping.state -ceq 'unmapped' } | Select-Object -First 1)[0]
+        $subjectKey = "$($subject.source.lane):$($subject.source.id):$($subject.assessment.id)"
+        $proposals = @($owned | ForEach-Object {
+            $key = "$($_.source.lane):$($_.source.id):$($_.assessment.id)"
+            $text = [string]$_.recommendation.ruleText
+            if ($key -ceq $subjectKey) { $text += ' Preserve the explicitly selected fixture behavior.' }
+            [ordered]@{ candidateKey = $key; sourceHash = [string]$_.source.contentSha256; action = if ($key -ceq $subjectKey) { 'add' } else { 'no-change' };
+                inPlan = $key -ceq $subjectKey; proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text)); retireHostedRuleIds = @() }
+        } | Sort-Object { $_.candidateKey } -CaseSensitive)
+        $runtime = Get-RelationshipReviewRuntime -RepositoryRoot $repositoryRoot -DisplayPath $displayPath
+        $request = [ordered]@{ schemaVersion = 1; requestId = [guid]::NewGuid().ToString(); authoritySha256 = $runtime.authoritySha256; snapshotKey = 'c' * 64;
+            candidateKey = $subjectKey; sourceFiles = $display.sourceFiles; proposals = $proposals }
+        $reviewRequestPath = Join-Path $tempRoot 'relationship-request.json'
+        $reviewOutputPath = Join-Path $tempRoot 'relationship-result.json'
+        $reviewReceipts = Join-Path $tempRoot 'relationship-receipts'
+        [IO.File]::WriteAllText($reviewRequestPath, ($request | ConvertTo-Json -Depth 50), [Text.UTF8Encoding]::new($false))
+        $inputData = Get-RelationshipReviewInput -Display ($displayJson | ConvertFrom-Json -Depth 50) -Request (($request | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50)
+        if (@($inputData.effectiveCatalog | Where-Object { $_.status -ceq 'protected' }).Count -ne @($display.catalog.protectedRules).Count) { throw 'Projection dropped protected evidence' }
+        $workerParameters = @{ RepositoryRoot = $repositoryRoot; DisplayPath = $displayPath; RequestPath = $reviewRequestPath; OutputPath = $reviewOutputPath; ReceiptDirectory = $reviewReceipts; EvaluatorScriptPath = $reviewEvaluator }
+        $workerOutput = @(& pwsh -NoProfile -NonInteractive -File $reviewWorker @workerParameters 2>&1)
+        if ($LASTEXITCODE -ne 0) { $workerOutput | ForEach-Object { Write-Host $_ }; throw 'Offline relationship worker failed' }
+        $response = Get-Content $reviewOutputPath -Raw | ConvertFrom-Json -Depth 50
+        if ($response.snapshotKey -cne $request.snapshotKey -or @($response.findings).Count -or $response.model -cne 'gpt-6-luna') { throw 'Validated review result is not bound to the request' }
+        $approval = [ordered]@{ schemaVersion = 1; authoritySha256 = $runtime.authoritySha256; sourceFiles = $display.sourceFiles; proposals = $proposals;
+            receipts = @([ordered]@{ candidateKey = $subjectKey; requestId = $request.requestId }) }
+        $approvalObject = ($approval | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50
+        $approvalParameters = @{ RepositoryRoot = $repositoryRoot; DisplayPath = $displayPath; ReceiptDirectory = $reviewReceipts }
+        if (-not (Test-RelationshipReviewApproval -Request $approvalObject @approvalParameters).valid) { throw 'A valid server receipt was rejected' }
+        $approvalObject.receipts[0].requestId = [guid]::NewGuid().ToString()
+        $forgedRejected = $false
+        try { $null = Test-RelationshipReviewApproval -Request $approvalObject @approvalParameters } catch { $forgedRejected = $true }
+        if (-not $forgedRejected) { throw 'A forged receipt was accepted' }
+        $approvalObject = ($approval | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50
+        $approvalObject.proposals[0].proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('Changed after the check.'))
+        $staleRejected = $false
+        try { $null = Test-RelationshipReviewApproval -Request $approvalObject @approvalParameters } catch { $staleRejected = $true }
+        if (-not $staleRejected) { throw 'A stale receipt was accepted' }
+        $priorFixtureMode = [Environment]::GetEnvironmentVariable('HOSTED_RELATIONSHIP_FIXTURE_MODE')
+        try {
+            foreach ($mode in @('invalid', 'tools')) {
+                [Environment]::SetEnvironmentVariable('HOSTED_RELATIONSHIP_FIXTURE_MODE', $mode)
+                Remove-Item $reviewOutputPath -ErrorAction SilentlyContinue
+                $null = @(& pwsh -NoProfile -NonInteractive -File $reviewWorker @workerParameters 2>&1)
+                if ($LASTEXITCODE -eq 0 -or (Test-Path $reviewOutputPath)) { throw "The worker accepted $mode output" }
+            }
+        } finally { [Environment]::SetEnvironmentVariable('HOSTED_RELATIONSHIP_FIXTURE_MODE', $priorFixtureMode) }
+        Add-TestResult -Name 'relationship-review' -Passed $true -Detail 'Offline bounded review preserves complete protected projection, accepts strict findings, rejects tools/extra fields, and requires current server-held receipts; prompt boundaries are complete.'
+    }
+
+    Write-PreparationStatus -Status running -Name 'rule-issues-fixture' -Detail 'Building and schema-validating the synthetic Rule Issues artifact'
     $issueCandidate = @($display.candidates | Where-Object { $null -ne $_.recommendation } | Select-Object -First 1)[0]
     $issueCandidateKey = "$([string]$issueCandidate.source.lane):$([string]$issueCandidate.source.id):$([string]$issueCandidate.assessment.id)"
     $issueSourceRuleId = [string]$issueCandidate.recommendation.hostedId
@@ -836,12 +997,14 @@ try {
         throw 'The offline Workbench Rule Issues fixture does not satisfy the v4 schema'
     }
     [IO.File]::WriteAllText($ruleIssuesPath, $ruleIssuesJson + "`n", [Text.UTF8Encoding]::new($false))
+    Write-PreparationStatus -Status passed -Name 'rule-issues-fixture'
 
     $invalidAssessmentDisplay = $displayJson | ConvertFrom-Json
     $invalidAssessmentDisplay.candidates[0].assessment.selectionFactors.severity = 6
     $invalidAssessmentJson = $invalidAssessmentDisplay | ConvertTo-Json -Depth 30
     Add-TestResult -Name 'assessment-factor-range' -Passed (-not [bool]($invalidAssessmentJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction SilentlyContinue)) -Detail 'AI assessment factors outside the supported zero-through-five range are rejected.'
 
+    Write-PreparationStatus -Status running -Name 'workbench-assets' -Detail 'Loading Workbench assets and inspecting manifest-owned icon inventories'
     $indexContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'index.html') -Raw
     $appContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'app.js') -Raw
     $hierarchicalViewContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'hierarchical-view.js') -Raw
@@ -1038,6 +1201,7 @@ try {
     $iconFamiliesValid = @(Compare-Object @('codicons', 'custom', 'fluent', 'llms', 'octicons') $iconFamilyNames -CaseSensitive).Count -eq 0 -and
         $codiconContractValid -and $customIconContractValid -and $octiconContractValid -and $fluentIconContractValid -and $llmIconContractValid -and $iconPreviewsValid
     Add-TestResult -Name 'local-icon-family-sprites' -Passed $iconFamiliesValid -Detail $(if ($iconFamiliesValid) { 'Codicons, Custom, Octicons, Fluent, and LLM manifest-owned sprites preserve source geometry and legal notices; complete source inventories and previews remain separate from runtime selection.' } else { "Icon contracts: Codicons=$codiconContractValid, Custom=$customIconContractValid, Octicons=$octiconContractValid, Fluent=$fluentIconContractValid, LLM=$llmIconContractValid, previews=$iconPreviewsValid; $($iconManifestIssues -join '; ')" })
+    Write-PreparationStatus -Status passed -Name 'workbench-assets'
 
     if (Test-ShouldRun -Name 'portable-icon-generation') {
         Start-TestResult -Name 'portable-icon-generation'
@@ -1123,6 +1287,7 @@ try {
         Add-TestResult -Name 'portable-icon-generation' -Passed $portableIconGenerationValid -Detail $iconGenerationDetail
     }
 
+    Write-PreparationStatus -Status running -Name 'source-contract-state' -Detail 'Evaluating Workbench source-contract state without changing focused test selection'
     $browserContractValid = $indexContent -match '<title>Hosted Copilot Rule Manager</title>' -and $indexContent -match '<h1>HOSTED COPILOT RULE MANAGER</h1>' -and $indexContent -match 'class="title-draft-menu" id="draft-menu"[\s\S]*id="export-button"[\s\S]*for="import-input"[\s\S]*id="close-button"' -and $indexContent -match '<script src="statusbar\.js" defer></script>[\s\S]*<script src="app\.js" defer></script>' -and $indexContent -match 'class="ide-statusbar type-compact" aria-label="Workbench status"[\s\S]*class="status-cluster status-left"></div>[\s\S]*class="status-cluster status-right"></div>' -and $indexContent -notmatch 'id="status-target"|id="status-mapped"|id="status-headroom"|id="metrics-band"|Refresh candidates' -and $statusbarContent -match 'const STATUS_BAR_ENTRIES = Object\.freeze' -and $statusbarContent -match 'class WorkbenchStatusBarService' -and $statusbarContent -match 'key: "promotionApproval"[\s\S]*tooltip: "Promotion Approval Status"[\s\S]*kind: "warning"' -and $statusbarContent -match 'const workbenchStatusBar = new WorkbenchStatusBarService' -and $appContent -match 'workbenchStatusBar\.render\(\)' -and $appContent -match 'WORKBENCH_DISPLAY_SCHEMA_VERSION = 4' -and $appContent -match 'display\.schemaVersion !== WORKBENCH_DISPLAY_SCHEMA_VERSION' -and $appContent -match 'normalizeDisplayCandidates\(display\)' -and $appContent -match 'indexedDB\.open' -and $appContent -match 'localStorage\.setItem' -and $appContent -match 'hosted-rule-workbench-draft' -and $appContent -match 'async function preloadIconSprites\(\)' -and $appContent -match 'await preloadIconSprites\(\)' -and $appContent -match 'workbenchStatusBar\.update\("target"' -and $appContent -match 'workbenchStatusBar\.update\("mapped"' -and $appContent -notmatch 'elements\["metrics-band"\]\.innerHTML' -and $launcherContent -match "'statusbar\.js'"
     $shutdownPresentationValid = $appContent -match '<div class="shutdown-brand-lockup">\s*<svg class="shutdown-brand-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="' -and $appContent -match '<p class="shutdown-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $appContent -match '<h1>Workbench Closed</h1>' -and $appContent -notmatch '<span class="brand-mark" aria-hidden="true">HR</span>'
     $shutdownPresentationValid = $shutdownPresentationValid -and $stylesContent -match '\.shutdown-state\s*\{[^}]*justify-items:\s*center;[^}]*text-align:\s*center' -and $stylesContent -match '\.shutdown-brand-lockup\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center' -and $stylesContent -match '\.shutdown-brand-icon\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*color:\s*#ffff00;[^}]*fill:\s*currentColor' -and $stylesContent -match '\.shutdown-state \.shutdown-product-name\s*\{[^}]*font-size:\s*20px !important;[^}]*font-weight:\s*600 !important' -and $stylesContent -match 'html\.theme-hosted-dark body \.shutdown-state > h1\s*\{[^}]*font-size:\s*16px !important;[^}]*font-weight:\s*600 !important'
@@ -1754,6 +1919,10 @@ try {
     $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
+    Write-PreparationStatus -Status passed -Name 'source-contract-state'
+    Start-TestResult -Name 'runtime-icon-staging' -RunningDetail 'Checking manifest-owned file staging, stale cleanup, linked paths, and source preservation'
+    Write-PreparationStatus -Status running -Name 'launcher-fixtures' -Detail 'Copying and hashing icon fixtures; exercising launcher reuse, cleanup, and rejection scenarios'
+    Write-PreparationStatus -Status running -Name 'copy-and-hash' -Parent 'launcher-fixtures' -Detail 'Seeding validated artifacts and snapshotting source icon integrity'
     $reuseSiteDirectory = Join-Path $tempRoot 'display-reuse-site'
     $null = New-Item -ItemType Directory -Path $reuseSiteDirectory -Force
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $reuseSiteDirectory 'workbench-display.json')
@@ -1762,24 +1931,23 @@ try {
     $sourceIconSnapshot = @(Get-ChildItem -LiteralPath $sourceIconDirectory -Recurse -File | Sort-Object FullName | ForEach-Object {
         [ordered]@{ path = [IO.Path]::GetRelativePath($sourceIconDirectory, $_.FullName); sha256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
     }) | ConvertTo-Json -Depth 5 -Compress
+    Write-PreparationStatus -Status passed -Name 'copy-and-hash' -Parent 'launcher-fixtures'
+    Write-PreparationStatus -Status running -Name 'display-reuse' -Parent 'launcher-fixtures' -Detail 'Running the launcher against the validated display and checking staged runtime files'
     $reuseStopwatch = [Diagnostics.Stopwatch]::StartNew()
     $reuseOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $reuseExitCode = $LASTEXITCODE
     $reuseStopwatch.Stop()
     $reuseResult = if ($reuseExitCode -eq 0) { ($reuseOutput | Out-String) | ConvertFrom-Json } else { $null }
 
-    $expectedRuntimeIcons = @(
-        'codicons/sprite.svg', 'codicons/LICENSE.txt', 'codicons/ATTRIBUTION.md',
-        'fluent/sprite.svg', 'fluent/ATTRIBUTION.md',
-        'llms/sprite.svg', 'llms/LICENSE.txt', 'llms/ATTRIBUTION.md',
-        'octicons/sprite.svg', 'octicons/LICENSE.txt', 'octicons/ATTRIBUTION.md'
-    )
+    $expectedRuntimeIcons = @(Get-WorkbenchRuntimeIconAssets -IconRoot $sourceIconDirectory)
     $stagedIconDirectory = Join-Path $reuseSiteDirectory 'icons'
     $firstRuntimeIcons = @(Get-ChildItem -LiteralPath $stagedIconDirectory -Recurse -File | ForEach-Object {
         [IO.Path]::GetRelativePath($stagedIconDirectory, $_.FullName).Replace('\', '/')
     })
     $runtimeIconStagingValid = $reuseExitCode -eq 0 -and
         @((Compare-Object -ReferenceObject $expectedRuntimeIcons -DifferenceObject $firstRuntimeIcons -CaseSensitive)).Count -eq 0
+    Write-PreparationStatus -Status passed -Name 'display-reuse' -Parent 'launcher-fixtures'
+    Write-PreparationStatus -Status running -Name 'icon-cleanup' -Parent 'launcher-fixtures' -Detail 'Copying the icon inventory, restaging runtime assets, and checking preserved source/site data'
     Copy-Item -LiteralPath $sourceIconDirectory -Destination $reuseSiteDirectory -Recurse -Force
     $null = New-Item -ItemType Directory -Path (Join-Path $stagedIconDirectory 'obsolete-family')
     [IO.File]::WriteAllText((Join-Path $stagedIconDirectory 'obsolete-family/preview.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>')
@@ -1803,7 +1971,9 @@ try {
         [ordered]@{ path = [IO.Path]::GetRelativePath($sourceIconDirectory, $_.FullName); sha256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
     }) | ConvertTo-Json -Depth 5 -Compress
     $runtimeIconStagingValid = $runtimeIconStagingValid -and $sourceIconSnapshot -ceq $sourceIconSnapshotAfter
+    Write-PreparationStatus -Status passed -Name 'icon-cleanup' -Parent 'launcher-fixtures'
 
+    Write-PreparationStatus -Status running -Name 'linked-path-rejection' -Parent 'launcher-fixtures' -Detail 'Exercising icon and site links while preserving their external targets'
     $linkTargetDirectory = Join-Path $tempRoot 'icon-cleanup-protected-target'
     $null = New-Item -ItemType Directory -Path $linkTargetDirectory
     $linkSentinelPath = Join-Path $linkTargetDirectory 'preserve.txt'
@@ -1828,10 +1998,14 @@ try {
             [IO.File]::ReadAllText($linkSentinelPath) -ceq 'Synthetic protected link target'
     }
     finally { Remove-Item -LiteralPath $linkedSiteDirectory -Force }
+    Write-PreparationStatus -Status passed -Name 'linked-path-rejection' -Parent 'launcher-fixtures'
 
+    Write-PreparationStatus -Status running -Name 'force-rejection' -Parent 'launcher-fixtures' -Detail 'Running the invalid Force-without-Rebuild scenario'
     $invalidForceOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $reuseSiteDirectory -SkipGitHubAuthorization -StageOnly -NoLaunch -Force -OutputFormat Json 2>&1)
     $invalidForceExitCode = $LASTEXITCODE
+    Write-PreparationStatus -Status passed -Name 'force-rejection' -Parent 'launcher-fixtures'
 
+    Write-PreparationStatus -Status running -Name 'source-mismatch' -Parent 'launcher-fixtures' -Detail 'Running the display and Rule Issues source-mismatch scenario'
     $mismatchedSiteDirectory = Join-Path $tempRoot 'display-mismatch-site'
     $null = New-Item -ItemType Directory -Path $mismatchedSiteDirectory -Force
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $mismatchedSiteDirectory 'workbench-display.json')
@@ -1840,12 +2014,30 @@ try {
     [IO.File]::WriteAllText((Join-Path $mismatchedSiteDirectory 'workbench-rule-issues.json'), (($mismatchedRuleIssues | ConvertTo-Json -Depth 30) + "`n"), [Text.UTF8Encoding]::new($false))
     $mismatchOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $mismatchedSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $mismatchExitCode = $LASTEXITCODE
+    Write-PreparationStatus -Status passed -Name 'source-mismatch' -Parent 'launcher-fixtures'
 
+    Write-PreparationStatus -Status running -Name 'incomplete-artifacts' -Parent 'launcher-fixtures' -Detail 'Running the missing Rule Issues artifact scenario'
     $incompleteSiteDirectory = Join-Path $tempRoot 'display-incomplete-site'
     $null = New-Item -ItemType Directory -Path $incompleteSiteDirectory -Force
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $incompleteSiteDirectory 'workbench-display.json')
     $incompleteOutput = @(& pwsh -NoProfile -File $launcherPath -SiteDirectory $incompleteSiteDirectory -EvaluatorCommand $metadataEvaluatorPath -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $incompleteExitCode = $LASTEXITCODE
+    Write-PreparationStatus -Status passed -Name 'incomplete-artifacts' -Parent 'launcher-fixtures'
+
+    $launcherTokens = $null
+    $launcherParseErrors = $null
+    $launcherAst = [Management.Automation.Language.Parser]::ParseFile($launcherPath, [ref]$launcherTokens, [ref]$launcherParseErrors)
+    $summaryAssignments = @($launcherAst.FindAll({ param($node)
+        $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left -is [Management.Automation.Language.VariableExpressionAst] -and
+        $node.Left.VariablePath.UserPath -ceq 'workbenchSummaryFields'
+    }, $false))
+    $summaryTable = if ($summaryAssignments.Count -eq 1) {
+        $summaryAssignments[0].Right.Find({ param($node) $node -is [Management.Automation.Language.HashtableAst] }, $false)
+    } else { $null }
+    $summaryFieldNames = @(if ($null -ne $summaryTable) { $summaryTable.KeyValuePairs | ForEach-Object { [string]$_.Item1.SafeGetValue() } })
+    $summaryFieldsValid = $launcherParseErrors.Count -eq 0 -and $null -ne $summaryTable -and
+        @($summaryFieldNames | Where-Object { $_ -in @('Discovered Candidates', 'AI-Evaluated Candidates', 'Assessment Cache', 'Reconciliation Cache', 'Assessment Recovery') }).Count -eq 0
 
     $assessmentLaunchValid = $launcherContent -match 'New-SourceInventory\.ps1' -and
         $launcherContent -match 'Invoke-SourceAssessment\.ps1' -and
@@ -1890,7 +2082,7 @@ try {
         [regex]::Matches($launcherContent, 'Write-ValidationSummary -Fields \$workbenchSummaryFields').Count -eq 2 -and
         $launcherContent -match 'Mode = if \(\$StageOnly\) \{ ''STAGE ONLY'' \} else \{ ''SERVER'' \}' -and
         $launcherContent -match 'Server = if \(\$StageOnly\) \{ ''Not started'' \} else \{ "Running at \$url" \}' -and
-        $launcherContent -notmatch "'Discovered Candidates' =|'AI-Evaluated Candidates' =|'Assessment Cache' =|'Reconciliation Cache' =|'Assessment Recovery' =" -and
+        $summaryFieldsValid -and
         $launcherContent -notmatch '\$script:workbenchPhase = ''RULE ISSUES EXPORT''' -and
         $launcherContent -match '\$reconciledDisplayPath = Join-Path \$runDirectory ''workbench-display\.json''' -and
         $launcherContent -match 'Copy-FileAtomically -SourcePath \$reconciledDisplayPath -DestinationPath \$stagedDisplayPath' -and
@@ -1916,12 +2108,18 @@ try {
         ($mismatchOutput | Out-String) -match 'display and Rule Issues source files do not match' -and
         $incompleteExitCode -ne 0 -and
         ($incompleteOutput | Out-String) -match 'Run Start-RuleWorkbench\.ps1 -Rebuild to create one'
+    Add-TestResult -Name 'runtime-icon-staging' -Passed $runtimeIconStagingValid -Detail $(if ($runtimeIconStagingValid) {
+        "Launcher staging preserves the $($expectedRuntimeIcons.Count) manifest-owned sprite/legal files, cleans stale inventories, rejects linked paths, and preserves source and unrelated site data."
+    } else {
+        "Runtime icon staging failed: expected=$($expectedRuntimeIcons.Count), first=$($firstRuntimeIcons.Count), restaged=$($restagedRuntimeIcons.Count), reuseExit=$reuseExitCode, restageExit=$iconRestageExitCode, sourceUnchanged=$($sourceIconSnapshot -ceq $sourceIconSnapshotAfter)"
+    })
     Add-TestResult -Name 'incremental-assessment-launch' -Passed $assessmentLaunchValid -Detail 'Ordinary launch reuses validated artifacts and stages only runtime sprites/legal notices, removes stale icon inventory without touching source or other site data, and preserves rebuild/cache publication contracts.'
     $waitingPhraseStagingValid = $reuseExitCode -eq 0 -and
         [string]$reuseResult.displayBuildMode -ceq 'REUSED_VALIDATED_DISPLAY' -and
         (Test-Path -LiteralPath (Join-Path $reuseSiteDirectory 'assistance-waiting-phrases.json')) -and
         (Get-FileHash -LiteralPath (Join-Path $reuseSiteDirectory 'assistance-waiting-phrases.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $workbenchRoot 'assistance-waiting-phrases.json')).Hash
     Add-TestResult -Name 'assistance-waiting-phrase-staging' -Passed $waitingPhraseStagingValid -Detail 'Ordinary source launch stages the exact waiting-phrase catalog while reusing the validated display without a semantic rebuild.'
+    Write-PreparationStatus -Status passed -Name 'launcher-fixtures'
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
         $serverEntryPointContents = @($launcherContent, (Get-Content -LiteralPath $loopbackServerPath -Raw))
@@ -1957,6 +2155,7 @@ try {
 
     $behaviorManifestValid = $true
     if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in @('browser-behavior-manifest', 'browser-playwright-journeys', 'browser-framework-coverage')) {
+        Write-PreparationStatus -Status running -Name 'browser-manifest' -Detail 'Validating selected behavior IDs, journey files, and implementation-guide coverage'
         $behaviorManifestContent = Get-Content -LiteralPath $behaviorManifestPath -Raw
         $behaviorManifest = $behaviorManifestContent | ConvertFrom-Json
         $behaviorIds = @($behaviorManifest.behaviors | ForEach-Object { [string]$_.id })
@@ -1970,6 +2169,7 @@ try {
         if (-not $behaviorManifestValid) {
             throw 'Workbench browser behavior manifest is invalid'
         }
+        Write-PreparationStatus -Status passed -Name 'browser-manifest'
     }
     if (Test-ShouldRun -Name 'relationship-check-cancellation') {
         Start-TestResult -Name 'relationship-check-cancellation'
@@ -2486,6 +2686,7 @@ try {
         Add-TestResult -Name 'saved-rule-evaluation' -Passed $savedPassed -Detail 'Cold no-op requests retain baseline evidence without evaluation; genuine edits retain scope, wording, grouped adjudication, and native launch coverage. Explicit valid retirements are evaluated, baseline advisory retirements remain loadable without Plan membership, and six invalid or conflicting retirement requests are rejected alongside invalid authority, source, snapshot, and ownership.'
     }
     if ([string]::IsNullOrWhiteSpace($Run) -or $Run -in $serverTestNames) {
+    Write-PreparationStatus -Status running -Name 'loopback-server' -Detail 'Staging the browser fixture and manifest-owned runtime icons; starting the authenticated loopback server'
     $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $portProbe.Start()
     $shutdownPort = ([Net.IPEndPoint]$portProbe.LocalEndpoint).Port
@@ -2495,7 +2696,14 @@ try {
     foreach ($assetName in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')) {
         Copy-Item -LiteralPath (Join-Path $workbenchRoot $assetName) -Destination (Join-Path $shutdownSiteDirectory $assetName)
     }
-    Copy-Item -LiteralPath (Join-Path $workbenchRoot 'icons') -Destination $shutdownSiteDirectory -Recurse
+    $browserIconDirectory = Join-Path $shutdownSiteDirectory 'icons'
+    Copy-WorkbenchRuntimeIconAssets -IconRoot (Join-Path $workbenchRoot 'icons') -Destination $browserIconDirectory
+    $browserIconFiles = @(Get-ChildItem -LiteralPath $browserIconDirectory -Recurse -File | ForEach-Object {
+        [IO.Path]::GetRelativePath($browserIconDirectory, $_.FullName).Replace('\', '/')
+    })
+    if (@(Compare-Object -ReferenceObject $expectedRuntimeIcons -DifferenceObject $browserIconFiles -CaseSensitive).Count -ne 0) {
+        throw 'The browser fixture icon payload differs from the manifest-owned runtime assets'
+    }
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $shutdownSiteDirectory 'workbench-display.json')
     Copy-Item -LiteralPath $ruleIssuesPath -Destination (Join-Path $shutdownSiteDirectory 'workbench-rule-issues.json')
     $shutdownToken = 'a' * 64
@@ -2525,6 +2733,7 @@ try {
             $serverOutput = (Receive-Job -Job $serverJob -Keep | Out-String).Trim()
             throw "loopback test server did not become ready$(if ($serverOutput) { ": $serverOutput" })"
         }
+        Write-PreparationStatus -Status passed -Name 'loopback-server'
         $stagedConfigPath = Join-Path $shutdownSiteDirectory 'shutdown-config.js'
         $stagedConfigContent = Get-Content -LiteralPath $stagedConfigPath -Raw
         $staleConfigContent = $stagedConfigContent.Replace($shutdownToken, ('c' * 64)).Replace($operationToken, ('d' * 64))
@@ -2671,6 +2880,11 @@ try {
     }
 }
 catch {
+    if ($null -ne $activePreparationStage) {
+        $failedPreparationParent = $activePreparationParent
+        Write-PreparationStatus -Status failed -Name $activePreparationStage -Parent $failedPreparationParent -Detail $_.Exception.Message
+        if ($failedPreparationParent) { Write-PreparationStatus -Status failed -Name $failedPreparationParent -Detail $_.Exception.Message }
+    }
     if (-not $failureAlreadyReported) {
         $issues.Add($_.Exception.Message)
     }
@@ -2759,7 +2973,7 @@ else {
             Threshold = 'LOW'
             Audit = 'INCONCLUSIVE'
             Installation = 'BLOCKED'
-            FunctionalTests = 'CONTINUED'
+            FunctionalTests = if ($dependencyAuditContinuation) { 'CONTINUED (UNVERIFIED)' } else { 'BLOCKED' }
             Error = $dependencyAuditError
         })
     }
@@ -2769,6 +2983,7 @@ else {
             Threshold = 'LOW'
             Audit = 'FAILED'
             Installation = 'BLOCKED'
+            FunctionalTests = if ($dependencyAuditContinuation) { 'CONTINUED (UNVERIFIED)' } else { 'BLOCKED' }
             Error = $dependencyAuditError
         })
     }

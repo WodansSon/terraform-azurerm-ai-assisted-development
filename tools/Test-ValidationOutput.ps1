@@ -172,6 +172,7 @@ Assert-OutputSequence -Name 'text output ending' -Actual @(Complete-ValidationTe
 $presentationConsumers = @(
     'Test-ChangedToolkitRouting.ps1',
     'Test-ValidationOutput.ps1',
+    'npm-validation/Test-NpmSecurity.ps1',
     'Validate-ChangedToolkits.ps1'
 )
 if ($ProductScope -in @('All', 'Interactive')) {

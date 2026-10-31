@@ -5,6 +5,10 @@ const behaviorIds = ["WB-UX-DETAILS-001"];
 async function verifyDetailLayout(panel, assert, context) {
   const snapshot = await panel.evaluate((node) => {
     const audit = node.id === "assessment-results-detail";
+    const candidateKey = node.querySelector("[data-assessment-candidate]")?.dataset.assessmentCandidate;
+    const candidate = state.assessedCandidates.find(item => item.key === candidateKey);
+    if (!candidate) throw new Error("Details layout fixture is missing its assessed candidate.");
+    const expectedCoverage = audit && candidate.assessment.relatedHostedCoverage.length > 0;
     const sources = node.querySelector('[data-evidence-kind="sources"]');
     const coverage = node.querySelector('[data-evidence-kind="coverage"]');
     const evidence = node.querySelector("[data-assessment-evidence]");
@@ -12,7 +16,7 @@ async function verifyDetailLayout(panel, assert, context) {
     const info = evidence?.querySelector(".information-panel.assessment-context");
     const strip = evidence?.querySelector(".score-strip");
     const factors = evidence?.querySelector(".factor-groups");
-    const order = [sources, ...(audit ? [coverage] : []), heading, info, strip, factors, node.querySelector(".proposed-rule-heading")];
+    const order = [sources, ...(expectedCoverage ? [coverage] : []), heading, info, strip, factors, node.querySelector(".proposed-rule-heading")];
     const actions = node.querySelector(".rule-actions");
     const editors = [...node.querySelectorAll("textarea.evidence-box")];
     const metrics = [...(strip?.querySelectorAll(".score-item") || [])];
@@ -22,11 +26,11 @@ async function verifyDetailLayout(panel, assert, context) {
       guidance: heading.nextElementSibling === info && info.nextElementSibling === strip && !info.querySelector("button"),
       metrics: metrics.map((item) => item.querySelector("span").textContent).join("|") === "Priority Score:|Token Cost:|Token Headroom:"
         && getComputedStyle(strip).gap === "12px" && metrics.every((item) => getComputedStyle(item).borderTopStyle === "solid"),
-      rationale: node.querySelector("[data-assessment-explanation] strong")?.textContent === "Assessment rationale:",
+      rationale: node.querySelector("[data-assessment-explanation] .banner-heading")?.textContent === "Assessment Rationale:",
       controls: audit ? !actions && !node.querySelector("[data-decision-field]")
         : Boolean(actions?.querySelector(".rule-actions-content") && actions.querySelector(".rule-actions-guidance")
           && editors.length === 2 && editors.every((editor) => editor.classList.contains("evidence-box"))),
-      coverage: audit ? Boolean(coverage) : !coverage,
+      coverage: expectedCoverage ? Boolean(coverage) : !coverage,
       noRelationshipChecks: !node.querySelector("[data-manual-relationship-progress], [data-maintainer-resolution], [data-relationship-review-actions]")
     };
   });

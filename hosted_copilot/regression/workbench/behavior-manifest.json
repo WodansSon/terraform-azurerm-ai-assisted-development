@@ -5,6 +5,11 @@
   "targetHarness": "playwright",
   "behaviors": [
     {
+      "id": "WB-UX-RELATIONSHIPS-001",
+      "title": "One snapshot-bound review owner keeps Details, Plan readiness, approval gates, explicit recovery, and cancellation consistent",
+      "journey": "playwright/journeys/relationship-review.journey.cjs"
+    },
+    {
       "id": "WB-UX-ASSISTANCE-001",
       "title": "Independent view and rule chats preserve geometry, catalog context, isolated requests and busy state, explicit cancellation, and reload reset",
       "journey": "playwright/journeys/rule-assistance.journey.cjs"

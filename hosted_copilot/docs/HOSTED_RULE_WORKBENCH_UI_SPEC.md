@@ -28,6 +28,17 @@ Assessment Results additionally retains its Applicability Decision section betwe
 - Source Rules and Assessment Results' Related Hosted Coverage are real sections, not section blocks hidden inside layout wrappers that suppress their borders.
 - Section headings use the existing uppercase, semibold heading treatment. Field labels use the shared semibold treatment and trailing colons.
 
+### Shared Banner Headings
+
+- Render headed information, warning, and error banners through the shared `renderBannerHeading` helper and `.banner-heading` style. Use Title Case source labels with one trailing colon; keep capitalization in the shared presentation style rather than rewriting body or evidence text.
+- Reuse the existing banner icon, message, and action layout. A retryable relationship failure places its Retry icon immediately left of Close; fix-first failures omit Retry. Dismissal hides the banner without clearing the recorded failure or starting another request.
+
+### Relationship Review Status
+
+- Candidate Details and Promotion Plan consume the same current proposal and relationship-review state. A current clean result is a static `Relationships Checked` pill in Details and the native `Ready` pill in Plan once every other required gate passes. Success pills are not commands.
+- Required, stale, running, failed, and findings states retain actionable native warning controls. Clicking a recorded failure reopens it without submitting a retry; only the explicit Retry control retries a retryable current failure.
+- Keep the shared waiting panel and focused Cancel control mounted while elapsed time advances. Update only the elapsed text for an unchanged active request, preserving normal animation and focus. Cancellation targets the owned request, rejects late results, and cannot leave a false Ready state.
+
 ### Evidence Disclosures
 
 - Source Rules and Assessment Results' Related Hosted Coverage start independently collapsed. Candidate Details omits the inferred coverage list; its absence does not alter stored assessment evidence or establish different relationships.
@@ -286,6 +297,7 @@ Rule Actions belongs only to Candidate Details.
 - Preserve status-dependent guidance: normally, `Choose one action. Hosted catalog status determines which actions are available.` When identical wording makes Update unavailable, retain that specific explanation.
 - The controls sit directly in the section. A layout-only wrapper may arrange them, but must not add an outer subcontext background, border, rail, or padding.
 - Keep individual control-group surfaces, status-constrained action choices, selected values, disabled states, retirement options, and plan semantics unchanged.
+- Consume valid actions from the shared decision owner and list them alphabetically. Edited wording cannot retain `No Change`; removing that invalid choice must not silently choose another action or discard the editor buffer. Selecting a changed-rule action requires an explicit nonempty decision rationale before its save can complete.
 - Beneath `Rule Applies to Resource Type(s):`, show a non-dismissible information panel stating `Resource types apply only to implementation rules.`
 - Resource types remain editable only for implementation rules with Add or Update selected. The guidance does not broaden that eligibility.
 
@@ -303,4 +315,5 @@ Rule Actions belongs only to Candidate Details.
 - `WB-UX-DETAILS-001` owns the shared visual contract. `WB-UX-DETAILS-002` and `WB-UX-DETAILS-003` retain current-result projection and original-evidence freshness coverage.
 - Exercise current and original-evidence states in both views, including unsaved, inflight, failed, stale, and restored evaluation contexts.
 - Retain focused action, generated-identity, persistence, and relationship journeys when selectors or owning controls change.
+- [The relationship journey](../regression/workbench/playwright/journeys/relationship-review.journey.cjs) covers `WB-UX-RELATIONSHIPS-001`: shared Details/Plan freshness, valid action and rationale controls, static success pills, explicit retry and dismissal, fix-first failures, cancellation, and stable normal-motion waiting controls.
 - During UX implementation, use the focused owning checks. Complete Hosted validation remains a separate maintainer-authorized final step.

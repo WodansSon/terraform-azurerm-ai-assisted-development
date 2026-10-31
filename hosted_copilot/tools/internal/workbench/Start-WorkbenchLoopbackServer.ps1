@@ -18,6 +18,7 @@ $ErrorActionPreference = 'Stop'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/SavedRuleEvaluation.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/RuleAssistance.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/RelationshipReview.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1')
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1')
 $normalProfile = Resolve-HostedLlmProfile -Profile normal -Model $AssistanceModel -ReasoningEffort $AssistanceReasoningEffort
@@ -32,6 +33,7 @@ $assistanceParameters = @{
     EvaluatorCommand = $EvaluatorCommand; Model = $AssistanceModel; ReasoningEffort = $AssistanceReasoningEffort
 }
 $url = "http://127.0.0.1:$Port/"
+$receiptDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-workbench-review-receipts-' + [guid]::NewGuid().ToString('N'))
 $stagedConfigPath = Join-Path $resolvedSiteDirectory 'shutdown-config.js'
 if (-not (Test-Path -LiteralPath $stagedConfigPath -PathType Leaf)) {
     throw "Workbench runtime configuration was not found: $stagedConfigPath"
@@ -181,6 +183,8 @@ try {
             }
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
                 $runtimeConfig | Add-Member -NotePropertyName ruleAssistance -NotePropertyValue (Get-RuleAssistanceRuntime @assistanceParameters) -Force
+                $reviewRuntime = Get-RelationshipReviewRuntime -RepositoryRoot $RepositoryRoot -DisplayPath $assistanceParameters.DisplayPath
+                $runtimeConfig | Add-Member -NotePropertyName relationshipReview -NotePropertyValue $reviewRuntime -Force
                 $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
@@ -193,6 +197,42 @@ try {
                 }
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('{"status":"shutting-down"}')) -IncludeBody $true
                 $shutdownRequested = $true
+                continue
+            }
+
+            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/check-relationships') {
+                if (-not (Test-RequestToken -Candidate ([string]$requestHeaders['X-Workbench-Operation-Token']) -Expected $OperationToken)) {
+                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
+                    continue
+                }
+                try {
+                    $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders
+                    $reviewParameters = @{ RepositoryRoot = $RepositoryRoot; DisplayPath = $assistanceParameters.DisplayPath; EvaluatorCommand = $EvaluatorCommand; ReceiptDirectory = $receiptDirectory }
+                    $evaluationRequests.Add((Start-RelationshipReviewRequest -RunspacePool $evaluationPool -Client $client -RequestBody $requestBody -Parameters $reviewParameters))
+                    $deferredResponse = $true
+                } catch {
+                    $failure = Get-RelationshipReviewFailure 'invalid-request'
+                    $failureBody = @{ error = $failure } | ConvertTo-Json -Compress
+                    Write-HttpResponse -Stream $stream -StatusCode 400 -StatusText 'Bad Request' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
+                }
+                continue
+            }
+
+            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/verify-relationship-reviews') {
+                if (-not (Test-RequestToken -Candidate ([string]$requestHeaders['X-Workbench-Operation-Token']) -Expected $OperationToken)) {
+                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
+                    continue
+                }
+                try {
+                    $body = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders
+                    $envelope = $body | ConvertFrom-Json -Depth 5 -DateKind String
+                    $json = [Text.UTF8Encoding]::new($false, $true).GetString([Convert]::FromBase64String([string]$envelope.payloadBase64))
+                    $verification = Test-RelationshipReviewApproval -Request ($json | ConvertFrom-Json -Depth 100 -DateKind String) -RepositoryRoot $RepositoryRoot -DisplayPath $assistanceParameters.DisplayPath -ReceiptDirectory $receiptDirectory
+                    Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes(($verification | ConvertTo-Json -Compress))) -IncludeBody $true
+                } catch {
+                    $failure = Get-RelationshipReviewFailure 'snapshot-changed'
+                    Write-HttpResponse -Stream $stream -StatusCode 409 -StatusText 'Conflict' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes((@{ error = $failure } | ConvertTo-Json -Compress))) -IncludeBody $true
+                }
                 continue
             }
 
@@ -263,5 +303,6 @@ finally {
     finally {
         $evaluationPool.Close()
         $evaluationPool.Dispose()
+        if (Test-Path -LiteralPath $receiptDirectory -PathType Container) { Remove-Item -LiteralPath $receiptDirectory -Recurse -Force }
     }
 }

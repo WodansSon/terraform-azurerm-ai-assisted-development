@@ -36,7 +36,7 @@ pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1 -Run l
 
 Focused execution always runs the Hosted npm security audit and verifies the installed package graph against the audited lockfile. The harness then runs only the requested subtest and its required staging, browser-runtime, or loopback-server prerequisites. The focused-run catalog is checked against every reported test name so newly added tests cannot silently become full-suite-only.
 
-When a conclusive npm audit failure blocks feedback on a focused change, add `-ContinueAfterNpmAuditFailure`. This explicit local-only tradeoff still records the audit failure, requires the installed package graph and browser runtimes to already match the lockfile, performs no dependency or browser installation, marks the functional result unverified, and exits nonzero. The switch requires `-Run`, is rejected for complete validation, and cannot provide release or CI evidence.
+Any failed or inconclusive npm audit blocks focused tests by default. For a known npm issue during local development, explicitly add `-ContinueAfterNpmAuditFailure`. This local-only tradeoff still records the audit failure, requires the installed package graph and browser runtimes to already match the lockfile, performs no dependency or browser installation, marks the functional result unverified, and exits nonzero. The switch requires `-Run`, is rejected for complete validation, and cannot provide release or CI evidence. There is no automatic continuation based on an audit error message.
 
 Run one Playwright journey with the same owned synthetic fixture and server lifecycle:
 
