@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Maintainer/Workflow:**
   - **[Internal]** - Upstream contributor drift checks now authenticate GitHub Contents API requests in CI, avoiding unauthenticated rate-limit failures.
   - **[Internal]** - Updated repository validation dependencies and reviewed transitive overrides to resolve reported npm security findings without downgrading the link checker or weakening audit thresholds; documented compatibility exceptions and the remaining encoding-package deprecation.
+  - **[Internal]** - Shared npm validation now parses audit JSON separately from stderr and reports vulnerability and diagnostic failures independently, preventing warnings from corrupting audit parsing while still failing on non-whitespace diagnostics or unsuccessful commands; lockfile checks use standardized timed progress and summaries without changing security thresholds or JSON output contracts.
 
 ## [3.9.1] - 2026-08-24
 
