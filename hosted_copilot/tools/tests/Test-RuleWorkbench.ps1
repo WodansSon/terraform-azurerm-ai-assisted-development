@@ -84,6 +84,7 @@ $serverTestNames = @('loopback-host-validation', 'server-owned-runtime-config', 
 $staticTestNames = @(
     'npm-audit-continuation',
     'relationship-review',
+    'relationship-production-server',
     'rule-assistance',
     'saved-rule-evaluation',
     'saved-rule-wording-review',
@@ -95,7 +96,7 @@ $staticTestNames = @(
     'runtime-icon-staging',
     'portable-icon-generation',
     'browser-state-contract',
-    'tooltip-sentence-case',
+    'tooltip-title-case',
     'statusbar-tooltip-title-case',
     'browser-behavior-manifest',
     'browser-timestamp-normalization',
@@ -151,6 +152,18 @@ $staticTestNames = @(
 $supportedFocusedRuns = @($mandatoryTestNames + $staticTestNames + $serverTestNames + $browserRuntimeTestNames | Where-Object { $_ -ne 'run-selection' } | Sort-Object -Unique)
 $testScriptContent = Get-Content -LiteralPath $PSCommandPath -Raw
 $declaredTestNames = @([regex]::Matches($testScriptContent, "Add-TestResult\s+-Name\s+'(?<name>[^']+)'") | ForEach-Object { [string]$_.Groups['name'].Value } | Sort-Object -Unique)
+$statusAst = [Management.Automation.Language.Parser]::ParseInput($testScriptContent, [ref]$null, [ref]$null)
+$preparationLabels = @($statusAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Write-PreparationStatus' }, $true) | ForEach-Object {
+    $elements = $_.CommandElements
+    $nested = @($elements | Where-Object { $_ -is [Management.Automation.Language.CommandParameterAst] -and $_.ParameterName -eq 'Parent' }).Count -gt 0
+    for ($index = 0; $index -lt $elements.Count - 1; $index++) {
+        if ($elements[$index] -is [Management.Automation.Language.CommandParameterAst] -and $elements[$index].ParameterName -eq 'Name' -and $elements[$index + 1] -is [Management.Automation.Language.StringConstantExpressionAst]) {
+            if ($nested) { '  ' + $elements[$index + 1].Value } else { 'prepare/' + $elements[$index + 1].Value }
+        }
+    }
+})
+$progressJourneyNames = @(Get-ChildItem -LiteralPath (Join-Path (Split-Path -Parent $playwrightRunnerPath) 'journeys') -Filter '*.journey.cjs' -File | ForEach-Object { $_.Name.Replace('.journey.cjs', '') })
+$script:statusNameWidth = Get-ValidationNameWidth -Names @($supportedFocusedRuns + $preparationLabels + $progressJourneyNames + 'workbench-test-run') -MinimumWidth 30
 $missingFocusedRuns = @($declaredTestNames | Where-Object { $_ -ne 'run-selection' -and $_ -notin $supportedFocusedRuns })
 $unknownFocusedRuns = @($supportedFocusedRuns | Where-Object { $_ -notin $declaredTestNames })
 $journeyNames = @($Journey | ForEach-Object { @([string]$_ -split ',') } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique)
@@ -190,7 +203,7 @@ function Start-TestResult {
     }
     $testStartTimes[$Name] = Get-Date
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $RunningDetail)
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $RunningDetail -NameWidth $script:statusNameWidth)
     }
 }
 
@@ -218,7 +231,7 @@ function Add-TestResult {
     })
     if ($OutputFormat -eq 'Text') {
         $statusDetail = if ($Passed -and -not [string]::IsNullOrWhiteSpace($SuccessDetail)) { $SuccessDetail } else { Format-ValidationDuration -DurationSeconds $durationSeconds }
-        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail $statusDetail)
+        Write-Host (Format-ValidationStatusLine -Status $status -Name $Name -Detail $statusDetail -NameWidth $script:statusNameWidth)
     }
     if (-not $Passed) {
         $issues.Add("$Name`: $Detail")
@@ -245,7 +258,7 @@ function Write-PreparationStatus {
         $script:activePreparationStage = if ($Parent) { $Parent } else { $null }
         $script:activePreparationParent = $null
     }
-    if ($OutputFormat -eq 'Text') { Write-Host (Format-ValidationStatusLine -Status $Status -Name $label -Detail $Detail -IndentLevel $(if ($Parent) { 1 } else { 0 })) }
+    if ($OutputFormat -eq 'Text') { Write-Host (Format-ValidationStatusLine -Status $Status -Name $label -Detail $Detail -NameWidth ($script:statusNameWidth - $(if ($Parent) { 2 } else { 0 })) -IndentLevel $(if ($Parent) { 1 } else { 0 })) }
 }
 
 function Test-NpmPackageGraphCurrent {
@@ -884,7 +897,7 @@ $dependencyOutput = @()
         Add-TestResult -Name 'npm-audit-continuation' -Passed $true -Detail "$policyCaseCount production-policy cases keep default audits strict, preserve failure during explicit continuation, and prohibit dependency installation or a mismatched graph during continuation."
     }
 
-    if (Test-ShouldRun 'relationship-review') {
+    if ((Test-ShouldRun 'relationship-review') -or (Test-ShouldRun 'relationship-production-server')) {
         Start-TestResult -Name 'relationship-review' -RunningDetail 'Checking bounded projection, strict findings, and trusted receipts with offline evaluator'
         Import-Module (Join-Path $toolsRoot 'modules/workbench/RelationshipReview.psm1') -Force -DisableNameChecking
         $completedTask = [Threading.Tasks.TaskCompletionSource[object]]::new()
@@ -907,7 +920,8 @@ $dependencyOutput = @()
             if (-not $reviewPrompt.Contains($boundary, [StringComparison]::OrdinalIgnoreCase)) { throw "Relationship review prompt is missing $boundary" }
         }
         $owned = @($display.candidates | Where-Object { $null -ne $_.recommendation -and -not [string]::IsNullOrWhiteSpace([string]$_.recommendation.hostedId) })
-        $subject = @($owned | Where-Object { $_.catalogMapping.state -ceq 'unmapped' } | Select-Object -First 1)[0]
+        $subject = @($owned | Where-Object { $_.recommendation.hostedId -ceq 'REVIEW-REPO-001' })[0]
+        if ($subject.catalogMapping.state -cne 'unmapped') { throw 'The permanent production relationship subject must remain an unmapped fixture' }
         $subjectKey = "$($subject.source.lane):$($subject.source.id):$($subject.assessment.id)"
         $proposals = @($owned | ForEach-Object {
             $key = "$($_.source.lane):$($_.source.id):$($_.assessment.id)"
@@ -919,6 +933,20 @@ $dependencyOutput = @()
         $runtime = Get-RelationshipReviewRuntime -RepositoryRoot $repositoryRoot -DisplayPath $displayPath
         $request = [ordered]@{ schemaVersion = 1; requestId = [guid]::NewGuid().ToString(); authoritySha256 = $runtime.authoritySha256; snapshotKey = 'c' * 64;
             candidateKey = $subjectKey; sourceFiles = $display.sourceFiles; proposals = $proposals }
+        $untouchedRequest = $request | ConvertTo-Json -Depth 50 | ConvertFrom-Json -Depth 50
+        $untouchedSubject = @($untouchedRequest.proposals | Where-Object { $_.candidateKey -ceq $subjectKey })[0]
+        $untouchedSubject.action = 'no-change'
+        $untouchedSubject.inPlan = $false
+        $untouchedSubject.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$subject.recommendation.ruleText))
+        $untouchedInput = Get-RelationshipReviewInput -Display $display -Request $untouchedRequest
+        if (@($untouchedInput.changedRuleIds).Count -or @($untouchedInput.removedRuleIds).Count) { throw 'Untouched off-Plan baseline became a catalog mutation' }
+        $emptySchema = Get-RelationshipReviewResponseSchema $untouchedInput | ConvertTo-Json -Depth 30
+        if (-not (Test-Json -Json '{"findings":[]}' -Schema $emptySchema -ErrorAction Stop)) { throw 'Zero-change findings schema is not valid' }
+        $untouchedSubject.action = $null
+        $untouchedSubject.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$subject.recommendation.ruleText + ' Preserve an explicitly edited off-Plan draft.'))
+        $editedPreview = Get-RelationshipReviewInput -Display $display -Request $untouchedRequest
+        $planProjection = Get-RelationshipReviewInput -Display $display -Request $untouchedRequest -PlanOnly
+        if (@($editedPreview.changedRuleIds).Count -ne 1 -or @($planProjection.changedRuleIds).Count) { throw 'Edited-subject preview and final Plan projection are not distinct' }
         $reviewRequestPath = Join-Path $tempRoot 'relationship-request.json'
         $reviewOutputPath = Join-Path $tempRoot 'relationship-result.json'
         $reviewReceipts = Join-Path $tempRoot 'relationship-receipts'
@@ -932,6 +960,8 @@ $dependencyOutput = @()
         if ($response.snapshotKey -cne $request.snapshotKey -or @($response.findings).Count -or $response.model -cne 'gpt-6-luna') { throw 'Validated review result is not bound to the request' }
         $approval = [ordered]@{ schemaVersion = 1; authoritySha256 = $runtime.authoritySha256; sourceFiles = $display.sourceFiles; proposals = $proposals;
             receipts = @([ordered]@{ candidateKey = $subjectKey; requestId = $request.requestId }) }
+        $productionReviewRequest = ($request | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50
+        $productionReviewApproval = ($approval | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50
         $approvalObject = ($approval | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50
         $approvalParameters = @{ RepositoryRoot = $repositoryRoot; DisplayPath = $displayPath; ReceiptDirectory = $reviewReceipts }
         if (-not (Test-RelationshipReviewApproval -Request $approvalObject @approvalParameters).valid) { throw 'A valid server receipt was rejected' }
@@ -957,10 +987,11 @@ $dependencyOutput = @()
     }
 
     Write-PreparationStatus -Status running -Name 'rule-issues-fixture' -Detail 'Building and schema-validating the synthetic Rule Issues artifact'
-    $issueCandidate = @($display.candidates | Where-Object { $null -ne $_.recommendation } | Select-Object -First 1)[0]
+    $issueCandidate = @($display.candidates | Where-Object { $null -ne $_.recommendation -and $_.recommendation.hostedId -ceq 'REVIEW-REPO-001' })[0]
+    if ($issueCandidate.catalogMapping.state -cne 'unmapped' -or -not $issueCandidate.assessment.hostedApplicable) { throw 'The permanent relationship fixture must remain an applicable unmapped proposal' }
     $issueCandidateKey = "$([string]$issueCandidate.source.lane):$([string]$issueCandidate.source.id):$([string]$issueCandidate.assessment.id)"
     $issueSourceRuleId = [string]$issueCandidate.recommendation.hostedId
-    $issueRelatedRule = @($display.catalog.rules | Where-Object { [string]$_.id -cne $issueSourceRuleId } | Select-Object -First 1)[0]
+    $issueRelatedRule = @($display.catalog.rules | Where-Object { [string]$_.id -ceq 'IMPL-PATCH-001' })[0]
     $ruleIssuesFixture = [ordered]@{
         '$schema' = 'workbench-rule-issues-v4.schema.json'
         schemaVersion = 4
@@ -1320,7 +1351,8 @@ $dependencyOutput = @()
             "$tooltipLiteral ($($unexpectedCapitalization -join ', '))"
         }
     })
-    Add-TestResult -Name 'tooltip-sentence-case' -Passed ($tooltipCaseViolations.Count -eq 0) -Detail $(if ($tooltipCaseViolations.Count -eq 0) { 'Authored non-status Workbench tooltips use sentence case while preserving product names and acronyms.' } else { "Unexpected tooltip capitalization: $($tooltipCaseViolations -join '; ')" })
+    $sharedTooltipTitleCaseValid = $stylesContent -match '\.status-surface-tooltip\s*\{[^}]*text-transform:\s*capitalize'
+    Add-TestResult -Name 'tooltip-title-case' -Passed $sharedTooltipTitleCaseValid -Detail 'Shared Workbench tooltips display Title Case without rewriting stored labels or quoted evidence.'
 
     $statusbarTooltipCaseViolations = @(foreach ($label in $statusbarTooltipLiterals) {
         if (@([regex]::Matches($label, '[A-Za-z][A-Za-z''-]*') | Where-Object { $_.Value[0] -cmatch '[a-z]' }).Count -gt 0) {
@@ -1809,6 +1841,18 @@ $dependencyOutput = @()
         $appContent -match 'await persistSession\(nextSession, assertCurrent\)' -and
         $appContent -match 'const label = checking \? "Applying Recommended Actions"' -and
         $appContent -match 'activeRuleIssueRecommendations\.delete\(issue\.id\)'
+    $ruleIssueRecommendationStagingValid = $ruleIssueRecommendationStagingValid -and
+        $appContent -match 'function getProjectedRuleCatalog\(' -and
+        $appContent -match 'function getRuleIssueState\(' -and
+        $appContent -match 'function getOriginalRuleBaseline\(' -and
+        $appContent -match 'function isOriginalRuleRevert\(' -and
+        $appContent -match 'data-resolution-status=' -and
+        $appContent -match 'function renderRuleIssueHistory\(' -and
+        $appContent -match 'async function copyConsolidatedWording\(' -and
+        $appContent -notmatch 'navigator\.clipboard\.writeText\((?:""|'''')\)' -and
+        $stylesContent -match '\.banner-success\s*\{' -and
+        $stylesContent -match '--mint-light:\s*#b8efd3' -and
+        $stylesContent -match '\.consolidated-wording-copy:hover'
     Add-TestResult -Name 'rule-issue-recommendation-staging' -Passed $ruleIssueRecommendationStagingValid -Detail 'Published Rule Issue recommendations commit the complete explicit maintainer selection atomically without saved-edit AI relationship checks.'
 
     $planDetailValid = $appContent -match 'data-plan-detail=' -and $appContent -match 'Complete required fields for' -and $appContent -match 'function openPlanCandidate\(' -and $appContent -match 'selectCandidate\(key, "plan"\)' -and $appContent -match 'row\.closest\("details\.candidate-category"\)' -and $appContent -match 'row\.closest\("details\.candidate-source-root"\)' -and $appContent -match 'row\.scrollIntoView' -and $appContent -match 'field\?\.focus'
@@ -2120,6 +2164,121 @@ $dependencyOutput = @()
         (Get-FileHash -LiteralPath (Join-Path $reuseSiteDirectory 'assistance-waiting-phrases.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $workbenchRoot 'assistance-waiting-phrases.json')).Hash
     Add-TestResult -Name 'assistance-waiting-phrase-staging' -Passed $waitingPhraseStagingValid -Detail 'Ordinary source launch stages the exact waiting-phrase catalog while reusing the validated display without a semantic rebuild.'
     Write-PreparationStatus -Status passed -Name 'launcher-fixtures'
+
+    if (Test-ShouldRun -Name 'relationship-production-server') {
+        Start-TestResult -Name 'relationship-production-server' -RunningDetail 'Checking real production runtime, relationship worker, authentication, and server-held receipts'
+        $productionSite = Join-Path $tempRoot 'relationship-production-site'
+        $null = New-Item -ItemType Directory -Path $productionSite
+        Copy-Item -LiteralPath $displayPath -Destination (Join-Path $productionSite 'workbench-display.json')
+        Copy-Item -LiteralPath $ruleIssuesPath -Destination (Join-Path $productionSite 'workbench-rule-issues.json')
+        $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+        $portProbe.Start()
+        $productionPort = ([Net.IPEndPoint]$portProbe.LocalEndpoint).Port
+        $portProbe.Stop()
+        $productionUrl = "http://127.0.0.1:$productionPort"
+        $productionRuntime = $null
+        $productionMarker = Join-Path $tempRoot 'production-relationship-calls.txt'
+        $productionJob = Start-Job -ScriptBlock {
+            param($Launcher, $Site, $Port, $Evaluator, $Marker)
+            [Environment]::SetEnvironmentVariable('HOSTED_RELATIONSHIP_FIXTURE_MODE', 'by-wording')
+            [Environment]::SetEnvironmentVariable('HOSTED_RELATIONSHIP_FIXTURE_MARKER', $Marker)
+            & pwsh -NoProfile -File $Launcher -SiteDirectory $Site -Port $Port -EvaluatorCommand $Evaluator -SkipGitHubAuthorization -NoLaunch
+        } -ArgumentList $launcherPath, $productionSite, $productionPort, $reviewEvaluator, $productionMarker
+        try {
+            $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+            while ($null -eq $productionRuntime -and [DateTimeOffset]::UtcNow -lt $deadline -and $productionJob.State -eq 'Running') {
+                try {
+                    $runtimeResponse = Invoke-WebRequest -Uri "$productionUrl/runtime-config" -SkipHttpErrorCheck -TimeoutSec 2
+                    if ($runtimeResponse.StatusCode -eq 200) { $productionRuntime = $runtimeResponse.Content | ConvertFrom-Json -Depth 30 -DateKind String }
+                } catch { }
+            }
+            if ($null -eq $productionRuntime -or $null -eq $productionRuntime.PSObject.Properties['relationshipReview']) { throw 'Production launcher did not publish relationship runtime metadata' }
+            $reviewRuntime = $productionRuntime.relationshipReview
+            $expectedProductionRuntime = Get-RelationshipReviewRuntime -RepositoryRoot $repositoryRoot -DisplayPath (Join-Path $productionSite 'workbench-display.json')
+            if ($reviewRuntime.authoritySha256 -cne $expectedProductionRuntime.authoritySha256 -or $reviewRuntime.model -cne $expectedProductionRuntime.model -or $reviewRuntime.reasoningEffort -cne $expectedProductionRuntime.reasoningEffort) { throw 'Production relationship runtime differs from its configured authority' }
+            $headers = @{ 'X-Workbench-Operation-Token' = [string]$productionRuntime.operationToken }
+            $productionReviewRequest.authoritySha256 = $reviewRuntime.authoritySha256
+            $productionSubject = @($productionReviewRequest.proposals | Where-Object { $_.candidateKey -ceq $productionReviewRequest.candidateKey })[0]
+            $productionSubjectBaseline = @($display.candidates | Where-Object { "$($_.source.lane):$($_.source.id):$($_.assessment.id)" -ceq $productionReviewRequest.candidateKey })[0].recommendation.ruleText
+            $untouchedProductionRequest = $productionReviewRequest | ConvertTo-Json -Depth 50 | ConvertFrom-Json -Depth 50
+            $untouchedProductionSubject = @($untouchedProductionRequest.proposals | Where-Object { $_.candidateKey -ceq $untouchedProductionRequest.candidateKey })[0]
+            $untouchedProductionSubject.action = 'no-change'
+            $untouchedProductionSubject.inPlan = $false
+            $untouchedProductionSubject.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($productionSubjectBaseline))
+            $untouchedBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($untouchedProductionRequest | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            Write-PreparationStatus -Status running -Name 'production-untouched-baseline' -Detail 'Checking that off-Plan unchanged proposals neither mutate the catalog nor invoke inference'
+            $untouchedResponse = Invoke-WebRequest -Uri "$productionUrl/check-relationships" -Method Post -Headers $headers -ContentType 'application/json' -Body $untouchedBody -SkipHttpErrorCheck
+            if ($untouchedResponse.StatusCode -ne 200 -or @(($untouchedResponse.Content | ConvertFrom-Json).changedRuleIds).Count -or (Test-Path -LiteralPath $productionMarker)) { throw 'Production treated untouched baseline as a new rule or invoked inference' }
+            $productionReviewRequest.requestId = [guid]::NewGuid().ToString()
+            $productionSubject.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($productionSubjectBaseline))
+            $envelope = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($productionReviewRequest | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            Write-PreparationStatus -Status running -Name 'production-authentication' -Detail 'Rejecting unauthenticated malformed envelopes before parsing'
+            $unauthorized = Invoke-WebRequest -Uri "$productionUrl/check-relationships" -Method Post -ContentType 'application/json' -Body '{"payloadBase64":"e30="}' -SkipHttpErrorCheck
+            if ($unauthorized.StatusCode -ne 403) { throw 'Production relationship checking did not reject an unauthenticated request' }
+            Write-PreparationStatus -Status running -Name 'production-relationship-worker' -Detail 'Executing the complete changed-rule request through the production endpoint'
+            $reviewResponse = Invoke-WebRequest -Uri "$productionUrl/check-relationships" -Method Post -Headers $headers -ContentType 'application/json' -Body $envelope -SkipHttpErrorCheck -TimeoutSec 30
+            if ($reviewResponse.StatusCode -ne 200) { throw 'Production relationship worker failed through its real HTTP endpoint' }
+            $checked = $reviewResponse.Content | ConvertFrom-Json -Depth 50 -DateKind String
+            if ($checked.requestId -cne $productionReviewRequest.requestId -or $checked.candidateKey -cne $productionReviewRequest.candidateKey -or $checked.model -cne $reviewRuntime.model -or $checked.reasoningEffort -cne $reviewRuntime.reasoningEffort -or @($checked.changedRuleIds).Count -eq 0 -or @($checked.findings).Count) { throw 'Production relationship response did not preserve the changed-rule snapshot and configured model' }
+            $productionReviewApproval.authoritySha256 = $reviewRuntime.authoritySha256
+            $productionReviewApproval.proposals = $productionReviewRequest.proposals
+            $productionReviewApproval.receipts[0].requestId = $checked.requestId
+            $approvalBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($productionReviewApproval | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            Write-PreparationStatus -Status running -Name 'production-receipt-verification' -Detail 'Checking authenticated current receipts and rejecting forged or stale evidence'
+            $unauthorizedApproval = Invoke-WebRequest -Uri "$productionUrl/verify-relationship-reviews" -Method Post -ContentType 'application/json' -Body '{"payloadBase64":"e30="}' -SkipHttpErrorCheck
+            if ($unauthorizedApproval.StatusCode -ne 403) { throw 'Production receipt verification did not reject an unauthenticated request' }
+            $verified = Invoke-WebRequest -Uri "$productionUrl/verify-relationship-reviews" -Method Post -Headers $headers -ContentType 'application/json' -Body $approvalBody -SkipHttpErrorCheck
+            if ($verified.StatusCode -ne 200 -or -not ($verified.Content | ConvertFrom-Json).valid) { throw 'Production server rejected its own current relationship receipt' }
+            $forgedApproval = $productionReviewApproval | ConvertTo-Json -Depth 50 | ConvertFrom-Json -Depth 50
+            $forgedApproval.receipts[0].requestId = [guid]::NewGuid().ToString()
+            $forgedBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($forgedApproval | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            $forgedResponse = Invoke-WebRequest -Uri "$productionUrl/verify-relationship-reviews" -Method Post -Headers $headers -ContentType 'application/json' -Body $forgedBody -SkipHttpErrorCheck
+            if ($forgedResponse.StatusCode -ne 409) { throw 'Production receipt verification accepted forged authority' }
+            $staleApproval = $productionReviewApproval | ConvertTo-Json -Depth 50 | ConvertFrom-Json -Depth 50
+            $staleApproval.proposals[0].proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('Changed after the production check.'))
+            $staleBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($staleApproval | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            $staleResponse = Invoke-WebRequest -Uri "$productionUrl/verify-relationship-reviews" -Method Post -Headers $headers -ContentType 'application/json' -Body $staleBody -SkipHttpErrorCheck
+            if ($staleResponse.StatusCode -ne 409) { throw 'Production receipt verification accepted changed proposals' }
+            Write-PreparationStatus -Status running -Name 'production-conflict-resolution' -Detail 'Rejecting approval with a current conflict and requiring a new clean receipt after wording changes'
+            $productionSubject.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($productionSubjectBaseline + ' SYNTHETIC_RELATIONSHIP_CONFLICT'))
+            $productionReviewRequest.requestId = [guid]::NewGuid().ToString()
+            $conflictBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($productionReviewRequest | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            $conflictResponse = Invoke-WebRequest -Uri "$productionUrl/check-relationships" -Method Post -Headers $headers -ContentType 'application/json' -Body $conflictBody -SkipHttpErrorCheck -TimeoutSec 30
+            if ($conflictResponse.StatusCode -ne 200) { throw 'Production conflict fixture did not return a validated result' }
+            $conflictResult = $conflictResponse.Content | ConvertFrom-Json -Depth 50
+            if (@($conflictResult.findings).Count -ne 1) { throw 'Production conflict result omitted its finding' }
+            $conflictApproval = $productionReviewApproval | ConvertTo-Json -Depth 50 | ConvertFrom-Json -Depth 50
+            $conflictApproval.proposals = $productionReviewRequest.proposals
+            $conflictApproval.receipts[0].requestId = $conflictResult.requestId
+            $conflictApprovalBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($conflictApproval | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            $blockedConflict = Invoke-WebRequest -Uri "$productionUrl/verify-relationship-reviews" -Method Post -Headers $headers -ContentType 'application/json' -Body $conflictApprovalBody -SkipHttpErrorCheck
+            if ($blockedConflict.StatusCode -ne 409) { throw 'Production approved a receipt with unresolved relationship findings' }
+            $productionSubject.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($productionSubjectBaseline + ' Preserve explicitly resolved fixture wording.'))
+            $productionReviewRequest.requestId = [guid]::NewGuid().ToString()
+            $resolvedBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($productionReviewRequest | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            $resolvedResponse = Invoke-WebRequest -Uri "$productionUrl/check-relationships" -Method Post -Headers $headers -ContentType 'application/json' -Body $resolvedBody -SkipHttpErrorCheck -TimeoutSec 30
+            if ($resolvedResponse.StatusCode -ne 200) { throw 'Production resolved fixture did not complete' }
+            $resolvedResult = $resolvedResponse.Content | ConvertFrom-Json -Depth 50
+            if (@($resolvedResult.findings).Count) { throw 'Production resolved fixture retained unresolved findings' }
+            $conflictApproval.proposals = $productionReviewRequest.proposals
+            $oldReceiptBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($conflictApproval | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            $oldReceiptResponse = Invoke-WebRequest -Uri "$productionUrl/verify-relationship-reviews" -Method Post -Headers $headers -ContentType 'application/json' -Body $oldReceiptBody -SkipHttpErrorCheck
+            if ($oldReceiptResponse.StatusCode -ne 409) { throw 'Changed wording reused an obsolete conflict receipt' }
+            $conflictApproval.receipts[0].requestId = $resolvedResult.requestId
+            $resolvedApprovalBody = @{ payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($conflictApproval | ConvertTo-Json -Depth 50 -Compress))) } | ConvertTo-Json -Compress
+            $resolvedApproval = Invoke-WebRequest -Uri "$productionUrl/verify-relationship-reviews" -Method Post -Headers $headers -ContentType 'application/json' -Body $resolvedApprovalBody -SkipHttpErrorCheck
+            if ($resolvedApproval.StatusCode -ne 200 -or -not ($resolvedApproval.Content | ConvertFrom-Json).valid) { throw 'Production rejected the current clean receipt after resolution' }
+            Add-TestResult -Name 'relationship-production-server' -Passed $true -Detail 'The actual production launcher performs no inference for untouched baselines, checks Add, blocks conflicting/stale/forged receipts, and accepts only a current clean receipt after resolution.'
+        }
+        finally {
+            if ($null -ne $productionRuntime) {
+                try { $null = Invoke-WebRequest -Uri "$productionUrl/shutdown" -Method Post -Headers @{ 'X-Workbench-Shutdown-Token' = [string]$productionRuntime.shutdownToken } -SkipHttpErrorCheck -TimeoutSec 3 } catch { }
+            }
+            $null = Wait-Job -Job $productionJob -Timeout 5
+            if ($productionJob.State -eq 'Running') { Stop-Job -Job $productionJob }
+            Remove-Job -Job $productionJob -Force
+        }
+    }
 
     if (Test-ShouldRun -Name 'loopback-read-only-server') {
         $serverEntryPointContents = @($launcherContent, (Get-Content -LiteralPath $loopbackServerPath -Raw))
@@ -2795,7 +2954,7 @@ $dependencyOutput = @()
                 $playwrightArguments += @('--slow-mo', [string]$SlowMo)
             }
             if ($OutputFormat -eq 'Text') {
-                $playwrightArguments += '--progress'
+                $playwrightArguments += @('--progress', '--progress-name-width', [string]$script:statusNameWidth)
             }
             $selectedBehaviors = if ($runAllJourneys) {
                 @($behaviorManifest.behaviors)
@@ -2889,7 +3048,7 @@ catch {
         $issues.Add($_.Exception.Message)
     }
     if ($OutputFormat -eq 'Text' -and -not $failureAlreadyReported) {
-        Write-Host (Format-ValidationStatusLine -Status 'failed' -Name 'workbench-test-run' -Detail $_.Exception.Message)
+        Write-Host (Format-ValidationStatusLine -Status 'failed' -Name 'workbench-test-run' -Detail $_.Exception.Message -NameWidth $script:statusNameWidth)
     }
 }
 finally {

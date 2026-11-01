@@ -7,8 +7,8 @@ const npmRoot = path.resolve(workbenchRegressionRoot, "../../tools/npm");
 const { chromium } = require(require.resolve("@playwright/test", { paths: [npmRoot] }));
 const puppeteer = require(require.resolve("puppeteer", { paths: [npmRoot] }));
 
-function formatProgressLine(status, name, detail) {
-  return `${`[${status.toUpperCase()}]`.padEnd(10)} ${name.padEnd(30)} : ${detail}\n`;
+function formatProgressLine(status, name, detail, nameWidth) {
+  return `${`[${status.toUpperCase()}]`.padEnd(10)} ${name.padEnd(nameWidth)} : ${detail}\n`;
 }
 
 function validateManifest(manifest) {
@@ -49,6 +49,7 @@ async function run() {
   const requestedJourneys = [...new Set(optionValues("--journey").flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean))];
   const journeyFilters = requestedJourneys.length === 0 || requestedJourneys.includes("all") ? null : new Set(requestedJourneys);
   const resultFile = optionValue("--result-file");
+  const requestedProgressWidth = optionValue("--progress-name-width");
   const shutdownAtEnd = args.includes("--shutdown-at-end");
   if (!Number.isInteger(slowMo) || slowMo < 0 || slowMo > 2000) throw new Error("--slow-mo must be an integer from 0 through 2000");
   if (!Number.isInteger(transitionDelay) || transitionDelay < 0 || transitionDelay > 5000) throw new Error("--transition-delay must be an integer from 0 through 5000");
@@ -60,6 +61,9 @@ async function run() {
   const selectedJourneys = new Map([...journeys].filter(([journeyPath]) => !journeyFilters || journeyFilters.has(path.basename(journeyPath, ".journey.cjs"))));
   const unmatchedJourneys = journeyFilters ? [...journeyFilters].filter((name) => ![...selectedJourneys].some(([journeyPath]) => path.basename(journeyPath, ".journey.cjs") === name)) : [];
   if (selectedJourneys.size === 0 || unmatchedJourneys.length > 0) throw new Error(`No Playwright journey matched: ${unmatchedJourneys.join(", ") || requestedJourneys.join(", ")}`);
+  const longestJourneyName = Math.max(...[...selectedJourneys.keys()].map(journeyPath => path.basename(journeyPath, ".journey.cjs").length));
+  const progressNameWidth = requestedProgressWidth === null ? Math.max(30, longestJourneyName) : Number(requestedProgressWidth);
+  if (!Number.isInteger(progressNameWidth) || progressNameWidth < longestJourneyName || progressNameWidth < 30 || progressNameWidth > 512) throw new Error("--progress-name-width must fit all journey names and be an integer from 30 through 512");
   const executablePath = await puppeteer.executablePath();
   const browserArgs = ["--no-sandbox", "--disable-setuid-sandbox"];
   let browser = null;
@@ -238,7 +242,7 @@ async function run() {
       const assertionCountBefore = assertionCount;
 
       if (showProgress) {
-        process.stderr.write(`\n---------------------------------------------------\nPLAYWRIGHT JOURNEY: ${journeyName.toUpperCase()}\n---------------------------------------------------\n\n${formatProgressLine("running", journeyName, "IN PROGRESS")}`);
+        process.stderr.write(`\n---------------------------------------------------\nPLAYWRIGHT JOURNEY: ${journeyName.toUpperCase()}\n---------------------------------------------------\n\n${formatProgressLine("running", journeyName, "IN PROGRESS", progressNameWidth)}`);
       }
 
       try {
@@ -255,9 +259,9 @@ async function run() {
           viewportCount = journeyResult.viewportCount;
           assertionCount += journeyResult.viewportAssertionCount;
         }
-        if (showProgress) process.stderr.write(formatProgressLine("passed", journeyName, `${assertionCount - assertionCountBefore} assertions`));
+        if (showProgress) process.stderr.write(formatProgressLine("passed", journeyName, `${assertionCount - assertionCountBefore} assertions`, progressNameWidth));
       } catch (error) {
-        if (showProgress) process.stderr.write(formatProgressLine("failed", journeyName, "see error below"));
+        if (showProgress) process.stderr.write(formatProgressLine("failed", journeyName, "see error below", progressNameWidth));
         throw error;
       } finally {
         if (context) await context.close();

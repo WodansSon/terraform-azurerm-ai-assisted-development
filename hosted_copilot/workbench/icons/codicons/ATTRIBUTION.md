@@ -19,6 +19,8 @@ The inventory includes all 21 `layout` family glyphs at the pinned commit, inclu
 
 `open-in-window.svg` is included in the generated sprite. `link-external.svg` is retained as source artwork only and is not included in the sprite or runtime staging. Both preserve the pinned upstream geometry.
 
+The pinned `git-pull-request-done` glyph is included in the runtime sprite for success-banner presentation, preserving its native 16px viewBox and upstream geometry.
+
 The Workbench-authored `discard-all` and `collection-issues-compact` derivatives live in the separate [custom family](../custom/ATTRIBUTION.md), not this upstream inventory or sprite.
 
 All adjacent source SVG files preserve the selected upstream geometry.

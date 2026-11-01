@@ -697,6 +697,7 @@ function bindEvents() {
     handleRowKeyboardNavigation(event, elements["assessment-results-list"], "assessmentKey", selectAssessmentResult, () => showAssessmentPane("details"));
   });
   elements["assessment-results-detail"].addEventListener("click", handleApplicabilityOverrideClick);
+  elements["assessment-results-detail"].addEventListener("click", handleRuleIssueDetailClick);
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
   elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
@@ -1088,6 +1089,7 @@ async function loadBundle() {
     await loadWorkbenchRuntimeConfig();
           repairNoOpPlanMembership();
           repairOverridePlanMembership();
+        for (const candidate of state.assessedCandidates) state.session.ruleBaselines[candidate.key] ||= createOriginalRuleBaseline(candidate);
     state.excludedCandidateCount = assessedCandidates.filter(({ assessment }) => !assessment.hostedApplicable).length;
     refreshEffectiveCandidates();
     localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
@@ -1263,10 +1265,10 @@ function normalizeDisplayCandidates(display) {
 function getFilteredRuleIssues(filterKey = state.ruleIssueFilter, search = state.queries["rule-issues"]) {
   const query = search.trim().toLowerCase();
   const activeFilter = RULE_ISSUE_FILTERS.find((filter) => filter.key === filterKey);
-  return getOpenRuleIssues().filter((issue) => {
+  return state.ruleIssues.filter((issue) => {
     if (!activeFilter?.classifications.includes(issue.classification)) return false;
     if (!query) return true;
-    return [issue.title, issue.label, issue.bannerTitle, issue.bannerMessage, issue.assessmentSummary, issue.wording?.text, issue.recommendedMaintainerAction.summary, ...issue.ruleIds, ...issue.rules.map((rule) => rule.text)]
+    return [issue.title, issue.label, getRuleIssueState(issue).label, issue.bannerTitle, issue.bannerMessage, issue.assessmentSummary, issue.wording?.text, issue.recommendedMaintainerAction.summary, ...issue.ruleIds, ...issue.rules.map((rule) => rule.text)]
       .some((value) => String(value || "").toLowerCase().includes(query));
   });
 }
@@ -1410,7 +1412,7 @@ function changeRuleIssueTabPage(direction) {
 function renderRuleIssueFilters() {
   const openIssues = getOpenRuleIssues();
   const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map((filter) => [filter.key, openIssues.filter((issue) => filter.classifications.includes(issue.classification)).length]));
-  const visibleFilters = RULE_ISSUE_FILTERS.filter((filter) => counts[filter.key] > 0);
+  const visibleFilters = RULE_ISSUE_FILTERS.filter((filter) => state.ruleIssues.some(issue => filter.classifications.includes(issue.classification)));
   if (!visibleFilters.some((filter) => filter.key === state.ruleIssueFilter)) {
     state.ruleIssueFilter = visibleFilters[0]?.key || RULE_ISSUE_FILTERS[0].key;
   }
@@ -1477,11 +1479,7 @@ function getPendingRuleIssueOperations(issue) {
 }
 
 function getVisibleRuleIssueRules(issue) {
-  const operationStates = [...getRuleIssueOperationStates(issue).values()];
-  const partiallyApplied = operationStates.some((entry) => entry.applied) && operationStates.some((entry) => !entry.applied);
-  if (!partiallyApplied) return issue.rules;
-  const pendingRuleIds = new Set(operationStates.filter((entry) => !entry.applied).map((entry) => entry.operation.ruleId));
-  return issue.rules.filter((rule) => pendingRuleIds.has(rule.id));
+  return issue.rules;
 }
 
 function isRuleIssueRecommendationStaged(issue) {
@@ -1492,17 +1490,80 @@ function isRuleIssueRecommendationStaged(issue) {
 function isRuleIssueSupersededByReview(issue) {
   if (issue.blocking || issue.classification === "protected-integrity" || !issue.relationships?.length) return false;
   return state.assessedCandidates.some(candidate => {
+    if (!getDecision(candidate).inPlan) return false;
     const current = getRelationshipReviewState(candidate);
     if (!["current", "findings"].includes(current.status)) return false;
     const result = current.review.result;
     const present = new Set([...result.effectiveRuleIds, ...result.removedRuleIds]);
+    if (result.findings.some(finding => issue.relationships.some(pair =>
+      (finding.ruleId === pair.sourceRuleId && finding.relatedRuleId === pair.relatedRuleId)
+      || (finding.relatedRuleId === pair.sourceRuleId && finding.ruleId === pair.relatedRuleId)))) return false;
     return issue.relationships.every(relationship => present.has(relationship.sourceRuleId) && present.has(relationship.relatedRuleId)
       && (result.changedRuleIds.includes(relationship.sourceRuleId) || result.changedRuleIds.includes(relationship.relatedRuleId) || result.removedRuleIds.includes(relationship.sourceRuleId) || result.removedRuleIds.includes(relationship.relatedRuleId)));
   });
 }
 
+function getProjectedRuleCatalog() {
+  const rules = new Map([...state.bundle.catalog.rules.filter(rule => rule.status === "active"), ...state.bundle.catalog.protectedRules]
+    .map(rule => [rule.id, { id: rule.id, text: rule.text, status: rule.status }]));
+  const mutatedIds = new Set();
+  const ambiguousIds = new Set();
+  const mutate = (id, text) => {
+    if (mutatedIds.has(id)) ambiguousIds.add(id);
+    mutatedIds.add(id);
+    if (text === null) rules.delete(id);
+    else rules.set(id, { id, text, status: "active" });
+  };
+  for (const candidate of getPlanCandidates()) {
+    const decision = getDecision(candidate);
+    const id = getEffectiveHostedRuleId(candidate);
+    if (decision.action === "retire") mutate(id, null);
+    else if (["add", "update", "restore"].includes(decision.action)) mutate(id, decision.proposedText);
+    for (const rule of getAncillaryRetirementRules(decision)) mutate(rule.id, null);
+  }
+  return { rules, ambiguousIds };
+}
+
+function getRuleIssueState(issue, projection = getProjectedRuleCatalog()) {
+  if (issue.blocking || issue.classification === "protected-integrity") return { status: "unresolved", label: issue.label };
+  const explicit = issue.candidateKeys.some(key => {
+    const candidate = state.assessedCandidates.find(item => item.key === key);
+    if (!candidate) return false;
+    const decision = getDecision(candidate);
+    const saved = state.session.decisions[key];
+    const declinedProposal = saved?.sourceHash === candidate.hash && ["exclude", "defer"].includes(saved.action)
+      && hasRequiredRationale(saved.rationale) && issue.rules.some(rule => rule.status === "proposed" && rule.candidateKeys.includes(key));
+    return decision.inPlan && (isPromotionAction(decision.action) || decision.retireHostedRuleIds.length > 0)
+      || declinedProposal;
+  });
+  if (!explicit) return { status: "unresolved", label: issue.label };
+  if (issue.ruleIds.some(id => projection.ambiguousIds.has(id))) return { status: "needs-review", label: "Needs Review" };
+  if (issue.relationships?.length) {
+    const present = issue.relationships.filter(pair => projection.rules.has(pair.sourceRuleId) && projection.rules.has(pair.relatedRuleId));
+    if (!present.length || isRuleIssueSupersededByReview(issue)) return { status: "resolved", label: "Resolved" };
+    const changed = present.some(pair => [pair.sourceRuleId, pair.relatedRuleId].some(id => {
+      const original = issue.rules.find(rule => rule.id === id);
+      return !original || String(original.text).replace(/\r\n/g, "\n") !== String(projection.rules.get(id).text).replace(/\r\n/g, "\n");
+    }));
+    return changed ? { status: "needs-review", label: "Needs Review" } : { status: "unresolved", label: issue.label };
+  }
+  return isRuleIssueRecommendationStaged(issue) ? { status: "resolved", label: "Resolved" } : { status: "unresolved", label: issue.label };
+}
+
 function getOpenRuleIssues() {
-  return state.ruleIssues.filter(issue => !isRuleIssueRecommendationStaged(issue) && !isRuleIssueSupersededByReview(issue));
+  const projection = getProjectedRuleCatalog();
+  return state.ruleIssues.filter(issue => getRuleIssueState(issue, projection).status !== "resolved");
+}
+
+function getProjectedCatalogIssues() {
+  const { rules } = getProjectedRuleCatalog();
+  return getOpenRuleIssues().filter(issue => {
+    if (issue.blocking || issue.classification === "protected-integrity") return true;
+    if (issue.relationships?.length) {
+      return issue.relationships.some(pair => rules.has(pair.sourceRuleId) && rules.has(pair.relatedRuleId));
+    }
+    return issue.ruleIds.some(id => rules.has(id));
+  });
 }
 
 function renderRuleIssuePlanAction(issue) {
@@ -1588,11 +1649,6 @@ async function stageRuleIssueRecommendation(issue) {
     state.session = nextSession;
     if (isRuleIssueRecommendationStaged(issue)) {
       rememberResolvedRuleIssue(issue, resolvedIndex);
-      const remainingIssues = getFilteredRuleIssues();
-      const nextIndex = Math.min(resolvedIndex, remainingIssues.length - 1);
-      const nextIssue = remainingIssues[nextIndex] || null;
-      state.activeRuleIssueKey = nextIssue?.id || null;
-      if (nextIssue) rememberRuleIssueSelection(nextIssue.id, state.ruleIssueFilter, nextIndex);
     }
     syncCandidateTreeRows();
     renderBulkActions();
@@ -1611,6 +1667,23 @@ async function stageRuleIssueRecommendation(issue) {
 }
 
 async function handleRuleIssueDetailClick(event) {
+  const open = event.target.closest("[data-rule-issue-open]");
+  if (open) {
+    const issue = state.ruleIssues.find(item => item.id === open.dataset.ruleIssueOpen);
+    if (!issue) return;
+    state.ruleIssueFilter = getRuleIssueFilterKey(issue);
+    state.activeRuleIssueKey = issue.id;
+    switchView("catalog");
+    setWorkspaceTab("rule-issues");
+    renderRuleIssues();
+    return;
+  }
+  const copy = event.target.closest("[data-copy-consolidated-wording]");
+  if (copy) {
+    const issue = state.ruleIssues.find(item => item.id === copy.dataset.copyConsolidatedWording);
+    await copyConsolidatedWording(issue?.wording?.text);
+    return;
+  }
   const resolution = event.target.closest("[data-rule-issue-resolve]");
   if (resolution) {
     const issue = state.ruleIssues.find((item) => item.id === resolution.dataset.ruleIssueResolve);
@@ -1633,7 +1706,11 @@ async function handleRuleIssueDetailClick(event) {
 function renderRuleIssueRule(rule, issue, resolutionControls = true) {
   const isProtected = rule.status === "protected" || state.protectedRules.some((item) => item.id === rule.id);
   const operation = getRuleIssueOperations(issue).find((item) => item.ruleId === rule.id);
-  const action = operation?.action || ({ promote: "add", replace: "update", retire: "retire", exclude: "exclude", defer: "defer" })[rule.disposition];
+  const candidateKeys = operation ? [operation.candidateKey] : rule.candidateKeys;
+  const candidate = state.assessedCandidates.find(item => candidateKeys.includes(item.key));
+  const saved = candidate && state.session.decisions[candidate.key];
+  const action = candidate && saved?.sourceHash === candidate.hash ? getDecision(candidate).action
+    : operation?.action || ({ promote: "add", replace: "update", retire: "retire", exclude: "exclude", defer: "defer" })[rule.disposition];
   const actionBadge = isProtected
     ? `<span class="ui-badge status-capsule recommendation-badge immutable">Immutable</span>`
     : action
@@ -1660,10 +1737,25 @@ function renderRuleIssueRule(rule, issue, resolutionControls = true) {
   });
 }
 
-function renderRuleIssueWording(wording, ruleIds) {
+async function copyConsolidatedWording(text) {
+  if (typeof text !== "string" || !text.trim()) {
+    showToast("Nothing to copy.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast("Consolidated wording copied.");
+  } catch {
+    showToast("Copy failed.", true);
+  }
+}
+
+function renderRuleIssueWording(wording, ruleIds, issueId = "") {
   const unresolved = wording.status === "unresolved";
   const text = unresolved ? wording.reason : wording.text;
-  return `<section class="rule-issue-suggestion ${unresolved ? "rule-issue-wording-unresolved" : ""}"><h3>${escapeHtml(wording.label)}</h3><p>${renderRuleReferences(text, ruleIds)}</p></section>`;
+  const copy = !unresolved && issueId && typeof wording.text === "string" && wording.text.trim()
+    ? `<button type="button" class="consolidated-wording-copy" data-copy-consolidated-wording="${escapeHtml(issueId)}" aria-label="Copy Consolidated Wording" data-workbench-tooltip="Copy Consolidated Wording">${icon("copy")}</button>` : "";
+  return `<section class="rule-issue-suggestion ${unresolved ? "rule-issue-wording-unresolved" : ""}"><div class="consolidated-wording-heading">${icon("edit")}<h3>${escapeHtml(wording.label.trim().replace(/:+$/, ""))}:</h3>${copy}</div><p>${renderRuleReferences(text, ruleIds)}</p></section>`;
 }
 
 function renderRationaleField({ id, label, value = "", maxLength = DECISION_RATIONALE_MAX_LENGTH, disabled = false, readOnly = false, placeholder = "", actionsMarkup = "", className = "", textareaAttributes = {}, showCounter = true }) {
@@ -1674,6 +1766,46 @@ function renderRationaleField({ id, label, value = "", maxLength = DECISION_RATI
 function syncRationaleCounter(textarea) {
   const counter = textarea?.closest(".rationale-field")?.querySelector(".rationale-limit");
   if (counter) counter.textContent = `${textarea.value.length} / ${textarea.maxLength} characters`;
+}
+
+function hasRequiredRationale(value, maxLength = DECISION_RATIONALE_MAX_LENGTH) {
+  return typeof value === "string" && Boolean(value.trim()) && value.length <= maxLength;
+}
+
+function createOriginalRuleBaseline(candidate) {
+  const defaults = defaultDecision(candidate);
+  return {
+    sourceHash: candidate.hash,
+    catalogContentSha256: state.bundle.catalog.contentSha256,
+    action: candidate.assessment?.recommendation || defaults.action,
+    proposedText: candidate.recommendation.ruleText || defaults.proposedText,
+    rationale: "",
+    retireHostedRuleIds: [...defaults.retireHostedRuleIds].sort(),
+    implementationModels: [...defaults.implementationModels].sort()
+  };
+}
+
+function originalRuleBaselinesEqual(left, right) {
+  return Boolean(left && right)
+    && Object.keys(left).length === Object.keys(right).length
+    && ["sourceHash", "catalogContentSha256", "action", "proposedText", "rationale"].every(key => left[key] === right[key])
+    && ["retireHostedRuleIds", "implementationModels"].every(key => Array.isArray(left[key]) && Array.isArray(right[key])
+      && JSON.stringify([...left[key]].sort()) === JSON.stringify([...right[key]].sort()));
+}
+
+function getOriginalRuleBaseline(candidate) {
+  const expected = createOriginalRuleBaseline(candidate);
+  const saved = state.session.ruleBaselines?.[candidate.key];
+  return saved ? originalRuleBaselinesEqual(saved, expected) ? saved : null : expected;
+}
+
+function isOriginalRuleRevert(candidate, decision) {
+  const baseline = getOriginalRuleBaseline(candidate);
+  return Boolean(baseline) && decision.action === baseline.action
+    && String(decision.proposedText).replace(/\r\n/g, "\n") === baseline.proposedText.replace(/\r\n/g, "\n")
+    && typeof decision.rationale === "string" && decision.rationale.trim() === baseline.rationale.trim()
+    && ["retireHostedRuleIds", "implementationModels"].every(key => Array.isArray(decision[key])
+      && JSON.stringify([...decision[key]].sort()) === JSON.stringify([...baseline[key]].sort()));
 }
 
 function renderRuleTextPanel({ id, title, text, ruleIds = [], statusMarkup = "", choice = null, accent = "none", headerAction = null, disabled = false, className = "", titleClassName = "", sectionLabel = "", bodyLabel = "" }) {
@@ -1696,12 +1828,18 @@ function openRuleIssueResolutionDialog(issue, rule, trigger) {
     return;
   }
   const original = getDecision(candidate);
-  const textChanged = String(original.proposedText).replace(/\r\n/g, "\n") !== String(rule.text).replace(/\r\n/g, "\n");
+  const originalBaseline = getOriginalRuleBaseline(candidate);
+  const originalText = originalBaseline?.proposedText || rule.text;
+  const textChanged = String(original.proposedText).replace(/\r\n/g, "\n") !== String(originalText).replace(/\r\n/g, "\n");
   const allowedActions = getAllowedActions(candidate, original.proposedText);
+  const availableActions = [...new Set([...allowedActions, ...(originalBaseline ? [originalBaseline.action] : [])])];
+  const saved = state.session.decisions[candidate.key];
   const pending = {
-    action: allowedActions.includes(operation?.action) ? operation.action : original.action,
+    action: saved?.sourceHash === candidate.hash ? original.action : originalBaseline?.action || original.action,
     proposedText: original.proposedText,
     rationale: original.rationale,
+    retireHostedRuleIds: [...original.retireHostedRuleIds],
+    implementationModels: [...original.implementationModels],
     wording: textChanged ? "updated" : "original"
   };
   const baseline = { ...pending };
@@ -1710,10 +1848,21 @@ function openRuleIssueResolutionDialog(issue, rule, trigger) {
   const identity = getValidatedCodeOwnerIdentity();
   const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
   const editorText = editor?.value;
+  const activeCandidate = getActiveCandidate();
+  if (editor && activeCandidate && editorText !== getDecision(activeCandidate).proposedText) {
+    showToast("Save the current wording before resolving a rule issue.", true);
+    return;
+  }
   const hasChanges = () => pending.action !== baseline.action || pending.proposedText !== baseline.proposedText || pending.rationale !== baseline.rationale;
+  const isRevert = () => isOriginalRuleRevert(candidate, pending);
+  const stagesMutation = () => !isRevert() && (isPromotionAction(pending.action) || pending.retireHostedRuleIds.length > 0);
+  const needsSave = () => hasChanges() || stagesMutation() !== original.inPlan;
+  const actionIsAllowed = () => getAllowedActions(candidate, pending.proposedText).includes(pending.action) || isRevert();
+  const rationaleIsValid = () => pending.rationale.length <= DECISION_RATIONALE_MAX_LENGTH
+    && (hasRequiredRationale(pending.rationale) || isRevert());
   const dialog = openWorkbenchDialog({
     name: "rule-resolution",
-    title: "Resolve rule",
+    title: "Resolve Rule Issue",
     iconMarkup: icon("git-branch-conflicts"),
     trigger,
     closeLabel: "Close resolution",
@@ -1721,30 +1870,30 @@ function openRuleIssueResolutionDialog(issue, rule, trigger) {
       <div class="rule-resolution-meta"><strong class="rule-reference">${escapeHtml(rule.id)}</strong></div>
       <p class="rule-resolution-context">${escapeHtml(issue.title)}</p>
       <div class="rule-resolution-comparison" role="group" aria-label="${textChanged ? "Wording to keep" : "Original text"}">
-        ${(textChanged ? [["updated", "UPDATED TEXT", original.proposedText], ["original", "ORIGINAL TEXT", rule.text]] : [["original", "ORIGINAL TEXT", rule.text]]).map(([version, title, text]) => renderRuleTextPanel({
+        ${(textChanged ? [["updated", "UPDATED TEXT", original.proposedText], ["original", "ORIGINAL TEXT", originalText]] : [["original", "ORIGINAL TEXT", originalText]]).map(([version, title, text]) => renderRuleTextPanel({
           id: `rule-resolution-${version}`,
           title,
           className: "rule-resolution-text",
           titleClassName: "rule-resolution-text-title",
           text,
           ruleIds: issue.ruleIds,
-          statusMarkup: version === "updated" ? '<span class="ui-badge status-capsule">Changed Since Adjudication</span>' : `<span class="ui-badge status-capsule catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span>`,
+          statusMarkup: `${version === "updated" ? '<span class="ui-badge status-capsule">Changed Since Adjudication</span>' : `<span class="ui-badge status-capsule catalog-status ${escapeHtml(rule.status)}">${escapeHtml(capitalize(rule.status))}</span>`}<span class="ui-badge status-capsule decision-badge ${escapeHtml(pending.action || "")}" data-resolution-action-badge>${escapeHtml(formatRecommendation(pending.action))}</span>`,
           choice: textChanged ? { name: "rule-resolution-wording", value: version, label: `Keep ${version === "updated" ? "Updated" : "Original"} Text`, selected: version === "updated", disabled: issue.blocking } : null
         })).join("")}
       </div>
-      <div class="field-stack rule-resolution-state"><span class="control-subtitle" id="rule-resolution-state-label">Adjudicated State:</span><div class="control-group action-plan-group"><fieldset class="action-options" aria-labelledby="rule-resolution-state-label">${allowedActions.map((action) => `<label class="action-option clickable"><input type="radio" name="rule-resolution-action" value="${escapeHtml(action)}"><span>${escapeHtml(formatRecommendation(action))}</span></label>`).join("")}</fieldset></div></div>
+      <div class="field-stack rule-resolution-state"><span class="control-subtitle" id="rule-resolution-state-label">Rule Action:</span><div class="control-group action-plan-group"><fieldset class="action-options" aria-labelledby="rule-resolution-state-label">${availableActions.map((action) => `<label class="action-option clickable"><input type="radio" name="rule-resolution-action" value="${escapeHtml(action)}"><span>${escapeHtml(formatRecommendation(action))}</span></label>`).join("")}</fieldset></div></div>
       ${renderRationaleField({ id: "rule-resolution-rationale", label: "Resolution Rationale:", value: pending.rationale, disabled: issue.blocking, className: "rule-resolution-rationale" })}`,
     actions: [
       { label: "Cancel", variant: "", iconMarkup: icon("close") },
       { label: "Save Resolution", variant: "primary", iconMarkup: icon("save"), attribute: "data-resolution-save", onConfirm: async () => {
         const assertCurrent = () => {
           const current = state.assessedCandidates.find(item => item.key === candidate.key);
-          if (issue.blocking || !hasChanges() || !current || current.hash !== candidateHash
+          if (issue.blocking || !needsSave() || !rationaleIsValid() || !current || current.hash !== candidateHash
             || JSON.stringify(state.session) !== sessionSnapshot
             || (editor?.isConnected && editor.value !== editorText)
             || state.protectedRules.some(item => item.id === rule.id)
-            || (original.inPlan && (!identity || getValidatedCodeOwnerIdentity()?.login !== identity.login))
-            || !getAllowedActions(current, pending.proposedText).includes(pending.action)) {
+            || ((original.inPlan || stagesMutation()) && (!identity || getValidatedCodeOwnerIdentity()?.login !== identity.login))
+            || !actionIsAllowed()) {
             throw new Error("The resolution changed or is not valid. Review the current draft and protected integrity.");
           }
         };
@@ -1760,7 +1909,9 @@ function openRuleIssueResolutionDialog(issue, rule, trigger) {
             action: pending.action,
             proposedText: pending.proposedText,
             rationale: pending.rationale,
-            ...(changedOutcome ? createPlanMembership() : original.inPlan ? createPlanMembership("manual") : createPlanMembership()),
+            retireHostedRuleIds: [...pending.retireHostedRuleIds],
+            implementationModels: [...pending.implementationModels],
+            ...(stagesMutation() ? createPlanMembership("manual") : createPlanMembership()),
             sourceHash: candidate.hash,
             updatedAt
           };
@@ -1800,11 +1951,13 @@ function openRuleIssueResolutionDialog(issue, rule, trigger) {
   close.before(titleActions);
   titleActions.append(reset, close);
   const refresh = () => {
-    save.disabled = issue.blocking || !hasChanges() || !getAllowedActions(candidate, pending.proposedText).includes(pending.action);
-    reset.disabled = !hasChanges();
+    save.disabled = issue.blocking || !needsSave() || !actionIsAllowed() || !rationaleIsValid()
+      || (stagesMutation() && !identity);
+    reset.disabled = issue.blocking || !originalBaseline || isRevert();
     for (const input of dialog.querySelectorAll('input[name="rule-resolution-action"]')) {
       input.checked = input.value === pending.action;
-      input.disabled = issue.blocking || !getAllowedActions(candidate, pending.proposedText).includes(input.value);
+      input.disabled = issue.blocking || (!getAllowedActions(candidate, pending.proposedText).includes(input.value)
+        && !(isRevert() && input.value === originalBaseline?.action));
       input.closest("label").classList.toggle("selected", input.checked);
     }
     for (const input of dialog.querySelectorAll('input[name="rule-resolution-wording"]')) {
@@ -1812,14 +1965,20 @@ function openRuleIssueResolutionDialog(issue, rule, trigger) {
       input.closest("section").classList.toggle("wording-selected", input.checked);
     }
     const rationale = dialog.querySelector("#rule-resolution-rationale");
+    rationale.required = !isRevert();
+    rationale.setAttribute("aria-required", String(rationale.required));
     rationale.value = pending.rationale;
     syncRationaleCounter(rationale);
+    for (const badge of dialog.querySelectorAll("[data-resolution-action-badge]")) {
+      badge.className = `ui-badge status-capsule decision-badge ${pending.action || ""}`;
+      badge.textContent = formatRecommendation(pending.action);
+    }
   };
   dialog.addEventListener("change", event => {
     if (event.target.matches('input[name="rule-resolution-action"]')) pending.action = event.target.value;
     else if (event.target.matches('input[name="rule-resolution-wording"]')) {
       pending.wording = event.target.value;
-      pending.proposedText = pending.wording === "updated" ? original.proposedText : rule.text;
+      pending.proposedText = pending.wording === "updated" ? original.proposedText : originalText;
     } else return;
     refresh();
   });
@@ -1828,14 +1987,15 @@ function openRuleIssueResolutionDialog(issue, rule, trigger) {
     refresh();
   });
   reset.addEventListener("click", () => {
-    Object.assign(pending, baseline);
+    if (!originalBaseline) return;
+    Object.assign(pending, structuredClone(originalBaseline), { wording: "original" });
     refresh();
   });
   refresh();
 }
 
 function renderRuleIssueResolutionPreview(issue, proposedText) {
-  if (issue.wording.status === "unresolved") return renderRuleIssueWording(issue.wording, issue.ruleIds);
+  if (issue.wording.status === "unresolved") return renderRuleIssueWording(issue.wording, issue.ruleIds, issue.id);
   const file = createPreviewFile("", "Resolution wording", proposedText.split("\n"), issue.wording.text.split("\n"));
   return `<section class="rule-issue-resolution-preview" aria-label="Resolution wording preview">
     <div class="rule-issue-resolution-preview-heading"><h3>${escapeHtml(issue.wording.label)}</h3><span class="preview-change-summary" aria-label="${file.additions} additions and ${file.deletions} deletions"><b>+${file.additions}</b><i>-${file.deletions}</i></span></div>
@@ -1846,12 +2006,20 @@ function renderRuleIssueResolutionPreview(issue, proposedText) {
 
 function renderRuleIssueContent(issue, { candidateDetails = false, proposedText = null } = {}) {
   const visibleRules = getVisibleRuleIssueRules(issue);
+  const issueState = getRuleIssueState(issue);
+  const resolved = issueState.status === "resolved";
   const protectedNotice = RULE_ISSUE_FILTERS.find((filter) => filter.key === "protected").classifications.includes(issue.classification)
     ? renderInformationPanel("<p>Protected rules cannot be changed in the Workbench. Edit the protected source file directly in the repository. Relaunch with <code>-Rebuild</code> to refresh the Workbench snapshot and analysis. Rebuilding refreshes assessments and Rule Issues and may require significant processing time.</p>", { iconMarkup: fluentIcon("info-20-regular"), className: "protected-rule-information" })
     : "";
   const ordinaryRelationship = candidateDetails && !issue.blocking && !issue.classification.includes("conflict") && issue.classification !== "contradiction";
-  const banner = state.dismissedRuleIssueBannerKeys.has(issue.id) ? "" : `
-    <div class="rule-issue-banner ${escapeHtml(issue.classification)}${ordinaryRelationship ? " relationship-review" : ""}">${icon(ordinaryRelationship ? "info" : issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "chat-sparkle-error" : "warning")}<div>${renderBannerHeading(ordinaryRelationship ? `Rule Relationship Review / ${formatRuleIssueTitle(issue.classification)}` : formatRuleIssueTitle(issue.bannerTitle))}<p>${renderRuleReferences(issue.bannerMessage, issue.ruleIds, "rule-issue-banner-reference")}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.id)}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
+  const bannerTitle = resolved ? "Resolved" : issueState.status === "needs-review" ? "Relationships Need Review"
+    : ordinaryRelationship ? `Rule Relationship Review / ${formatRuleIssueTitle(issue.classification)}` : formatRuleIssueTitle(issue.bannerTitle);
+  const bannerMessage = resolved ? "The current Plan addresses this relationship. Catalog validation remains separate."
+    : issueState.status === "needs-review" ? "The current draft differs from the original relationship evidence. Check the current projected catalog." : issue.bannerMessage;
+  const bannerIcon = resolved ? "git-pull-request-done" : ordinaryRelationship ? "info"
+    : issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "chat-sparkle-error" : "warning";
+  const banner = state.dismissedRuleIssueBannerKeys.has(`${issue.id}:${issueState.status}`) ? "" : `
+    <div class="rule-issue-banner ${resolved ? "banner-success" : escapeHtml(issue.classification)}${ordinaryRelationship && !resolved ? " relationship-review" : ""}"${resolved ? ' role="status" aria-live="polite"' : ""}>${icon(bannerIcon)}<div>${renderBannerHeading(bannerTitle)}<p>${renderRuleReferences(bannerMessage, issue.ruleIds, "rule-issue-banner-reference")}</p></div><button class="rule-issue-banner-dismiss clickable" type="button" data-dismiss-rule-issue-banner="${escapeHtml(issue.id)}:${issueState.status}" aria-label="Dismiss issue message" data-workbench-tooltip="Dismiss">${icon("close")}</button></div>`;
   return `
     ${banner}
     ${protectedNotice}
@@ -1859,7 +2027,7 @@ function renderRuleIssueContent(issue, { candidateDetails = false, proposedText 
     ${candidateDetails && proposedText !== null ? renderRuleIssueResolutionPreview(issue, proposedText) : ""}
     ${candidateDetails ? "" : `<span class="section-label rule-issue-assessment-label">Assessment:</span>
     <section class="rule-issue-assessment"><p>${renderRuleReferences(issue.assessmentSummary, issue.ruleIds)}</p></section>
-    ${renderRuleIssueWording(issue.wording, issue.ruleIds)}
+    ${renderRuleIssueWording(issue.wording, issue.ruleIds, issue.id)}
     <span class="section-label rule-issue-recommendation-label">Recommended Maintainer Action:</span>`}
     <section class="rule-issue-recommendation">${candidateDetails ? renderInformationPanel(`<p>${renderRuleReferences(issue.recommendedMaintainerAction.summary, issue.ruleIds)}</p>`, { iconMarkup: fluentIcon("info-20-regular") }) : `<p>${renderRuleReferences(issue.recommendedMaintainerAction.summary, issue.ruleIds)}</p>`}${renderRuleIssuePlanAction(issue)}</section>
   `;
@@ -1871,6 +2039,21 @@ function renderRuleIssueDetail(issue) {
     : renderPreviewEmptyState("warning-compact", "Select a Rule Issue", "Relationship evidence, affected rules, consolidated wording, and advisory actions will appear here.");
   if (state.workspaceTab === "rule-issues") setRuleAssistanceIssue(issue);
   scheduleTruncationTooltips();
+}
+
+function renderRuleIssueHistory(candidate, scope = "") {
+  const issues = state.ruleIssues.filter(issue => issue.candidateKeys.includes(candidate.key));
+  if (!issues.length) return "";
+  const content = issues.map(issue => {
+    const current = getRuleIssueState(issue);
+    const message = current.status === "resolved" ? "The current Plan addresses this relationship. Catalog validation remains separate."
+      : current.status === "needs-review" ? "The current draft needs a fresh relationship check." : issue.bannerMessage;
+    return renderInformationPanel(`<div><div class="evidence-disclosure-heading">${renderBannerHeading(issue.title)}<button type="button" class="titlebar-icon clickable" data-rule-issue-open="${escapeHtml(issue.id)}" aria-label="Open Rule Issue" data-workbench-tooltip="Open Rule Issue">${icon("open-in-window")}</button></div><p><strong>${escapeHtml(current.label)}:</strong> ${escapeHtml(message)}</p></div>`, {
+      iconMarkup: icon(current.status === "resolved" ? "git-pull-request-done" : "git-branch-conflicts"),
+      className: current.status === "resolved" ? "banner-success" : "warning"
+    });
+  }).join("");
+  return renderEvidenceDisclosure(candidate, "rule-issues", "Rule Issue History", issues.length, content, scope);
 }
 
 function formatRuleIssueTitle(value) {
@@ -1908,12 +2091,17 @@ function renderRuleIssues() {
     renderRuleIssueDetail(null);
     return;
   }
-  elements["rule-issues-list"].innerHTML = issues.map((issue) => `
-    <button class="rule-issue-row clickable ${issue.id === state.activeRuleIssueKey ? "active" : ""}" type="button" data-rule-issue-key="${escapeHtml(issue.id)}" aria-pressed="${issue.id === state.activeRuleIssueKey}">
-      <span class="rule-issue-row-heading"><strong>${escapeHtml(formatRuleIssueTitle(issue.title))}</strong><span class="ui-badge status-capsule rule-issue-kind ${escapeHtml(issue.classification)} status-badge ${issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "excluded" : "warning"} type-compact">${escapeHtml(issue.label)}</span></span>
+  elements["rule-issues-list"].innerHTML = issues.map((issue) => {
+    const issueState = getRuleIssueState(issue);
+    const tone = issueState.status === "resolved" ? "resolved" : issueState.status === "needs-review" ? "warning"
+      : issue.blocking || issue.classification.includes("conflict") || issue.classification === "contradiction" ? "excluded" : "warning";
+    return `
+    <button class="rule-issue-row clickable ${issueState.status === "resolved" ? "resolved" : ""} ${issue.id === state.activeRuleIssueKey ? "active" : ""}" type="button" data-rule-issue-key="${escapeHtml(issue.id)}" data-resolution-status="${issueState.status}" aria-pressed="${issue.id === state.activeRuleIssueKey}">
+      <span class="rule-issue-row-heading"><strong>${escapeHtml(formatRuleIssueTitle(issue.title))}</strong><span class="ui-badge status-capsule rule-issue-kind ${escapeHtml(issue.classification)} status-badge ${tone} type-compact">${escapeHtml(issueState.label)}</span></span>
       <span class="rule-issue-ids">${renderRuleIssueIds(getVisibleRuleIssueRules(issue).map((rule) => rule.id))}</span>
     </button>
-  `).join("");
+  `;
+  }).join("");
   renderRuleIssueDetail(issues.find((issue) => issue.id === state.activeRuleIssueKey));
   if (!state.queries["rule-issues"].trim() && state.activeRuleIssueKey && !remembered) {
     rememberRuleIssueSelection(state.activeRuleIssueKey);
@@ -1943,6 +2131,7 @@ function createSession(id, display) {
     sourceFiles: structuredClone(display.sourceFiles),
     approverName: "",
     decisions: {},
+    ruleBaselines: {},
     applicabilityOverrides: {},
     bulkOperations: [],
     relationshipReviews: {}
@@ -1954,6 +2143,7 @@ function migrateSession(session, candidates, display) {
   if (session.id !== "current" || session.schemaVersion !== SESSION_SCHEMA_VERSION || !sourceFilesEqual(session.sourceFiles, display.sourceFiles)) return null;
   const { manualRelationshipChecks, savedRuleEvaluations, ...currentSession } = session;
   currentSession.relationshipReviews ||= {};
+  currentSession.ruleBaselines ||= {};
   return currentSession;
 }
 
@@ -2100,7 +2290,9 @@ function getDecision(candidate) {
     || !isValidPlanMembership(saved, candidate.key)) return defaultDecision(candidate);
   return {
     ...saved,
-    action: allowedActions.includes(saved.action) ? saved.action : null,
+    action: allowedActions.includes(saved.action) || (!saved.inPlan && isOriginalRuleRevert(candidate, {
+      ...saved, proposedText, retireHostedRuleIds, implementationModels: saved.implementationModels || defaults.implementationModels
+    })) ? saved.action : null,
     proposedText,
     retireHostedRuleIds,
     proposedHostedRuleId: defaults.proposedHostedRuleId,
@@ -2218,9 +2410,8 @@ function getRelationshipReviewState(candidate, proposedText = getRelationshipRev
   const active = activeRelationshipReviews.get(candidate.key);
   const review = state.session.relationshipReviews?.[candidate.key];
   const decision = getDecision(candidate);
-  const existingRelationship = (state.ruleIssues || []).some(issue => !issue.blocking && issue.relationships?.length && issue.candidateKeys.includes(candidate.key));
-  const required = hasMaintainerEditedRuleText(candidate, proposedText) || (decision.inPlan && isPromotionAction(decision.action))
-    || decision.retireHostedRuleIds.length > 0 || existingRelationship || Boolean(review) || Boolean(active);
+  const required = hasMaintainerEditedRuleText(candidate, proposedText)
+    || (decision.inPlan && (isPromotionAction(decision.action) || decision.retireHostedRuleIds.length > 0)) || Boolean(active);
   if (!required) return { status: "unchanged", required: false, review: null };
   const snapshot = getRelationshipReviewSnapshot(candidate, proposedText);
   if (active) return { status: active.snapshot === snapshot ? "checking" : "stale", required: true, review };
@@ -2251,14 +2442,29 @@ function getRelationshipReviewElapsed(candidate) {
   return `[Elapsed: ${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}]`;
 }
 
+function getRelationshipReviewClientFailure(code) {
+  const policies = {
+    "snapshot-changed": ["The rule or catalog changed. Save the current wording or reload, then run a new check.", false, "refresh-snapshot"],
+    "invalid-response": ["The checker could not complete a usable result. Your saved rule is unchanged. Try again.", true, "retry"],
+    deadline: ["The relationship check reached its five-minute limit. No result was accepted. Try again.", true, "retry"],
+    "runtime-missing": ["The running Workbench does not provide the relationship-check runtime. Restart it with the current source, then reload the Workbench. Your saved rule is unchanged.", false, "restart-and-reload"],
+    "unexpected-failure": ["The relationship check could not be completed. No result was accepted. Report the failure code and recovery action shown below; no raw evaluator output is exposed.", false, "report-failure"]
+  };
+  const failureCode = Object.hasOwn(policies, code) ? code : "unexpected-failure";
+  const [message, retryable, recovery] = policies[failureCode];
+  return { code: failureCode, message, retryable, recovery };
+}
+
 function renderRelationshipReviewPanel(candidate, proposedText = getRelationshipReviewWording(candidate)) {
   const current = getRelationshipReviewState(candidate, proposedText);
   if (current.status === "checking") {
     return renderWaitingPanel({ title: "Checking Rule Relationships...", body: "Comparing the saved wording with the proposed catalog.", elapsed: getRelationshipReviewElapsed(candidate), action: `<button class="titlebar-icon clickable waiting-panel-stop" type="button" data-relationship-review-cancel aria-label="Cancel relationship check" data-workbench-tooltip="Cancel relationship check">${icon("stop-circle")}</button>` });
   }
   if (current.status === "failed" && !dismissedRelationshipFailures.has(current.review)) {
-    const failure = current.review.failure;
-    return `<div class="error-banner" role="alert" aria-atomic="true">${icon("error").replace('class="codicon"', 'class="codicon error-banner-icon"')}<div class="error-banner-message">${renderBannerHeading("Relationship Check Failed")} <span>${escapeHtml(failure.message)}</span></div><div class="banner-actions" role="group" aria-label="Error banner actions">${failure.retryable ? `<button class="banner-action error-banner-dismiss clickable" type="button" data-relationship-review-run aria-label="Retry relationship check" data-workbench-tooltip="Retry relationship check">${icon("debug-restart")}</button>` : ""}<button class="banner-action error-banner-dismiss clickable" type="button" data-relationship-review-dismiss aria-label="Dismiss relationship check error" data-workbench-tooltip="Dismiss error">${icon("close")}</button></div></div>`;
+    const recordedFailure = current.review.failure;
+    const legacyRuntimeFailure = recordedFailure.code === "runtime-unavailable" && recordedFailure.recovery === "correct-and-recheck";
+    const failure = legacyRuntimeFailure ? getRelationshipReviewClientFailure("runtime-missing") : recordedFailure;
+    return `<div class="error-banner" role="alert" aria-atomic="true">${icon("error").replace('class="codicon"', 'class="codicon error-banner-icon"')}<div class="error-banner-message">${renderBannerHeading("Relationship Check Failed")} <span>${escapeHtml(failure.message)}</span><details data-relationship-review-failure-details><summary>Failure details</summary><p>Failure code: <code>${escapeHtml(failure.code)}</code></p><p>Recovery: <code>${escapeHtml(failure.recovery)}</code></p></details></div><div class="banner-actions" role="group" aria-label="Error banner actions">${failure.retryable ? `<button class="banner-action error-banner-dismiss clickable" type="button" data-relationship-review-run aria-label="Retry relationship check" data-workbench-tooltip="Retry relationship check">${icon("debug-restart")}</button>` : ""}<button class="banner-action error-banner-dismiss clickable" type="button" data-relationship-review-dismiss aria-label="Dismiss relationship check error" data-workbench-tooltip="Dismiss error">${icon("close")}</button></div></div>`;
   }
   if (current.status === "findings") {
     return current.review.result.findings.map(finding => renderInformationPanel(`<div>${renderBannerHeading("Relationships Need Review")}<p>${escapeHtml(finding.ruleId)} / ${escapeHtml(finding.relatedRuleId)}: ${escapeHtml(formatTitleCase(finding.relationship.replaceAll("-", " ")))}</p><p>${escapeHtml(finding.rationale)}</p><blockquote>${escapeHtml(finding.ruleQuote)}</blockquote><blockquote>${escapeHtml(finding.relatedQuote)}</blockquote></div>`, { iconMarkup: fluentIcon("info-20-regular"), className: "warning" })).join("");
@@ -2308,6 +2514,7 @@ async function checkRuleRelationships(candidate) {
     return;
   }
   const prior = getRelationshipReviewState(candidate);
+  if (!prior.required) return;
   if (prior.status === "failed" && !prior.review.failure.retryable) return;
   const controller = new AbortController();
   const active = { controller, candidate, snapshot: getRelationshipReviewSnapshot(candidate), startedAt: performance.now(), reason: null };
@@ -2320,7 +2527,7 @@ async function checkRuleRelationships(candidate) {
     renderDecisionOutputs();
     const config = await loadWorkbenchRuntimeConfig(controller.signal);
     const runtime = config.relationshipReview;
-    if (!runtime || !/^[a-f0-9]{64}$/.test(runtime.authoritySha256)) throw new Error("runtime-unavailable");
+    if (!runtime || !/^[a-f0-9]{64}$/.test(runtime.authoritySha256)) throw new Error("runtime-missing");
     if (getRelationshipReviewSnapshot(candidate) !== active.snapshot) throw new Error("snapshot-changed");
     const request = { schemaVersion: 1, requestId: crypto.randomUUID(), authoritySha256: runtime.authoritySha256,
       snapshotKey: Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(active.snapshot))), byte => byte.toString(16).padStart(2, "0")).join(""),
@@ -2343,11 +2550,7 @@ async function checkRuleRelationships(candidate) {
   } catch (error) {
     if (controller.signal.aborted && !active.reason) return;
     const code = active.reason || error.message;
-    const transient = ["invalid-response", "deadline"].includes(code);
-    const fallback = code === "snapshot-changed" ? "The rule or catalog changed. Save the current wording or reload, then run a new check."
-      : transient ? "The checker could not complete a usable result. Your saved rule is unchanged. Try again."
-        : "The relationship checker could not complete this request. Check Workbench diagnostics before trying again.";
-    const failure = error.reviewFailure || { code: ["snapshot-changed", "runtime-unavailable", "invalid-response", "deadline"].includes(code) ? code : "unexpected-failure", message: fallback, retryable: transient, recovery: transient ? "retry" : "correct-and-recheck" };
+    const failure = error.reviewFailure || getRelationshipReviewClientFailure(code);
     state.session.relationshipReviews[candidate.key] = { status: "failed", snapshot: active.snapshot, failure, checkedAt: toUtcTimestamp() };
     await persistSession();
   } finally {
@@ -3716,6 +3919,7 @@ function renderAssessmentResultDetail() {
     <div class="assessment-content scroll-surface">
       ${renderEvidenceDisclosure(candidate, "sources", "Source Rules", candidate.members.length, `${renderContributingRules(candidate)}${candidate.sourceRationale ? `<div class="assessment-rationale proposal-rationale"><strong>Proposal rationale</strong><p>${escapeHtml(candidate.sourceRationale)}</p></div>` : ""}`, "results")}
       ${renderRelatedHostedCoverage(candidate, assessment, "results")}
+      ${renderRuleIssueHistory(candidate, "results")}
       <div class="section-block" data-assessment-evidence>${renderAssessmentEvidence(candidate, assessment, decision)}</div>
       <div class="section-block"><span class="section-label">Applicability Decision:</span><p class="coverage-summary">${assessment ? "" : "<strong>Original assessment:</strong> "}${escapeHtml(evidence.applicabilityRationale)}</p></div>
       <div class="section-block hosted-rule-comparison">${renderCurrentHostedRules(catalogStatus)}
@@ -4551,6 +4755,7 @@ function renderAssessment() {
 
     <div class="assessment-content scroll-surface">
       ${renderEvidenceDisclosure(candidate, "sources", "Source Rules", candidate.members.length, renderContributingRules(candidate))}
+      ${renderRuleIssueHistory(candidate)}
       <div class="section-block" data-assessment-evidence>${renderAssessmentEvidence(candidate, assessment, decision)}</div>
 
       <div class="section-block hosted-rule-comparison">
@@ -4848,7 +5053,7 @@ async function handleAssessmentClick(event) {
     await handleRuleAssistanceClick(event);
     return;
   }
-  if (event.target.closest("[data-rule-issue-plan], [data-dismiss-rule-issue-banner]")) {
+  if (event.target.closest("[data-rule-issue-plan], [data-dismiss-rule-issue-banner], [data-copy-consolidated-wording], [data-rule-issue-open]")) {
     await handleRuleIssueDetailClick(event);
     return;
   }
@@ -4920,7 +5125,16 @@ async function handleAssessmentClick(event) {
 }
 
 function refreshAssessmentScores(candidate, action = getDecision(candidate).action) {
-  syncAssessmentEvaluation(candidate, { ...getDecision(candidate), action });
+  const decision = { ...getDecision(candidate), action };
+  const cost = getDecisionTokenDelta(candidate, decision);
+  const readouts = [
+    [".score-item.cost strong", cost === 0 ? "0" : formatSignedNumber(cost)],
+    [".score-item.efficiency strong", formatNumber(getAssessmentProjectedHeadroom(candidate, action, decision))]
+  ];
+  for (const [selector, value] of readouts) {
+    const readout = elements["assessment-panel"].querySelector(selector);
+    if (readout && readout.textContent !== String(value)) readout.textContent = value;
+  }
 }
 
 function syncAssessmentEvaluation(candidate, decision = getDecision(candidate)) {
@@ -5987,7 +6201,7 @@ function getCandidateMutationRuleIds(candidate) {
 
 function getPreviewReadiness() {
   const planCandidates = getPlanCandidates();
-  const openRuleIssueCount = getOpenRuleIssues().length;
+  const openRuleIssueCount = getProjectedCatalogIssues().length;
   const missingActionCount = planCandidates.filter((candidate) => !isActionableDecision(getDecision(candidate))).length;
   const missingResourceTypeCount = planCandidates.filter((candidate) => {
     const decision = getDecision(candidate);
@@ -6039,7 +6253,7 @@ function getApprovalRequirements(readiness) {
     ? "This account is not a CODEOWNER for this repository."
     : "GitHub identity or CODEOWNERS authorization could not be verified. Check GitHub authentication and relaunch Workbench.";
   return [
-    { id: "rule-issues", label: "Rule Issues", value: readiness.openRuleIssueCount ? `${readiness.openRuleIssueCount} pending` : "None pending", status: readiness.openRuleIssueCount ? "pending" : "passed" },
+    { id: "rule-issues", label: "Projected catalog issues", value: readiness.openRuleIssueCount ? `${readiness.openRuleIssueCount} blocking` : "None blocking", status: readiness.openRuleIssueCount ? "pending" : "passed" },
     { id: "plan-actions", label: "Plan actions", value: hasPlan ? `${readiness.planCandidates.length} selected` : "None selected", status: hasPlan ? "passed" : "pending" },
     { id: "rule-actions", label: "Rule actions", value: readiness.missingActionCount ? `${readiness.missingActionCount} missing` : hasPlan ? "Complete" : "None selected", status: hasPlan && !readiness.missingActionCount ? "passed" : "pending" },
     { id: "resource-types", label: "Resource types", value: hasPlan ? readiness.missingResourceTypeCount ? `${readiness.missingResourceTypeCount} missing` : "Complete" : "None selected", status: hasPlan && !readiness.missingResourceTypeCount ? "passed" : "pending" },
@@ -6501,6 +6715,10 @@ function buildDraftExport() {
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     approverName: session.approverName || "",
+    ruleBaselines: Object.fromEntries(Object.entries(session.ruleBaselines || {}).map(([key, baseline]) => {
+      const { sourceHash, ...original } = baseline;
+      return [key, { ...original, sourceContentSha256: sourceHash }];
+    })),
     decisions: Object.fromEntries(Object.entries(session.decisions).map(([key, decision]) => [key, {
       action: decision.action ?? null,
       selected: decision.inPlan,
@@ -6530,6 +6748,18 @@ function buildDraftExport() {
 function deserializeDraft(draft, candidates) {
   if (draft?.schemaVersion !== WORKBENCH_DRAFT_SCHEMA_VERSION || draft.kind !== "hosted-rule-workbench-draft") return null;
   const candidatesByKey = new Map(candidates.map((candidate) => [candidate.key, candidate]));
+  if (draft.ruleBaselines !== undefined && (!draft.ruleBaselines || typeof draft.ruleBaselines !== "object" || Array.isArray(draft.ruleBaselines))) {
+    throw new Error("The imported original rule baselines are invalid.");
+  }
+  const ruleBaselines = Object.fromEntries(Object.entries(draft.ruleBaselines || {}).map(([key, baseline]) => {
+    const candidate = candidatesByKey.get(key);
+    const { sourceContentSha256, ...original } = baseline;
+    const restored = { ...original, sourceHash: sourceContentSha256 };
+    if (!candidate || !originalRuleBaselinesEqual(restored, createOriginalRuleBaseline(candidate))) {
+      throw new Error("The imported original baseline does not match the current source snapshot.");
+    }
+    return [key, restored];
+  }));
   const activeRuleIds = new Set(state.bundle.catalog.rules.filter((rule) => rule.status === "active").map((rule) => rule.id));
   for (const [key, decision] of Object.entries(draft.decisions || {})) {
     const candidate = candidatesByKey.get(key);
@@ -6547,6 +6777,7 @@ function deserializeDraft(draft, candidates) {
     createdAt: draft.createdAt,
     updatedAt: draft.updatedAt,
     approverName: draft.approverName,
+    ruleBaselines,
     decisions: Object.fromEntries(Object.entries(draft.decisions || {}).map(([key, decision]) => [key, {
       action: decision.action,
       inPlan: decision.selected,
@@ -6678,7 +6909,10 @@ async function importDraft(event) {
     }
     for (const [key, decision] of Object.entries(draft.decisions)) {
       const candidate = state.assessedCandidates.find((item) => item.key === key);
-      if (!candidate || (!candidate.assessment.hostedApplicable && !overriddenCandidateKeys.has(key)) || decision.sourceHash !== candidate.hash || (decision.action !== null && !getAllowedActions(candidate, decision.proposedText).includes(decision.action)) || !isValidPlanMembership(decision, key, draft.bulkOperations) || typeof decision.rationale !== "string" || decision.rationale.length > DECISION_RATIONALE_MAX_LENGTH || decision.proposedHostedRuleId !== candidate.assessment.proposedHostedRuleId) {
+      const originalRevert = candidate && !decision.inPlan && isOriginalRuleRevert(candidate, {
+        ...decision, implementationModels: decision.implementationModels || defaultDecision(candidate).implementationModels
+      });
+      if (!candidate || (!candidate.assessment.hostedApplicable && !overriddenCandidateKeys.has(key)) || decision.sourceHash !== candidate.hash || (decision.action !== null && !getAllowedActions(candidate, decision.proposedText).includes(decision.action) && !originalRevert) || !isValidPlanMembership(decision, key, draft.bulkOperations) || typeof decision.rationale !== "string" || decision.rationale.length > DECISION_RATIONALE_MAX_LENGTH || decision.proposedHostedRuleId !== candidate.assessment.proposedHostedRuleId) {
         throw new Error(`The draft decision for ${key} is invalid.`);
       }
     }
@@ -6691,6 +6925,8 @@ async function importDraft(event) {
     state.session.approverName = String(draft.approverName || "").slice(0, 120);
     autofillApproverName();
     state.session.decisions = draft.decisions || {};
+    state.session.ruleBaselines = draft.ruleBaselines;
+    for (const candidate of state.assessedCandidates) state.session.ruleBaselines[candidate.key] ||= createOriginalRuleBaseline(candidate);
     state.session.applicabilityOverrides = draft.applicabilityOverrides || {};
     state.session.bulkOperations = draft.bulkOperations;
     refreshEffectiveCandidates();

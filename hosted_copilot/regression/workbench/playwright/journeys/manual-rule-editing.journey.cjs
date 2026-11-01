@@ -7,11 +7,12 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
   const fixture = await page.evaluate((key) => {
     const candidate = state.assessedCandidates.find(item => item.key === key);
     const ruleId = candidate.catalogMapping.hostedRuleId;
-    const originalText = getCurrentHostedText(candidate);
+    const baseline = getOriginalRuleBaseline(candidate);
+    const originalText = baseline.proposedText;
     const updatedText = `${originalText} Preserve the maintainer's explicit wording.`;
     const related = state.bundle.catalog.rules.find(item => item.status === "active" && item.id !== ruleId);
     globalThis.__resolutionFixture = { session: structuredClone(state.session), issues: state.ruleIssues };
-    state.session.decisions[key] = { ...getDecision(candidate), proposedText: updatedText, ...createPlanMembership(), sourceHash: candidate.hash };
+    state.session.decisions[key] = { ...getDecision(candidate), action: "retire", rationale: "Synthetic saved retirement rationale.", proposedText: updatedText, ...createPlanMembership(), sourceHash: candidate.hash };
     const issue = {
       id: `relationship:${ruleId}:fixture-resolution`, classification: "overlap", label: "Overlap",
       title: `${related.id} preserves ${ruleId}`, bannerTitle: "Hosted rule retirement is recommended",
@@ -30,13 +31,29 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
     state.activeRuleIssueKey = issue.id;
     setWorkspaceTab("rule-issues");
     renderRuleIssues();
-    return { key, ruleId, originalText, updatedText, rationale: getDecision(candidate).rationale, before: JSON.stringify(state.session) };
+    return { key, ruleId, originalText, updatedText, originalAction: baseline.action, originalRationale: baseline.rationale, rationale: getDecision(candidate).rationale, before: JSON.stringify(state.session) };
   }, candidateKey);
   const open = async () => {
     await page.locator(`[data-rule-issue-rule="${fixture.ruleId}"]`).click();
     await page.locator("[data-rule-resolution-dialog]").waitFor();
   };
   try {
+    await page.evaluate(() => {
+      globalThis.__copyFixture = { writer: navigator.clipboard.writeText, toast: showToast, writes: [], messages: [], fail: false };
+      navigator.clipboard.writeText = async text => { __copyFixture.writes.push(text); if (__copyFixture.fail) throw new Error("Synthetic clipboard failure"); };
+      showToast = message => __copyFixture.messages.push(message);
+    });
+    try {
+      await page.locator('[data-copy-consolidated-wording]').click();
+      await page.waitForFunction(() => __copyFixture.messages.includes("Consolidated wording copied."));
+      await page.evaluate(async () => { await copyConsolidatedWording("   "); __copyFixture.fail = true; await copyConsolidatedWording("Synthetic failed copy."); });
+      assert(await page.evaluate(() => __copyFixture.writes.length === 2 && __copyFixture.writes.every(text => text.length > 0)
+        && __copyFixture.messages.includes("Nothing to copy.") && __copyFixture.messages.includes("Copy failed.")),
+      "Copy cleared the clipboard, duplicated a write, or lost empty/failure feedback");
+      assert(await page.locator('[data-copy-consolidated-wording]').isEnabled(), "Advisory Copy became disabled after failure");
+    } finally {
+      await page.evaluate(() => { navigator.clipboard.writeText = __copyFixture.writer; showToast = __copyFixture.toast; delete globalThis.__copyFixture; });
+    }
     await open();
     const dialog = page.locator("[data-rule-resolution-dialog]");
     const rationale = dialog.locator("#rule-resolution-rationale");
@@ -65,19 +82,21 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
     assert(await dialog.getByRole("radio", { name: "Retire", exact: true }).isChecked()
       && await dialog.getByRole("radio", { name: "Keep Updated Text", exact: true }).isChecked()
       && await rationale.inputValue() === fixture.rationale
-      && await save.isDisabled() && await reset.isDisabled(), "Resolution defaults do not match the adjudicated action and saved wording");
+      && await save.isEnabled() && await reset.isEnabled(), "Resolution defaults do not match the saved action, pending Plan membership, and original-baseline Reset");
     await dialog.getByRole("radio", { name: "Keep Original Text", exact: true }).check();
     assert(await save.isEnabled() && await reset.isEnabled()
       && !(await dialog.getByRole("radio", { name: "Keep Updated Text", exact: true }).isChecked()), "Wording selection is not exclusive or does not dirty the resolution");
     await dialog.getByRole("radio", { name: "Keep Updated Text", exact: true }).check();
-    assert(await save.isDisabled() && await reset.isDisabled(), "Returning to the initial wording leaves Save or Reset enabled");
+    assert(await save.isEnabled() && await reset.isEnabled(), "Returning to saved wording lost pending Plan staging or original-baseline Reset");
     await rationale.fill("x".repeat(500));
     assert(await dialog.locator(".rationale-limit").innerText() === "500 / 500 characters"
       && await rationale.getAttribute("maxlength") === "500", "Shared rationale counter or limit is incorrect");
     await reset.click();
-    assert(await rationale.inputValue() === fixture.rationale
-      && await dialog.locator(".rationale-limit").innerText() === `${fixture.rationale.length} / 500 characters`
-      && await save.isDisabled() && await reset.isDisabled(), "Reset failed to restore the baseline and rationale counter");
+    assert(await rationale.inputValue() === fixture.originalRationale
+      && await dialog.locator(".rationale-limit").innerText() === `${fixture.originalRationale.length} / 500 characters`
+      && await save.isEnabled() && await reset.isDisabled()
+      && await dialog.locator('input[name="rule-resolution-action"]:checked').inputValue() === fixture.originalAction,
+    "Reset failed to restore the immutable original baseline or its exact-revert rationale exception");
     await page.setViewportSize({ width: 768, height: 900 });
     const narrow = await dialog.evaluate(element => ({ width: element.getBoundingClientRect().width, overflow: element.scrollWidth > element.clientWidth, footer: element.querySelector(".modal-dialog-actions").getBoundingClientRect().bottom <= innerHeight }));
     assert(narrow.width === 736 && !narrow.overflow && narrow.footer, "Resolution does not fit the minimum supported viewport");
@@ -141,8 +160,23 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
       return { text: decision.proposedText, action: decision.action, rationale: decision.rationale, inPlan: decision.inPlan, stored: stored.decisions[key].proposedText };
     }, fixture.key);
     assert(saved.text === fixture.originalText && saved.stored === fixture.originalText && saved.action === "retire"
-      && saved.rationale === "Retain the original rule wording without approving the Plan." && !saved.inPlan,
-    "Saving a resolution lost its wording or action, or silently approved Plan membership");
+      && saved.rationale === "Retain the original rule wording without approving the Plan." && saved.inPlan,
+    "Saving a resolution lost its wording or action, or failed to stage the explicit Plan mutation");
+    assert(await page.evaluate(key => {
+      const candidate = state.assessedCandidates.find(item => item.key === key);
+      return !getPlanReadiness(candidate).ready && getOpenRuleIssues().length === 0
+        && state.ruleIssues.length === 1 && document.querySelector('[data-resolution-status="resolved"]')
+        && document.querySelector('.banner-success use').getAttribute('href').endsWith('#codicon-git-pull-request-done');
+    }, fixture.key), "Resolved history vanished or the unvalidated retirement became approved");
+    await open();
+    assert(await dialog.getByRole("radio", { name: "Retire", exact: true }).isChecked() && await reset.isEnabled(),
+      "Reopening lost the saved action or original-baseline Reset target");
+    await reset.click();
+    assert(await rationale.inputValue() === fixture.originalRationale && await save.isEnabled(),
+      "Exact original revert requires a new rationale or cannot remove the Plan mutation");
+    await save.click();
+    assert(await page.evaluate(key => !getDecision(state.assessedCandidates.find(item => item.key === key)).inPlan
+      && getOpenRuleIssues().length === 1, fixture.key), "Original revert failed to reopen the issue or remove its Plan mutation");
   } finally {
     await page.setViewportSize(viewport);
     await page.evaluate(async () => {
@@ -194,7 +228,8 @@ async function run({ page, baseUrl, assert }) {
         mutations: []
       };
       __editorPaintCheck.observer = new MutationObserver((records) => __editorPaintCheck.mutations.push(...records));
-      __editorPaintCheck.observer.observe(panel, { childList: true, subtree: true });
+      __editorPaintCheck.observer.observe(__editorPaintCheck.evidence, { childList: true, subtree: true });
+      __editorPaintCheck.observer.observe(__editorPaintCheck.pill, { childList: true, subtree: true });
     });
     await editor.fill(savedText);
     const typing = await page.evaluate(() => {
@@ -205,7 +240,8 @@ async function run({ page, baseUrl, assert }) {
       return {
         stablePill: check.pill === document.querySelector("[data-assessment-recommendation]"),
         stableEvidence: check.evidence === document.querySelector("[data-assessment-evidence]")?.firstElementChild,
-        replacedNodes: check.mutations.reduce((count, record) => count + record.addedNodes.length + record.removedNodes.length, 0),
+        replacedNodes: check.mutations.filter(record => !record.target.closest?.(".score-item.cost, .score-item.efficiency"))
+          .reduce((count, record) => count + record.addedNodes.length + record.removedNodes.length, 0),
         saveEnabled: !document.querySelector("[data-proposed-text-save]").disabled,
         resetEnabled: !document.querySelector("[data-proposed-text-reset]").disabled
       };

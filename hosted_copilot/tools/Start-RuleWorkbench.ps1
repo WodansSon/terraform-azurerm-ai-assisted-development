@@ -219,6 +219,7 @@ $assessmentReconciliationPath = Join-Path $PSScriptRoot 'internal/reconciliation
 $ruleIssuesExporterPath = Join-Path $PSScriptRoot 'internal/reconciliation/Export-WorkbenchRuleIssues.ps1'
 Import-Module (Join-Path $PSScriptRoot 'modules/workbench/SavedRuleEvaluation.psm1')
 Import-Module (Join-Path $PSScriptRoot 'modules/workbench/RuleAssistance.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'modules/workbench/RelationshipReview.psm1') -Force -DisableNameChecking
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $resolvedSiteDirectory = [IO.Path]::GetFullPath($SiteDirectory)
 $resolvedAssessmentCacheDirectory = [IO.Path]::GetFullPath($AssessmentCacheDirectory)
@@ -623,7 +624,7 @@ $result = [ordered]@{
     readOnly = $true
     allowedMethods = @('GET', 'HEAD', 'POST')
     shutdownEndpoint = 'POST /shutdown'
-    relationshipEndpoint = 'POST /reconcile-rule'
+    relationshipEndpoint = 'POST /check-relationships'
     assistanceEndpoint = 'POST /assist-rule'
     serving = -not $StageOnly
 }
@@ -724,6 +725,7 @@ function Read-HttpRequestBody {
 
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $Port)
 $allowedHosts = @("127.0.0.1:$Port", "localhost:$Port")
+$receiptDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-workbench-review-receipts-' + [guid]::NewGuid().ToString('N'))
 $evaluationPool = [RunspaceFactory]::CreateRunspacePool(1, 1)
 $evaluationRequests = [Collections.Generic.List[object]]::new()
 try {
@@ -803,6 +805,7 @@ try {
             if ($method -in @('GET', 'HEAD') -and $requestUri.AbsolutePath -eq '/runtime-config') {
                 $runtimeConfig = $shutdownConfig | ConvertFrom-Json
                 $runtimeConfig | Add-Member -NotePropertyName ruleAssistance -NotePropertyValue (Get-RuleAssistanceRuntime @assistanceParameters)
+                $runtimeConfig | Add-Member -NotePropertyName relationshipReview -NotePropertyValue (Get-RelationshipReviewRuntime -RepositoryRoot $repositoryRoot -DisplayPath $stagedDisplayPath)
                 $runtimeConfigBytes = [Text.Encoding]::UTF8.GetBytes(($runtimeConfig | ConvertTo-Json -Depth 20 -Compress))
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $runtimeConfigBytes -IncludeBody ($method -eq 'GET')
                 continue
@@ -816,6 +819,44 @@ try {
                 $shutdownBody = [Text.Encoding]::UTF8.GetBytes('{"status":"shutting-down"}')
                 Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body $shutdownBody -IncludeBody $true
                 $shutdownRequested = $true
+                continue
+            }
+
+            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/check-relationships') {
+                if (-not (Test-ShutdownToken -Candidate ([string]$requestHeaders['X-Workbench-Operation-Token']) -Expected $operationToken)) {
+                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
+                    continue
+                }
+                try {
+                    $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders
+                    $reviewParameters = @{ RepositoryRoot = $repositoryRoot; DisplayPath = $stagedDisplayPath; EvaluatorCommand = $EvaluatorCommand; ReceiptDirectory = $receiptDirectory }
+                    $evaluationRequests.Add((Start-RelationshipReviewRequest -RunspacePool $evaluationPool -Client $client -RequestBody $requestBody -Parameters $reviewParameters))
+                    $deferredResponse = $true
+                }
+                catch {
+                    $failure = Get-RelationshipReviewFailure 'invalid-request'
+                    $failureBody = @{ error = $failure } | ConvertTo-Json -Compress
+                    Write-HttpResponse -Stream $stream -StatusCode 400 -StatusText 'Bad Request' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($failureBody)) -IncludeBody $true
+                }
+                continue
+            }
+
+            if ($method -eq 'POST' -and $requestUri.AbsolutePath -eq '/verify-relationship-reviews') {
+                if (-not (Test-ShutdownToken -Candidate ([string]$requestHeaders['X-Workbench-Operation-Token']) -Expected $operationToken)) {
+                    Write-HttpResponse -Stream $stream -StatusCode 403 -StatusText 'Forbidden' -ContentType 'text/plain; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes('Forbidden')) -IncludeBody $true
+                    continue
+                }
+                try {
+                    $body = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders
+                    $envelope = $body | ConvertFrom-Json -Depth 5 -DateKind String
+                    $json = [Text.UTF8Encoding]::new($false, $true).GetString([Convert]::FromBase64String([string]$envelope.payloadBase64))
+                    $verification = Test-RelationshipReviewApproval -Request ($json | ConvertFrom-Json -Depth 100 -DateKind String) -RepositoryRoot $repositoryRoot -DisplayPath $stagedDisplayPath -ReceiptDirectory $receiptDirectory
+                    Write-HttpResponse -Stream $stream -StatusCode 200 -StatusText 'OK' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes(($verification | ConvertTo-Json -Compress))) -IncludeBody $true
+                }
+                catch {
+                    $failure = Get-RelationshipReviewFailure 'snapshot-changed'
+                    Write-HttpResponse -Stream $stream -StatusCode 409 -StatusText 'Conflict' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes((@{ error = $failure } | ConvertTo-Json -Compress))) -IncludeBody $true
+                }
                 continue
             }
 
@@ -883,5 +924,6 @@ finally {
     finally {
         $evaluationPool.Close()
         $evaluationPool.Dispose()
+        if (Test-Path -LiteralPath $receiptDirectory -PathType Container) { Remove-Item -LiteralPath $receiptDirectory -Recurse -Force }
     }
 }

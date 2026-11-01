@@ -30,8 +30,8 @@ function Get-RelationshipReviewFailure {
         'deadline' = @('The relationship check reached its five-minute limit. No result was accepted. Try again.', $true, 'retry')
         'snapshot-changed' = @('The rule or catalog changed. Save the current wording or reload the Workbench, then run a new check.', $false, 'refresh-snapshot')
         'invalid-request' = @('The current proposal cannot be checked. Review its action and rule identity, then save it again.', $false, 'correct-proposal')
-        'runtime-unavailable' = @('The relationship checker is unavailable. Check GitHub Copilot authentication and Luna model access, then restart the Workbench.', $false, 'restart')
-        'unexpected-failure' = @('The relationship check could not be completed. No result was accepted. Check the Workbench diagnostics before trying again.', $false, 'inspect-diagnostics')
+        'runtime-unavailable' = @('The relationship checker could not use its configured evaluator. Check GitHub Copilot authentication and configured model access, then restart the Workbench.', $false, 'restart')
+        'unexpected-failure' = @('The relationship check could not be completed. No result was accepted. Report the failure code and recovery action shown with this error; no raw evaluator output is exposed.', $false, 'report-failure')
     }
     if (-not $policies.ContainsKey($Code)) { $Code = 'unexpected-failure' }
     $policy = $policies[$Code]
@@ -94,7 +94,7 @@ function Assert-RelationshipReviewProperties {
 }
 
 function Get-RelationshipReviewInput {
-    param([Parameter(Mandatory)][object]$Display, [Parameter(Mandatory)][object]$Request)
+    param([Parameter(Mandatory)][object]$Display, [Parameter(Mandatory)][object]$Request, [switch]$PlanOnly)
 
     Assert-RelationshipReviewProperties $Request @('schemaVersion', 'requestId', 'authoritySha256', 'snapshotKey', 'candidateKey', 'sourceFiles', 'proposals')
     if ($Request.schemaVersion -ne 1 -or [string]$Request.requestId -cnotmatch '^[a-f0-9-]{36}$' -or
@@ -157,7 +157,8 @@ function Get-RelationshipReviewInput {
         $record = $entry.Value
         $proposal = $record.proposal
         $subject = $entry.Key -ceq [string]$Request.candidateKey
-        if (-not $proposal.inPlan -and -not $subject) { continue }
+        $edited = $proposal.text.Replace("`r`n", "`n") -cne ([string]$record.candidate.recommendation.ruleText).Replace("`r`n", "`n")
+        if (-not $proposal.inPlan -and ($PlanOnly -or -not $subject -or -not $edited)) { continue }
         $action = $proposal.action
         if (-not $proposal.inPlan) {
             $action = if (-not $rules.ContainsKey($record.id)) { 'add' } elseif ($rules[$record.id].status -ceq 'retired') { 'restore' } else { 'update' }
@@ -186,7 +187,7 @@ function Get-RelationshipReviewInput {
 
 function Get-RelationshipReviewResponseSchema {
     param([Parameter(Mandatory)][object]$InputData)
-    return [ordered]@{
+    $schema = [ordered]@{
         '$schema' = 'https://json-schema.org/draft/2020-12/schema'; type = 'object'; additionalProperties = $false; required = @('findings')
         properties = [ordered]@{ findings = [ordered]@{
             type = 'array'; uniqueItems = $true
@@ -200,6 +201,11 @@ function Get-RelationshipReviewResponseSchema {
             }
         } }
     }
+    if (@($InputData.changedRuleIds).Count -eq 0) {
+        $schema.properties.findings.Remove('items')
+        $schema.properties.findings.maxItems = 0
+    }
+    return $schema
 }
 
 function Test-RelationshipReviewResult {
@@ -252,7 +258,7 @@ function Test-RelationshipReviewApproval {
     if (@($Request.proposals).Count) {
         $probe = [pscustomobject][ordered]@{ schemaVersion = 1; requestId = [guid]::NewGuid().ToString(); authoritySha256 = $runtime.authoritySha256; snapshotKey = '0' * 64;
             candidateKey = [string]$Request.proposals[0].candidateKey; sourceFiles = $Request.sourceFiles; proposals = $Request.proposals }
-        $null = Get-RelationshipReviewInput -Display $display -Request $probe
+        $null = Get-RelationshipReviewInput -Display $display -Request $probe -PlanOnly
     }
     return [ordered]@{ valid = $true }
 }
