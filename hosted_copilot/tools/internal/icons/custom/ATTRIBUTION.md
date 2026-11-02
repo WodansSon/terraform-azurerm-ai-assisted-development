@@ -9,5 +9,8 @@ Copyright Microsoft Corporation. Licensed under the
 - `discard-all.svg` Rotates the pinned `discard.svg` geometry 45 degrees clockwise, with an optical translation, for Undo All.
 - `collection-issues-compact.svg` Adds a Workbench-authored filled exclamation badge and collection cutout to the pinned `collection.svg` geometry for Rule Issues.
 
+The additional `not-found.svg` is original Workbench artwork, not a Codicons derivative.
+It uses two continuous red diagonal bands, a salmon-pink background, and a red border.
+
 The adjacent `runtime.json` owns sprite membership and runtime legal notices.
 The preview includes every source SVG. The runtime sprite contains only its declared icons.

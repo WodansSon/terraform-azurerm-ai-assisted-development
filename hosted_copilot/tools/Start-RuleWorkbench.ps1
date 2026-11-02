@@ -206,7 +206,7 @@ $Model = $defaultProfile.model
 $AssessmentReasoningEffort = $defaultProfile.reasoningEffort
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $workbenchSource = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../workbench'))
-$workbenchIconSource = Join-Path $workbenchSource 'icons'
+$workbenchIconSource = Join-Path $workbenchSource 'sprite'
 $catalogRoot = Join-Path $PSScriptRoot '../copilot-rule-catalog'
 $hostedCatalogPath = Join-Path $catalogRoot 'instruction-catalog.json'
 $protectedRulesPath = Join-Path $catalogRoot 'protected-rules.json'
@@ -268,15 +268,24 @@ $ownedAssetNames = @('index.html', 'app.js', 'assistance-waiting-phrases.json', 
 foreach ($assetName in $ownedAssetNames) {
     Copy-Item -LiteralPath (Join-Path $workbenchSource $assetName) -Destination (Join-Path $resolvedSiteDirectory $assetName) -Force
 }
-. (Join-Path $PSScriptRoot 'internal/workbench/WorkbenchIconAssets.ps1')
+. (Join-Path $PSScriptRoot 'internal/icons/WorkbenchIconAssets.ps1')
 $runtimeIconAssetNames = @(Get-WorkbenchRuntimeIconAssets -IconRoot $workbenchIconSource)
 foreach ($assetName in $runtimeIconAssetNames) {
     if (-not (Test-Path -LiteralPath (Join-Path $workbenchIconSource $assetName) -PathType Leaf)) {
         throw "Required Workbench runtime icon asset was not found: $assetName"
     }
 }
-$stagedIconDirectory = Join-Path $resolvedSiteDirectory 'icons'
+$stagedIconDirectory = Join-Path $resolvedSiteDirectory 'sprite'
 Copy-WorkbenchRuntimeIconAssets -IconRoot $workbenchIconSource -Destination $stagedIconDirectory
+
+$legacyIconDirectory = Join-Path $resolvedSiteDirectory 'icons'
+if (Test-Path -LiteralPath $legacyIconDirectory) {
+    $legacyIconItem = Get-Item -LiteralPath $legacyIconDirectory -Force
+    if (-not $legacyIconItem.PSIsContainer -or ($legacyIconItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or @(Get-ChildItem -LiteralPath $legacyIconDirectory -Recurse -Force -Attributes ReparsePoint).Count) {
+        throw 'Legacy staged icons must not contain links or junctions'
+    }
+    Remove-Item -LiteralPath $legacyIconDirectory -Recurse -Force
+}
 
 $shutdownTokenBytes = New-Object byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Fill($shutdownTokenBytes)

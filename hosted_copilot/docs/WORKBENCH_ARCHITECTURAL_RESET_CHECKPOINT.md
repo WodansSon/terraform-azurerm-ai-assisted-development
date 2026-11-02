@@ -16,6 +16,15 @@ Do not delete, revert, migrate, publish, or resume this implementation merely be
 - Preserve repository-managed published rules as controlled inputs and outputs. Define the distinction between published authority and mutable workspace state explicitly.
 - Use configurable source and policy adapters so the solution can support other teams. Establish adaptability with one complete workflow under two different team profiles before committing to a full rewrite.
 
+## November 2 Scope Decisions
+
+- Use the [consolidated SQLite-v1 design](WORKBENCH_SQLITE_V1_DESIGN.md) for proposed table definitions, exact PK/FK mappings, domain diagrams, row examples, command transactions, read models, and open implementation decisions. This is a review draft, not an implemented schema or permission to resume the runtime rewrite.
+- Keep JSON draft import/export and cross-database record transfer out of the SQL-based v1. The earlier optional CSV interchange direction is not a v1 feature commitment. Local Save, Preview, approval, and apply use the same database; generated instruction deployment remains separate.
+- Include a small persistent database/workspace identity in the v1 schema design. Create its GUID once and record repository/branch context separately; a mutable Git branch name is not the database identity. This is a design requirement, not an implemented table or migration.
+- Defer whole-database snapshot sharing to v2. Prefer separate, initially read-only inspection with the recipient's database untouched; any later replacement must preserve a verified recoverable backup. Do not merge rows, remap primary keys, or inherit donor authorization and deployment targets.
+- Use the [deferred v2 snapshot-sharing design](WORKBENCH_DATABASE_SNAPSHOT_V2_DESIGN.md) for requirements, identity lifecycle, SQLite backup/WAL handling, compatibility, recovery, implementation sequence, and future acceptance criteria. Record the future design rather than retain obsolete JSON feature stubs or depend on intermediate Git history surviving a squash merge.
+- The Draft options ellipsis is hidden only in the live browser preview. Its preserved source, handlers, schemas, and tests are unchanged; remove feature-exclusive code coherently during an explicitly approved SQL-v1 implementation.
+
 ## Source-Backed Reference Work
 
 - The working tree retains bounded relationship-review lifecycle, production-launcher wiring, failure classification, cancellation, and fixture-backed regression changes made before the architectural pause.

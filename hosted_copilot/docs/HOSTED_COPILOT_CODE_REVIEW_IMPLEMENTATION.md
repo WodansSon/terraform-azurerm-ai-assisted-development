@@ -657,17 +657,17 @@ Render Candidate Sources and Assessment Results as independent adapters over one
 
 Own the Workbench palette under the `theme-hosted-dark` document class. Its initial values use VS Code Dark 2026 as a visual reference: `#121314` editor surfaces, `#191A1B` title/activity/status and panel surfaces, `#2A2B2C` structural borders, `#333536` input borders, `#BFBFBF` active foreground, `#8C8C8C` inactive foreground, and `#3994BC` interaction accents. Use the [Fluent UI Theme Colors](https://storybooks.fluentui.dev/react/?path=/docs/theme-colors--docs) catalog as the visual and token reference for Fluent-derived semantic surfaces, then map accepted values to Workbench-owned variables rather than adding a runtime theme dependency. Do not import, resolve, or depend on an installed VS Code theme at runtime; evolve these product-owned tokens directly. Use Segoe UI for shell and interface text and Consolas for compact operational values and code.
 
-Keep upstream icon sources in separate `workbench/icons/codicons/`, `octicons/`, `fluent/`, and `llms/` directories. Keep Workbench-authored derivatives in `workbench/icons/custom/`, with their upstream attribution and license. Each family retains its own independent sprite and symbol prefix; moving a derivative into the custom family requires updating its UI references, not leaving an alias in the upstream sprite.
+Keep full upstream icon sources, preview PNGs, and legal originals in family directories under `tools/internal/icons/`. Keep Workbench-authored derivatives in its `custom/` family with their upstream attribution and license. Generate one `workbench/sprite/sprite.svg` with stable family-qualified symbol IDs. These are file-based application assets, not SQLite records.
 
 Each family's `runtime.json`, validated against `contracts/workbench/icon-runtime.schema.json`, owns its display name, symbol prefix, source URL and revision, color handling, asset membership, and runtime companion files:
 
 - `preview.icons` is `all`: show every adjacent source SVG in `preview.png`, excluding generated SVGs. Use at most six columns and enough rows for the inventory; do not make exact PNG dimensions a test contract.
 - `sprite.icons` lists the exact runtime symbols. Include supported helper inputs and conditional states, not only currently visible or literal call sites. Preserve native geometry and presentation; do not silently substitute another glyph for a missing symbol.
-- `runtimeFiles` lists `sprite.svg` and the family's legal and attribution notices. Staging copies exactly those files, rejects missing notices and unsafe paths, and removes obsolete staged icon files. Source SVGs, previews, and manifests remain in the checkout.
+- `runtimeFiles` lists the family's required legal and attribution notices. Generation copies their exact bytes to `workbench/sprite/<family>/legal/`. Staging copies only the single sprite and those legal files, rejects missing notices and unsafe paths, and removes obsolete staged assets. Source SVGs, previews, and manifests remain under tooling.
 
-All five families use `New-WorkbenchIconAssets` in `tools/internal/workbench/WorkbenchIconAssets.ps1`. The existing family-specific command entry points are thin wrappers around that same implementation. Generation is offline and uses the locked Hosted Puppeteer runtime for previews. LLM generation has no model-prefix or chat-specific branch: its manifest declares the four runtime brand icons, while `workbench/llm-brands.json` belongs to the chat presentation consumer.
+All five families use `tools/internal/icons/New-WorkbenchSprite.ps1` and its shared builder. Generation is offline and uses the locked Hosted Puppeteer runtime for full-family previews; `-SkipPreviews` preserves existing PNGs when only runtime output needs regeneration. LLM generation has no model-prefix or chat-specific branch: its manifest declares the four runtime brand icons, while `workbench/llm-brands.json` belongs to the chat presentation consumer.
 
-To add artwork, preserve its provenance and license, add its SVG to the appropriate family, and update that family's manifest if the icon is needed at runtime. Regenerate through the family entry point, then update the owning UI caller to reference the correct sprite and symbol explicitly. Ordinary inventory changes must not require another hardcoded list in generators, staging, or tests. Missing icons may indicate mismatched deployed assets; update UI files and sprites together instead of masking the mismatch with fallback artwork. The sole intentional fallback is the Codicon question mark for an unknown or missing chat model name.
+To add artwork, preserve its provenance and license, add its SVG to the appropriate family, and update that family's manifest if the icon is needed at runtime. Regenerate through the combined entry point, then update the owning UI caller to reference its family-qualified symbol. Ordinary inventory changes must not require another hardcoded list in generators, staging, or tests. Missing dynamic symbols show a red hatched placeholder with an Icon Not Found tooltip; required-symbol validation still fails rather than masking an invalid asset set. Unknown chat model names retain the separate question-mark branding fallback.
 
 Use Codicons for the IDE shell and general Workbench controls, Octicons for GitHub-familiar review controls inside Preview, and optically sized Fluent regular and filled pairs for application-semantic surfaces. Preserve Workbench-specific semantic colors for recommendation, risk, readiness, and diff meaning. Use the yellow JSON braces Codicon as the product mark.
 
@@ -684,7 +684,7 @@ Use the reusable `.error-banner` component for inline failure notifications. It 
 ```html
 <div class="error-banner" role="alert" aria-atomic="true">
   <svg class="codicon error-banner-icon" aria-hidden="true">
-    <use href="icons/codicons/sprite.svg#codicon-error"></use>
+    <use href="sprite/sprite.svg#codicon-error"></use>
   </svg>
   <div class="error-banner-message">
     <strong>Validation failed.</strong> The request contains an invalid relationship.
@@ -692,7 +692,7 @@ Use the reusable `.error-banner` component for inline failure notifications. It 
   <button class="error-banner-dismiss clickable" type="button"
           aria-label="Dismiss error" data-workbench-tooltip="Dismiss error">
     <svg class="codicon" aria-hidden="true">
-      <use href="icons/codicons/sprite.svg#codicon-close"></use>
+      <use href="sprite/sprite.svg#codicon-close"></use>
     </svg>
   </button>
 </div>

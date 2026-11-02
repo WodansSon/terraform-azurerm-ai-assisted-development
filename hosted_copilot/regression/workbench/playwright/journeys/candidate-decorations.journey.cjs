@@ -114,11 +114,33 @@ async function assertIconSpriteValidation(page, baseUrl, assert) {
           .some(operation => /getBBox|requestAnimationFrame/.test(operation.toString()))
       };
     }, fixtureRoot);
-    assert(result.originalSize >= 4 && result.spriteCount === result.originalSize + 1, "valid runtime sprites or shared sprite cache were not preserved");
+    assert(result.originalSize === 1 && result.spriteCount === result.originalSize + 1, "the single runtime sprite or shared sprite cache was not preserved");
     assert(requests.filter(request => request.name === "valid.svg" && request.resourceType === "fetch").length === 1, `repeated validation references fetched the same sprite more than once (${JSON.stringify(requests)})`);
     assert(result.missingDecorationError?.includes("missing required symbol: fixture-missing"), "candidate decorations did not validate their referenced symbol");
     assert(result.crossOriginError?.includes("Workbench origin"), "sprite validation accepted a cross-origin reference");
     assert(!result.usesRendering, "startup sprite validation still depends on rendering frames or SVG geometry");
+    const fallback = await page.evaluate(async () => {
+      const owner = document.createElement("span");
+      owner.innerHTML = icon("fixture-missing");
+      document.body.appendChild(owner);
+      try {
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const svg = owner.querySelector("svg");
+        const missing = svg.classList.contains("icon-not-found");
+        const tooltip = svg.dataset.workbenchTooltip;
+        const hatch = getComputedStyle(svg).backgroundImage;
+        const width = svg.getBoundingClientRect().width;
+        let requiredError = null;
+        try { await validateIconSpriteReferences([["sprite/sprite.svg", "codicon-fixture-missing"]]); }
+        catch (error) { requiredError = error.message; }
+        svg.querySelector("use").setAttribute("href", "sprite/sprite.svg#codicon-check");
+        await new Promise(resolve => setTimeout(resolve, 0));
+        return { missing, tooltip, hatch, width, requiredError, restored: !svg.classList.contains("icon-not-found"), restoredWidth: svg.getBoundingClientRect().width };
+      } finally { owner.remove(); }
+    });
+    assert(fallback.missing && fallback.tooltip === "Icon not found: codicon-fixture-missing" && fallback.hatch !== "none", "missing dynamic symbol did not show a named hatched fallback");
+    assert(fallback.requiredError?.includes("missing required symbol"), "fallback weakened required-symbol validation");
+    assert(fallback.restored && fallback.width > 0 && fallback.width === fallback.restoredWidth, "fallback changed icon dimensions or remained after a valid symbol was restored");
     for (const [name, fixture] of fixtures) {
       if (!fixture.expected) continue;
       const error = await page.evaluate(async path => {

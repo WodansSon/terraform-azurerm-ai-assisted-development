@@ -376,7 +376,7 @@ foreach ($profile in @('internal', 'production')) {
     Start-AssistanceTest -Name "assistance-$profile-http" -Detail 'Checking authorization, responses, cancellation, shutdown and cleanup'
     $site = Join-Path $TemporaryDirectory "$profile-site"
     $null = New-Item -ItemType Directory -Path $site
-    foreach ($asset in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'icons')) {
+    foreach ($asset in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg', 'sprite')) {
         Copy-Item -LiteralPath (Join-Path $repositoryRoot "hosted_copilot/workbench/$asset") -Destination $site -Recurse
     }
     Copy-Item -LiteralPath $DisplayPath -Destination (Join-Path $site 'workbench-display.json')

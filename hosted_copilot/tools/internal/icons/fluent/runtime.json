@@ -7,5 +7,5 @@
   "colorMode": "monochrome",
   "preview": { "icons": "all" },
   "sprite": { "icons": ["gauge-16-regular", "info-20-regular", "link-dismiss-16-filled", "link-multiple-16-filled"] },
-  "runtimeFiles": ["sprite.svg", "ATTRIBUTION.md"]
+  "runtimeFiles": ["ATTRIBUTION.md"]
 }

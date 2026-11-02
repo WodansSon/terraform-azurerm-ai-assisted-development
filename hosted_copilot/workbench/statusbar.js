@@ -135,6 +135,43 @@ const STATUS_BAR_ENTRIES = Object.freeze([
   }
 ]);
 
+let workbenchIconSymbols = null;
+let workbenchIconObserver;
+
+function updateWorkbenchIconFallbacks(root = document) {
+  if (!workbenchIconSymbols) return;
+  const uses = root.matches?.("svg use") ? [root] : [...root.querySelectorAll("svg use")];
+  for (const use of uses) {
+    const reference = new URL(use.getAttribute("href") || "", document.baseURI);
+    const sprite = new URL("sprite/sprite.svg", document.baseURI);
+    if (reference.origin !== sprite.origin || reference.pathname !== sprite.pathname) continue;
+    const svg = use.closest("svg");
+    const symbol = reference.hash.slice(1);
+    const missing = !workbenchIconSymbols.has(symbol);
+    svg.classList.toggle("icon-not-found", missing);
+    if (missing) {
+      svg.dataset.missingIcon = symbol;
+      svg.dataset.workbenchTooltip = `Icon not found: ${symbol}`;
+    } else if (svg.dataset.missingIcon) {
+      delete svg.dataset.missingIcon;
+      delete svg.dataset.workbenchTooltip;
+    }
+  }
+}
+
+function registerWorkbenchIconSymbols(sprite) {
+  workbenchIconSymbols = new Set([...sprite.getElementsByTagNameNS("http://www.w3.org/2000/svg", "symbol")].map(symbol => symbol.id));
+  updateWorkbenchIconFallbacks();
+  if (workbenchIconObserver) return;
+  workbenchIconObserver = new MutationObserver(records => {
+    for (const record of records) {
+      if (record.type === "attributes") updateWorkbenchIconFallbacks(record.target);
+      else for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) updateWorkbenchIconFallbacks(node);
+    }
+  });
+  workbenchIconObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
+}
+
 function createStatusBarIcon(name, family) {
   if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid status bar icon name: ${name}`);
   if (!["codicon", "fluent", "custom"].includes(family)) throw new Error(`Unsupported status bar icon family: ${family}`);
@@ -143,10 +180,11 @@ function createStatusBarIcon(name, family) {
   svg.setAttribute("aria-hidden", "true");
   const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
   use.setAttribute("href", family === "fluent"
-    ? `icons/fluent/sprite.svg#fluent-${name}`
-    : family === "custom" ? `icons/custom/sprite.svg#custom-${name}`
-      : `icons/codicons/sprite.svg#codicon-${name}`);
+    ? `sprite/sprite.svg#fluent-${name}`
+    : family === "custom" ? `sprite/sprite.svg#custom-${name}`
+      : `sprite/sprite.svg#codicon-${name}`);
   svg.appendChild(use);
+  updateWorkbenchIconFallbacks(svg);
   return svg;
 }
 

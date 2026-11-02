@@ -7,5 +7,5 @@
   "colorMode": "original",
   "preview": { "icons": "all" },
   "sprite": { "icons": ["claude", "gemini", "grok", "openai"] },
-  "runtimeFiles": ["sprite.svg", "LICENSE.txt", "ATTRIBUTION.md"]
+  "runtimeFiles": ["LICENSE.txt", "ATTRIBUTION.md"]
 }

@@ -32,11 +32,10 @@
     },
     "runtimeFiles": {
       "type": "array",
-      "minItems": 2,
+      "minItems": 1,
       "uniqueItems": true,
       "items": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$" },
       "allOf": [
-        { "contains": { "const": "sprite.svg" } },
         { "contains": { "const": "ATTRIBUTION.md" } }
       ]
     }

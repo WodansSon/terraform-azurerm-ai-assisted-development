@@ -14,5 +14,5 @@
       "shield-lock-16", "square-16", "unfold-16"
     ]
   },
-  "runtimeFiles": ["sprite.svg", "LICENSE.txt", "ATTRIBUTION.md"]
+  "runtimeFiles": ["LICENSE.txt", "ATTRIBUTION.md"]
 }

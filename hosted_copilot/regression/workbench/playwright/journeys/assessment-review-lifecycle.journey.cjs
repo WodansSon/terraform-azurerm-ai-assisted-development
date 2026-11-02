@@ -137,7 +137,7 @@ async function run({ page, baseUrl, assert, playback }) {
       await persistencePromise;
       return { key: candidate.key, originalDecision };
     });
-    await page.route("**/icons/*/sprite.svg", async (route) => {
+    await page.route("**/sprite/sprite.svg", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 300));
       await route.continue();
     });
@@ -162,7 +162,7 @@ async function run({ page, baseUrl, assert, playback }) {
       };
     }));
     assert(coldDecorations.every((item) => item.status && !item.iconHidden && item.width > 0 && item.height > 0), `Cold-start decorations were not painted before expansion: ${JSON.stringify(coldDecorations)}`);
-    await page.unroute("**/icons/*/sprite.svg");
+    await page.unroute("**/sprite/sprite.svg");
     await page.evaluate(async ({ key, originalDecision }) => {
       globalThis.__HOSTED_RULE_WORKBENCH__.maintainerIdentity = {
         status: "validated",

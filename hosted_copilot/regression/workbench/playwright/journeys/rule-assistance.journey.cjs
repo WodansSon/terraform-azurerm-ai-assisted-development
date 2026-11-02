@@ -144,7 +144,7 @@ async function run({ page, baseUrl, assert }) {
       return { notes, missingIconRejected, invalidIconRejected, unchanged: JSON.stringify(state.session) === session && JSON.stringify(ruleAssistance) === chat };
     } finally { probe.remove(); }
   });
-  assert(contextNotes.notes.every((note, index) => note.reference === `icons/codicons/sprite.svg#codicon-${["tools", "terminal-compact", "edit-compact"][index]}`
+  assert(contextNotes.notes.every((note, index) => note.reference === `sprite/sprite.svg#codicon-${["tools", "terminal-compact", "edit-compact"][index]}`
     && note.painted && note.iconFirst && note.decorative), "Context-note helper lost its explicit, painted, or decorative Codicon");
   assert(contextNotes.notes.every(note => note.escaped) && contextNotes.missingIconRejected && contextNotes.invalidIconRejected && contextNotes.unchanged,
     "Context-note helper accepted markup, a missing or unsafe icon name, or mutated chat or draft state");
@@ -172,8 +172,8 @@ async function run({ page, baseUrl, assert }) {
       && await page.evaluate((turns) => JSON.stringify(ruleAssistance.turns) === turns, before),
     "New Chat used the wrong view wording or cleared history before confirmation");
     assert(await newChatDialog.locator(".modal-dialog-content > p").nth(1).textContent() === "This action cannot be undone."
-      && await newChatDialog.locator(".modal-dialog-title use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-warning"
-      && await newChatDialog.locator("[data-assist-new-chat-confirm] use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-trash"
+      && await newChatDialog.locator(".modal-dialog-title use").getAttribute("href") === "sprite/sprite.svg#codicon-warning"
+      && await newChatDialog.locator("[data-assist-new-chat-confirm] use").getAttribute("href") === "sprite/sprite.svg#codicon-trash"
       && await newChatDialog.locator("[data-assist-new-chat-confirm]").textContent().then(text => text.trim()) === "Clear Chat",
     "New Chat lost its approved warning, destructive icon, action label, or irreversible-action text");
     await page.waitForFunction(() => [...document.querySelectorAll("[data-assist-new-chat-dialog] svg use")].every(use => use.getBBox().width > 0));
@@ -228,7 +228,7 @@ async function run({ page, baseUrl, assert }) {
   assert(await root.locator(".assist-header > .section-label").textContent() === "AI Assistance:", "Assistance heading changed");
   assert(!await page.locator('#assessment-panel [data-evidence-kind="coverage"]').count(), "Candidate Details retained inferred coverage");
   const expectedBrand = expectedBrandMap.find(entry => expectedNormalProfile.model.toLowerCase().startsWith(entry.prefix));
-  const expectedModelIconReference = expectedBrand ? `icons/llms/sprite.svg#llm-${expectedBrand.icon}` : "icons/codicons/sprite.svg#codicon-question";
+  const expectedModelIconReference = expectedBrand ? `sprite/sprite.svg#llm-${expectedBrand.icon}` : "sprite/sprite.svg#codicon-question";
   await page.waitForFunction(() => document.querySelector(".assist-chat-profile svg use")?.getBBox().width > 0
     && document.querySelector(".assist-chat-identity .codicon use")?.getBBox().width > 0);
   const modelIcon = await root.locator(".assist-chat-profile svg").evaluate((node) => ({
@@ -284,7 +284,7 @@ async function run({ page, baseUrl, assert }) {
       matchingChip: ["borderStyle", "borderColor", "borderWidth", "borderRadius", "padding"].every((property) => identityStyle[property] === contextStyle[property]),
       newChatInHeader: clear.parentElement.classList.contains("assist-sidebar-heading-actions")
         && clear.nextElementSibling.matches("[data-assist-sidebar-close]")
-        && clear.querySelector("use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-add"
+        && clear.querySelector("use").getAttribute("href") === "sprite/sprite.svg#codicon-add"
         && clear.querySelector("use").getBBox().width > 0
         && !node.querySelector(".assist-chat-conversation-toolbar [data-assist-clear]"),
       matchingHeaderSpacing: Math.abs(clearBounds.width - titlebarBounds.width) < 0.5
@@ -300,7 +300,7 @@ async function run({ page, baseUrl, assert }) {
     `Assistance guidance did not use the shared information panel beneath its heading: ${JSON.stringify(presentation)}`);
   assert(presentation.guidanceText === "This response is AI-generated. Please review it for accuracy and relevance before use."
     && presentation.emphasis, "Assistance guidance lost its approved wording or regular weight");
-  assert(presentation.reference === "icons/codicons/sprite.svg#codicon-copilot" && presentation.glyphSize && presentation.decorative
+  assert(presentation.reference === "sprite/sprite.svg#codicon-copilot" && presentation.glyphSize && presentation.decorative
     && presentation.identityPrefix === "Copilot ·" && presentation.muted, "Copilot identity lost its native glyph or muted prefix");
   assert(presentation.chatLabel === "Chat" && presentation.composerContext === setup.ruleId
     && presentation.ruleStyle && presentation.matchingChip && presentation.newChatInHeader && presentation.matchingHeaderSpacing,
@@ -498,7 +498,7 @@ async function run({ page, baseUrl, assert }) {
     };
   });
   assert(running.color === "rgb(140, 140, 140)" && running.animation === "waiting-panel-chase"
-    && running.reference === "icons/codicons/sprite.svg#codicon-stop-circle"
+    && running.reference === "sprite/sprite.svg#codicon-stop-circle"
     && running.width === 16 && running.height === 16 && running.glyphWidth > 0 && running.fill === running.color,
     `Running assistance did not use the native border or gray 16px Codicon stop symbol: ${JSON.stringify(running)}`);
   await waitForHeldReply();
@@ -561,7 +561,7 @@ async function run({ page, baseUrl, assert }) {
     color: getComputedStyle(node).color,
     expectedText: node.querySelector("span").textContent === "Assessment, sources, and catalog snapshot; excludes other drafts and Plan changes."
   }));
-  assert(contextNote.reference === "icons/codicons/sprite.svg#codicon-tools" && contextNote.iconFirst
+  assert(contextNote.reference === "sprite/sprite.svg#codicon-tools" && contextNote.iconFirst
     && contextNote.color === "rgb(115, 115, 115)" && contextNote.expectedText,
     "Successful reply did not render the concise grounding scope through the shared muted icon-first note helper");
   const suggestion = root.locator(".assist-chat-inline-wording");
@@ -621,7 +621,7 @@ async function run({ page, baseUrl, assert }) {
   await copy.click();
   await page.waitForFunction(() => document.querySelector("[data-assist-copy]").dataset.workbenchTooltip === "Unable to copy");
   assert(await copy.getAttribute("title") === null && await editor.inputValue() === setup.text
-    && await copy.locator("use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-copy",
+    && await copy.locator("use").getAttribute("href") === "sprite/sprite.svg#codicon-copy",
     "Clipboard failure retained a success icon, restored a native tooltip or changed the editor");
   await input.fill("Follow up on that advice. ".repeat(50));
   holdNext = true;
@@ -828,7 +828,7 @@ async function run({ page, baseUrl, assert }) {
   await sidebarClose.click();
   assert(!await sidebar.isVisible() && await disclosure.getAttribute("data-workbench-tooltip") === "Show AI assistance"
     && await disclosure.getAttribute("aria-pressed") === "false"
-    && await disclosure.locator("use").getAttribute("href") === "icons/codicons/sprite.svg#codicon-layout-sidebar-right-off",
+    && await disclosure.locator("use").getAttribute("href") === "sprite/sprite.svg#codicon-layout-sidebar-right-off",
   "Closing assistance did not synchronize the titlebar preference, icon, and tooltip");
   const initialCollapsedGeometry = await headerGeometry();
   await disclosure.click();

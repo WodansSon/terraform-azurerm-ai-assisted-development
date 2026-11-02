@@ -154,12 +154,12 @@ const workbenchTooltip = {
 };
 function icon(name) {
   if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
-  return `<svg class="codicon" aria-hidden="true"><use href="icons/codicons/sprite.svg#codicon-${name}"></use></svg>`;
+  return `<svg class="codicon" aria-hidden="true"><use href="sprite/sprite.svg#codicon-${name}"></use></svg>`;
 }
 
 function llmIcon(name) {
   if (typeof name !== "string" || !/^[a-z0-9]+$/.test(name)) throw new Error(`Invalid LLM icon name: ${name}`);
-  return `<svg class="llm-icon" aria-hidden="true"><use href="icons/llms/sprite.svg#llm-${name}"></use></svg>`;
+  return `<svg class="llm-icon" aria-hidden="true"><use href="sprite/sprite.svg#llm-${name}"></use></svg>`;
 }
 
 function validateLlmBrandMap(entries) {
@@ -325,12 +325,12 @@ function buildWaitingPanelPalette(width, height) {
 
 function octicon(name) {
   if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Octicon name: ${name}`);
-  return `<svg class="octicon" aria-hidden="true"><use href="icons/octicons/sprite.svg#octicon-${name}-16"></use></svg>`;
+  return `<svg class="octicon" aria-hidden="true"><use href="sprite/sprite.svg#octicon-${name}-16"></use></svg>`;
 }
 
 function fluentIcon(name, className = "") {
   if (typeof name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*-(16|20)-(regular|filled)$/.test(name)) throw new Error(`Invalid Fluent icon name: ${name}`);
-  return `<svg class="fluent-icon ${escapeHtml(className)}" aria-hidden="true"><use href="icons/fluent/sprite.svg#fluent-${name}"></use></svg>`;
+  return `<svg class="fluent-icon ${escapeHtml(className)}" aria-hidden="true"><use href="sprite/sprite.svg#fluent-${name}"></use></svg>`;
 }
 
 function renderBannerHeading(label) {
@@ -1022,13 +1022,15 @@ async function preloadIconSprites() {
   if (!brandingResponse.ok) throw new Error(`LLM branding map request failed with ${brandingResponse.status}`);
   llmBrandMap = validateLlmBrandMap(await brandingResponse.json());
   const sprites = [
-    ["icons/codicons/sprite.svg", "codicon-diff-modified"],
-    ["icons/octicons/sprite.svg", "octicon-shield-check-16"],
-    ["icons/fluent/sprite.svg", "fluent-info-20-regular"],
-    ...[...new Set(llmBrandMap.map(entry => entry.icon))].map(name => ["icons/llms/sprite.svg", `llm-${name}`]),
-    ["icons/codicons/sprite.svg", "codicon-question"]
+    ["sprite/sprite.svg", "codicon-diff-modified"],
+    ["sprite/sprite.svg", "octicon-shield-check-16"],
+    ["sprite/sprite.svg", "fluent-info-20-regular"],
+    ...[...new Set(llmBrandMap.map(entry => entry.icon))].map(name => ["sprite/sprite.svg", `llm-${name}`]),
+    ["sprite/sprite.svg", "codicon-question"]
   ];
-  return validateIconSpriteReferences(sprites);
+  const validated = await validateIconSpriteReferences(sprites);
+  registerWorkbenchIconSymbols(validated.get(new URL("sprite/sprite.svg", document.baseURI).href));
+  return validated;
 }
 
 async function validateCandidateDecorationIcons(sprites) {
@@ -3393,7 +3395,7 @@ function renderCandidateDecoration(decoration, className, includeTooltip = true)
   const hidden = decoration ? "" : " hidden";
   const tooltip = decoration && includeTooltip ? ` data-workbench-tooltip="${escapeHtml(decoration.description)}"` : "";
   const description = decoration ? escapeHtml(decoration.description) : "";
-  return `<svg class="codicon ${className}" aria-hidden="true"${tooltip}${hidden}><use href="icons/codicons/sprite.svg#codicon-diff-modified"></use></svg><span class="candidate-decoration-description sr-only">${description}</span>`;
+  return `<svg class="codicon ${className}" aria-hidden="true"${tooltip}${hidden}><use href="sprite/sprite.svg#codicon-diff-modified"></use></svg><span class="candidate-decoration-description sr-only">${description}</span>`;
 }
 
 function renderCandidateAggregateDecoration(decoration) {
@@ -5727,7 +5729,7 @@ function renderPreviewFile(file) {
       <div class="preview-file-heading-wrapper">
         <div class="preview-file-heading">
           <button class="preview-icon-button clickable" type="button" data-preview-file-collapse aria-label="Collapse ${escapeHtml(file.displayPath)}" aria-expanded="true">${octicon("chevron-down")}</button>
-          <svg class="octicon preview-review-status-icon" aria-label="Owned by CODEOWNERS"><use href="icons/octicons/sprite.svg#octicon-shield-lock-16"></use></svg>
+          <svg class="octicon preview-review-status-icon" aria-label="Owned by CODEOWNERS"><use href="sprite/sprite.svg#octicon-shield-lock-16"></use></svg>
           <code class="preview-file-path">${escapeHtml(file.displayPath)}</code>
           <button class="preview-icon-button clickable" type="button" data-preview-copy-path="${escapeHtml(file.displayPath)}" aria-label="Copy ${escapeHtml(file.displayPath)} path" data-workbench-tooltip="Copy path">${octicon("copy")}</button>
           ${hasContextGaps ? `<button class="preview-icon-button clickable" type="button" data-preview-lines-toggle aria-label="Expand all lines: ${escapeHtml(file.displayPath)}" aria-pressed="false" data-workbench-tooltip="Expand all lines">${octicon("unfold")}</button>` : ""}
@@ -5755,7 +5757,7 @@ function renderPreviewReferenceFile(file) {
       <div class="preview-file-heading-wrapper">
         <div class="preview-file-heading">
           <button class="preview-icon-button clickable" type="button" data-preview-file-collapse aria-label="Collapse ${escapeHtml(file.displayPath)}" aria-expanded="true">${octicon("chevron-down")}</button>
-          <svg class="octicon preview-review-status-icon protected" aria-label="Protected"><use href="icons/octicons/sprite.svg#octicon-shield-lock-16"></use></svg>
+          <svg class="octicon preview-review-status-icon protected" aria-label="Protected"><use href="sprite/sprite.svg#octicon-shield-lock-16"></use></svg>
           <code class="preview-file-path">${escapeHtml(file.displayPath)}</code>
           <button class="preview-icon-button clickable" type="button" data-preview-copy-path="${escapeHtml(file.displayPath)}" aria-label="Copy ${escapeHtml(file.displayPath)} path" data-workbench-tooltip="Copy path">${octicon("copy")}</button>
           <div class="preview-file-actions"><span class="ui-badge status-capsule preview-reference-status">${icon("lock")}Protected</span></div>
@@ -5923,7 +5925,7 @@ function renderPreviewIconBuffer(closedName, openName, expanded, className) {
   for (const name of [closedName, openName]) {
     if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Octicon name: ${name}`);
   }
-  return `<span class="preview-icon-buffer ${escapeHtml(className)}" data-state="${expanded ? "open" : "closed"}" aria-hidden="true"><svg class="octicon buffer-closed"><use href="icons/octicons/sprite.svg#octicon-${closedName}-16"></use></svg><svg class="octicon buffer-open"><use href="icons/octicons/sprite.svg#octicon-${openName}-16"></use></svg></span>`;
+  return `<span class="preview-icon-buffer ${escapeHtml(className)}" data-state="${expanded ? "open" : "closed"}" aria-hidden="true"><svg class="octicon buffer-closed"><use href="sprite/sprite.svg#octicon-${closedName}-16"></use></svg><svg class="octicon buffer-open"><use href="sprite/sprite.svg#octicon-${openName}-16"></use></svg></span>`;
 }
 
 function renderPreviewArtifactGroup(scope, files) {
@@ -5940,12 +5942,12 @@ function renderPreviewArtifactGroup(scope, files) {
 
 function renderPreviewTreeFile(scope, file) {
   if (file.reference) {
-    return `<button class="preview-file-tree-item clickable ${file.path === previewSelectedFilePath ? "active" : ""}" type="button" data-preview-artifact-file-scope="${escapeHtml(scope)}" data-preview-file-jump="${escapeHtml(file.path)}" data-workbench-tooltip="${escapeHtml(file.path)}"><svg class="octicon preview-tree-file-icon protected" aria-label="Protected"><use href="icons/octicons/sprite.svg#octicon-shield-lock-16"></use></svg><span>${escapeHtml(file.name)}</span></button>`;
+    return `<button class="preview-file-tree-item clickable ${file.path === previewSelectedFilePath ? "active" : ""}" type="button" data-preview-artifact-file-scope="${escapeHtml(scope)}" data-preview-file-jump="${escapeHtml(file.path)}" data-workbench-tooltip="${escapeHtml(file.path)}"><svg class="octicon preview-tree-file-icon protected" aria-label="Protected"><use href="sprite/sprite.svg#octicon-shield-lock-16"></use></svg><span>${escapeHtml(file.name)}</span></button>`;
   }
   const status = file.additions > 0 && file.deletions === 0 ? "added" : file.deletions > 0 && file.additions === 0 ? "removed" : "modified";
   const iconName = status === "modified" ? "file-diff" : `file-${status}`;
   const label = status[0].toUpperCase() + status.slice(1);
-  return `<button class="preview-file-tree-item clickable ${file.path === previewSelectedFilePath ? "active" : ""}" type="button" data-preview-artifact-file-scope="${escapeHtml(scope)}" data-preview-file-jump="${escapeHtml(file.path)}" data-workbench-tooltip="${escapeHtml(file.path)}"><svg class="octicon preview-tree-file-icon ${status}" aria-label="${label}"><use href="icons/octicons/sprite.svg#octicon-${iconName}-16"></use></svg><span>${escapeHtml(file.name)}</span></button>`;
+  return `<button class="preview-file-tree-item clickable ${file.path === previewSelectedFilePath ? "active" : ""}" type="button" data-preview-artifact-file-scope="${escapeHtml(scope)}" data-preview-file-jump="${escapeHtml(file.path)}" data-workbench-tooltip="${escapeHtml(file.path)}"><svg class="octicon preview-tree-file-icon ${status}" aria-label="${label}"><use href="sprite/sprite.svg#octicon-${iconName}-16"></use></svg><span>${escapeHtml(file.name)}</span></button>`;
 }
 
 function updatePreviewSelectedFile() {

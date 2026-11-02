@@ -6938,6 +6938,13 @@ html.theme-hosted-dark body .status-surface-tooltip {
 }
 
 .preview-diff-cell.context,
+.icon-not-found {
+  background-color: #da3633;
+  background-image: repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(255, 255, 255, 0.8) 2px, rgba(255, 255, 255, 0.8) 3px);
+  outline: 1px solid #da3633;
+  pointer-events: auto;
+}
+
 .preview-diff-cell.empty {
   background: #0d1117;
 }

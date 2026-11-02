@@ -18,5 +18,5 @@
       "shield-compact", "sign-out", "stop-circle", "tasklist", "terminal-compact", "tools", "trash", "warning", "warning-compact"
     ]
   },
-  "runtimeFiles": ["sprite.svg", "LICENSE.txt", "ATTRIBUTION.md"]
+  "runtimeFiles": ["LICENSE.txt", "ATTRIBUTION.md"]
 }

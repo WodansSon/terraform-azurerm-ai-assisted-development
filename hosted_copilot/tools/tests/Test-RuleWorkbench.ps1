@@ -29,17 +29,18 @@ $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $toolsRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $npmRoot = Join-Path $toolsRoot 'npm'
 $workbenchRoot = Join-Path $PSScriptRoot '../../workbench'
-$iconRoot = Join-Path $workbenchRoot 'icons'
+$iconRoot = Join-Path $toolsRoot 'internal/icons'
+$spriteRoot = Join-Path $workbenchRoot 'sprite'
 $codiconRoot = Join-Path $iconRoot 'codicons'
 $octiconRoot = Join-Path $iconRoot 'octicons'
 $fluentIconRoot = Join-Path $iconRoot 'fluent'
 $llmIconRoot = Join-Path $iconRoot 'llms'
-$iconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-WorkbenchCodiconSprite.ps1'
-$octiconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-WorkbenchOcticonSprite.ps1'
-$fluentIconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-WorkbenchFluentIconSprite.ps1'
-$llmIconGeneratorPath = Join-Path $PSScriptRoot '../internal/workbench/New-WorkbenchLlmIconSprite.ps1'
-$iconPreviewPath = Join-Path $PSScriptRoot '../internal/workbench/WorkbenchIconPreview.ps1'
-$iconPreviewRendererPath = Join-Path $PSScriptRoot '../internal/workbench/Render-WorkbenchIconPreview.cjs'
+$iconGeneratorPath = Join-Path $PSScriptRoot '../internal/icons/New-WorkbenchSprite.ps1'
+$octiconGeneratorPath = Join-Path $PSScriptRoot '../internal/icons/New-WorkbenchSprite.ps1'
+$fluentIconGeneratorPath = Join-Path $PSScriptRoot '../internal/icons/New-WorkbenchSprite.ps1'
+$llmIconGeneratorPath = Join-Path $PSScriptRoot '../internal/icons/New-WorkbenchSprite.ps1'
+$iconPreviewPath = Join-Path $PSScriptRoot '../internal/icons/WorkbenchIconPreview.ps1'
+$iconPreviewRendererPath = Join-Path $PSScriptRoot '../internal/icons/Render-WorkbenchIconPreview.cjs'
 $launcherPath = Join-Path $PSScriptRoot '../Start-RuleWorkbench.ps1'
 $metadataEvaluatorPath = Join-Path $PSScriptRoot 'fixtures/copilot-metadata-evaluator.ps1'
 $hostedGitHubHelpersPath = Join-Path $PSScriptRoot '../modules/shared/HostedGitHub.Helpers.psm1'
@@ -1042,14 +1043,14 @@ $dependencyOutput = @()
     $statusbarContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'statusbar.js') -Raw
     $stylesContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'styles.css') -Raw
     $faviconContent = Get-Content -LiteralPath (Join-Path $workbenchRoot 'favicon.svg') -Raw
-    $generatedSpriteContent = Get-Content -LiteralPath (Join-Path $codiconRoot 'sprite.svg') -Raw
+    $generatedSpriteContent = Get-Content -LiteralPath (Join-Path $spriteRoot 'sprite.svg') -Raw
     $spriteContent = $generatedSpriteContent -replace '(?s)\s*<symbol id="codicon-discard-all".*?</symbol>', '' -replace '(?s)\s*<symbol id="codicon-chat-sparkle-error".*?</symbol>', ''
     $attributionContent = Get-Content -LiteralPath (Join-Path $codiconRoot 'ATTRIBUTION.md') -Raw
-    $octiconSpriteContent = Get-Content -LiteralPath (Join-Path $octiconRoot 'sprite.svg') -Raw
+    $octiconSpriteContent = $generatedSpriteContent
     $octiconAttributionContent = Get-Content -LiteralPath (Join-Path $octiconRoot 'ATTRIBUTION.md') -Raw
-    $fluentIconSpriteContent = Get-Content -LiteralPath (Join-Path $fluentIconRoot 'sprite.svg') -Raw
+    $fluentIconSpriteContent = $generatedSpriteContent
     $fluentIconAttributionContent = Get-Content -LiteralPath (Join-Path $fluentIconRoot 'ATTRIBUTION.md') -Raw
-    $llmIconSpriteContent = Get-Content -LiteralPath (Join-Path $llmIconRoot 'sprite.svg') -Raw
+    $llmIconSpriteContent = $generatedSpriteContent
     $llmIconAttributionContent = Get-Content -LiteralPath (Join-Path $llmIconRoot 'ATTRIBUTION.md') -Raw
     $iconGeneratorContent = Get-Content -LiteralPath $iconGeneratorPath -Raw
     $octiconGeneratorContent = Get-Content -LiteralPath $octiconGeneratorPath -Raw
@@ -1067,15 +1068,15 @@ $dependencyOutput = @()
     $fluentIconSymbolNames = @([regex]::Matches($fluentIconSpriteContent, '<symbol id="fluent-(?<name>[^"]+)"') | ForEach-Object { [string]$_.Groups['name'].Value } | Sort-Object)
     $fluentIconConsumerNames = @([regex]::Matches($appContent, 'fluentIcon\("(?<name>[a-z0-9-]+)"') | ForEach-Object { [string]$_.Groups['name'].Value } | Sort-Object -Unique)
     $fluentIconPairGroups = @($fluentIconSourceNames | Group-Object { $_ -replace '-(regular|filled)$', '' })
-    . (Join-Path $toolsRoot 'internal/workbench/WorkbenchIconAssets.ps1')
+    . (Join-Path $toolsRoot 'internal/icons/WorkbenchIconAssets.ps1')
     $iconRuntimes = @(Get-ChildItem -LiteralPath $iconRoot -Directory | Sort-Object Name | ForEach-Object { Read-WorkbenchIconRuntime -IconDirectory $_.FullName })
     $codiconRuntimeNames = @((Read-WorkbenchIconRuntime -IconDirectory $codiconRoot).RuntimeIconNames)
     $octiconRuntimeNames = @((Read-WorkbenchIconRuntime -IconDirectory $octiconRoot).RuntimeIconNames)
     $fluentIconRuntimeNames = @((Read-WorkbenchIconRuntime -IconDirectory $fluentIconRoot).RuntimeIconNames | Sort-Object)
     $iconManifestIssues = [Collections.Generic.List[string]]::new()
     foreach ($runtime in $iconRuntimes) {
-        $familyDocument = [xml](Get-Content -LiteralPath (Join-Path $runtime.Directory 'sprite.svg') -Raw)
-        $familySymbols = @($familyDocument.svg.symbol)
+        $familyDocument = [xml]$generatedSpriteContent
+        $familySymbols = @($familyDocument.svg.symbol | Where-Object { $_.GetAttribute('id').StartsWith("$($runtime.Configuration.symbolPrefix)-", [StringComparison]::Ordinal) })
         $expectedIds = @($runtime.RuntimeIconNames | ForEach-Object { "$($runtime.Configuration.symbolPrefix)-$_" } | Sort-Object -CaseSensitive)
         $actualIds = @($familySymbols | ForEach-Object { $_.GetAttribute('id') } | Sort-Object -CaseSensitive)
         if ($actualIds.Count -ne $expectedIds.Count -or @(Compare-Object $expectedIds $actualIds -CaseSensitive).Count) {
@@ -1146,12 +1147,12 @@ $dependencyOutput = @()
             $layoutIconDocument.svg.viewBox -ceq '0 0 16 16'
     }
     $codiconContractValid = $codiconContractValid -and $spriteContent -match '1c47ab36a4bb845c437866405c2fa67b8ca0fe36' -and $attributionContent -match 'Creative Commons Attribution 4\.0 International'
-    $codiconContractValid = $codiconContractValid -and $iconGeneratorContent -match 'New-WorkbenchIconAssets -IconDirectory \$IconDirectory' -and $iconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw'
+    $codiconContractValid = $codiconContractValid -and $iconGeneratorContent -match 'New-WorkbenchSprite -IconRoot \$IconRoot' -and $iconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw'
     $codiconContractValid = $codiconContractValid -and (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $codiconRoot 'warning-compact.svg')).Hash -ceq 'D007D0454B990CEA5CA463B5FFA60B8BCD475636B72C654311B09193C1A1E0CD'
     $codiconContractValid = $codiconContractValid -and $launcherContent -match 'workbenchIconSource' -and $launcherContent -match '\$runtimeIconAssetNames = @\(' -and $launcherContent -notmatch 'Copy-Item -LiteralPath \$workbenchIconSource -Destination \$resolvedSiteDirectory -Recurse -Force'
-    $codiconContractValid = $codiconContractValid -and $indexContent -notmatch 'cdn\.jsdelivr|data-lucide|lucide\.min\.js' -and $appContent -notmatch 'data-lucide|window\.lucide|refreshIcons' -and $appContent -match 'function icon\(name\)' -and $appContent -match 'icons/codicons/sprite\.svg#codicon-\$\{name\}' -and $appContent -match 'data-detail-back-to-top[\s\S]*?icon\("chevron-up"\)'
+    $codiconContractValid = $codiconContractValid -and $indexContent -notmatch 'cdn\.jsdelivr|data-lucide|lucide\.min\.js' -and $appContent -notmatch 'data-lucide|window\.lucide|refreshIcons' -and $appContent -match 'function icon\(name\)' -and $appContent -match 'sprite/sprite\.svg#codicon-\$\{name\}' -and $appContent -match 'data-detail-back-to-top[\s\S]*?icon\("chevron-up"\)'
     $codiconContractValid = $codiconContractValid -and $stylesContent -match '\.scroll-edge-button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*border-radius:\s*50%' -and $stylesContent -match '\.scroll-edge-button\.detail-back-to-top > \.codicon\s*\{\s*transform:\s*none' -and $stylesContent -match '\.scroll-edge-button \.codicon\s*\{[^}]*width:\s*16px;[^}]*height:\s*16px'
-    $codiconContractValid = $codiconContractValid -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-json' -and $statusbarContent -match 'icon: "git-branch-compact"' -and $statusbarContent -match 'icon: "check-compact"' -and $statusbarContent -match 'icon: "collection"' -and $statusbarContent -match 'icon: "circle-slash-compact"' -and $statusbarContent -match 'icon: "new-session"' -and $statusbarContent -match 'icon: "shield-compact"'
+    $codiconContractValid = $codiconContractValid -and $indexContent -match 'sprite/sprite\.svg#codicon-json' -and $statusbarContent -match 'icon: "git-branch-compact"' -and $statusbarContent -match 'icon: "check-compact"' -and $statusbarContent -match 'icon: "collection"' -and $statusbarContent -match 'icon: "circle-slash-compact"' -and $statusbarContent -match 'icon: "new-session"' -and $statusbarContent -match 'icon: "shield-compact"'
     $codiconContractValid = $codiconContractValid -and $appContent -match 'octicon\("copy"\)' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $indexContent -match 'data-view="catalog"[\s\S]*?codicon-collection' -and $indexContent -match 'data-view="plan"[\s\S]*?codicon-new-session' -and $indexContent -match 'data-view="preview"[\s\S]*?codicon-open-preview' -and $appContent -match 'icon\("discard"\)'
     $chatSparkleErrorContractValid = Test-Path -LiteralPath (Join-Path $codiconRoot 'chat-sparkle-error.svg') -PathType Leaf
     $customIconRoot = Join-Path $iconRoot 'custom'
@@ -1165,19 +1166,19 @@ $dependencyOutput = @()
         $statusbarContent -match 'key: "eligible",[^}]*icon: "collection"' -and
         $statusbarContent -match 'key: "warnings",[^}]*icon: "warning-compact"'
     $codiconContractValid = $codiconContractValid -and $chatSparkleErrorContractValid -and $discardAllContractValid -and $diffModifiedContractValid -and $collectionIssuesContractValid
-    $standaloneIconContractValid = @(Get-ChildItem -LiteralPath $iconRoot -File).Count -eq 0
-    $octiconContractValid = $standaloneIconContractValid -and $octiconRuntimeNames.Count -eq [regex]::Matches($octiconSpriteContent, '<symbol id="octicon-').Count -and $octiconSpriteContent -match '6220ff87f3ddd923b05ffdac7e2d9cb714213205' -and $octiconAttributionContent -match 'GitHub''s Primer Octicons' -and $octiconAttributionContent -match 'MIT License' -and (Get-Content -LiteralPath (Join-Path $octiconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and $octiconGeneratorContent -match 'New-WorkbenchIconAssets -IconDirectory \$IconDirectory' -and $octiconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function octicon\(name\)' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $stylesContent -match '\.codicon,\s*\.octicon\s*\{'
+    $standaloneIconContractValid = @(Get-ChildItem -LiteralPath $spriteRoot -Filter '*.svg' -File -Recurse).Count -eq 1
+    $octiconContractValid = $standaloneIconContractValid -and $octiconRuntimeNames.Count -eq [regex]::Matches($octiconSpriteContent, '<symbol id="octicon-').Count -and $octiconSpriteContent -match '6220ff87f3ddd923b05ffdac7e2d9cb714213205' -and $octiconAttributionContent -match 'GitHub''s Primer Octicons' -and $octiconAttributionContent -match 'MIT License' -and (Get-Content -LiteralPath (Join-Path $octiconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and $octiconGeneratorContent -match 'New-WorkbenchSprite -IconRoot \$IconRoot' -and $octiconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function octicon\(name\)' -and $appContent -match 'gap\.direction === "up" \? "fold-up" : gap\.direction === "down" \? "fold-down" : "unfold"' -and $appContent -match '\$\{octicon\(iconName\)\}' -and $stylesContent -match '\.codicon,\s*\.octicon\s*\{'
     $fluentIconContractValid = $fluentIconSourceCount -eq 750 -and $fluentIconPairGroups.Count -eq 375 -and @(Compare-Object $fluentIconRuntimeNames $fluentIconSymbolNames).Count -eq 0 -and @($fluentIconPairGroups | Where-Object { $_.Count -ne 2 }).Count -eq 0 -and @($fluentIconRuntimeNames | Where-Object { $_ -notin $fluentIconSourceNames }).Count -eq 0 -and @($fluentIconConsumerNames | Where-Object { $_ -notin $fluentIconRuntimeNames }).Count -eq 0
     foreach ($fluentIconFamily in @('checkmark-circle', 'dismiss-circle', 'error-circle', 'important', 'info', 'question-circle', 'warning', 'shield-checkmark', 'shield-dismiss', 'shield-error', 'shield-question', 'shield-task', 'document-add', 'document-bullet-list', 'document-checkmark', 'document-dismiss', 'document-edit', 'document-error', 'document-lock', 'document-search', 'document-sync', 'document-text', 'approvals-app', 'arrow-sync-circle', 'book-information', 'bot-sparkle', 'brain-circuit', 'certificate', 'clipboard-checkmark', 'clipboard-task-list-ltr', 'data-usage', 'gauge', 'history', 'lightbulb', 'person-feedback', 'target-arrow', 'arrow-routing', 'arrow-routing-rectangle-multiple', 'arrow-split', 'flow', 'flowchart', 'link-multiple', 'connected', 'group-list', 'shape-intersect', 'merge', 'stack', 'stack-arrow-forward', 'gavel', 'gavel-prohibited', 'scales', 'checkbox-checked-sync', 'flag-checkered', 'ribbon', 'ribbon-off', 'person-edit', 'archive', 'archive-arrow-back', 'arrow-undo', 'arrow-redo', 'arrow-sync-checkmark', 'arrow-sync-dismiss', 're-order', 'document-copy', 'document-arrow-right', 'clipboard-search', 'clipboard-text-ltr', 'text-quote', 'database-search', 'task-list-square-sparkle', 'wand')) {
         $fluentIconContractValid = $fluentIconContractValid -and "$fluentIconFamily-20-regular" -in $fluentIconSourceNames -and "$fluentIconFamily-20-filled" -in $fluentIconSourceNames
     }
-    $fluentIconContractValid = $fluentIconContractValid -and $fluentIconSpriteContent -match 'a347af95478f989038cccbf085978865264c048a' -and $fluentIconAttributionContent -match 'Microsoft Fluent UI System Icons' -and $fluentIconAttributionContent -match 'regular and filled variants' -and $fluentIconAttributionContent -match 'MIT License' -and $fluentIconAttributionContent -match 'a347af95478f989038cccbf085978865264c048a' -and $fluentIconGeneratorContent -match 'New-WorkbenchIconAssets -IconDirectory \$IconDirectory' -and $fluentIconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function fluentIcon\(name' -and $statusbarContent -match 'icon: "link-multiple-16-filled"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icon: "link-dismiss-16-filled"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icon: "gauge-16-regular"[\s\S]*?iconFamily: "fluent"' -and $stylesContent -match '\.fluent-icon\s*\{'
+    $fluentIconContractValid = $fluentIconContractValid -and $fluentIconSpriteContent -match 'a347af95478f989038cccbf085978865264c048a' -and $fluentIconAttributionContent -match 'Microsoft Fluent UI System Icons' -and $fluentIconAttributionContent -match 'regular and filled variants' -and $fluentIconAttributionContent -match 'MIT License' -and $fluentIconAttributionContent -match 'a347af95478f989038cccbf085978865264c048a' -and $fluentIconGeneratorContent -match 'New-WorkbenchSprite -IconRoot \$IconRoot' -and $fluentIconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and $appContent -match 'function fluentIcon\(name' -and $statusbarContent -match 'icon: "link-multiple-16-filled"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icon: "link-dismiss-16-filled"[\s\S]*?iconFamily: "fluent"' -and $statusbarContent -match 'icon: "gauge-16-regular"[\s\S]*?iconFamily: "fluent"' -and $stylesContent -match '\.fluent-icon\s*\{'
     $fluentIconContractValid = $fluentIconContractValid -and $stylesContent -match '\.modal-dialog-warning \.modal-dialog-heading\s*\{[^}]*var\(--gold-soft\)[^}]*var\(--warning-action-border\)'
     $iconPreviewsValid = $iconManifestIssues.Count -eq 0 -and $iconPreviewContent -match 'fill="#f0f6fc"' -and $iconPreviewContent -match 'Render-WorkbenchIconPreview\.cjs' -and $iconPreviewContent -match 'Get-Command node' -and $iconPreviewContent -notmatch 'Start-Process|Microsoft Edge|msedge' -and $iconPreviewRendererContent -match 'require\.resolve\("puppeteer"' -and $iconPreviewRendererContent -match 'headless:\s*true'
     $llmIconSources = @(Get-ChildItem -LiteralPath $llmIconRoot -Filter '*.svg' -File | Where-Object { $_.Name -notin @('sprite.svg', 'preview.svg') } | Sort-Object Name)
     $llmIconSourceNames = @($llmIconSources | ForEach-Object BaseName)
     $llmIconDocument = [xml]$llmIconSpriteContent
-    $llmIconSymbols = @($llmIconDocument.svg.symbol)
+    $llmIconSymbols = @($llmIconDocument.svg.symbol | Where-Object { $_.GetAttribute('id').StartsWith('llm-', [StringComparison]::Ordinal) })
     $llmIconSymbolNames = @($llmIconSymbols | ForEach-Object { $_.GetAttribute('id') -replace '^llm-', '' } | Sort-Object)
     $llmBrandMap = Get-Content -LiteralPath (Join-Path $workbenchRoot 'llm-brands.json') -Raw | ConvertFrom-Json -NoEnumerate
     $llmRuntimeIconNames = @($llmBrandMap.icon | Sort-Object -Unique -CaseSensitive)
@@ -1189,12 +1190,12 @@ $dependencyOutput = @()
         $llmIconAttributionContent -match 'Lobe Icons' -and $llmIconAttributionContent -match 'MIT License' -and
         $llmIconAttributionContent -match '8a1b2821bb768c484fe8da20c5e1838b6bf551a9' -and
         (Get-Content -LiteralPath (Join-Path $llmIconRoot 'LICENSE.txt') -Raw) -match 'MIT License' -and
-        $llmIconGeneratorContent -match 'New-WorkbenchIconAssets -IconDirectory \$IconDirectory' -and
+        $llmIconGeneratorContent -match 'New-WorkbenchSprite -IconRoot \$IconRoot' -and
         $iconPreviewContent -match 'color="#f0f6fc"' -and
         $llmIconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw' -and
         $appContent -match 'function llmIcon\(name\)' -and $appContent -match 'function renderLlmModelIcon\(model\)' -and
         $appContent.Contains('${renderLlmModelIcon(profile?.model)}') -and $appContent -match 'icon\("question"\)' -and
-        $appContent -match 'icons/llms/sprite\.svg#llm-\$\{name\}' -and
+        $appContent -match 'sprite/sprite\.svg#llm-\$\{name\}' -and
         $appContent.Contains('new Set(llmBrandMap.map') -and $appContent -match 'codicon-question' -and
         $spriteContent -match 'id="codicon-question"' -and
         $appContent -notmatch 'icons/openai\.svg|assist-gpt-icon' -and
@@ -1222,10 +1223,47 @@ $dependencyOutput = @()
     $customIconRuntime = Read-WorkbenchIconRuntime -IconDirectory $customIconRoot
     $customIconSources = @(Get-ChildItem -LiteralPath $customIconRoot -Filter '*.svg' -File | Where-Object Name -NotIn @('sprite.svg', 'preview.svg') | ForEach-Object BaseName | Sort-Object)
     $customIconAttribution = Get-Content -LiteralPath (Join-Path $customIconRoot 'ATTRIBUTION.md') -Raw
+    $notFoundDocument = [xml](Get-Content -LiteralPath (Join-Path $customIconRoot 'not-found.svg') -Raw)
+    $notFoundRoot = $notFoundDocument.DocumentElement
+    $notFoundGradient = $notFoundRoot.SelectSingleNode('*[local-name()="defs"]/*[local-name()="linearGradient"]')
+    $notFoundStops = if ($null -ne $notFoundGradient) { @($notFoundGradient.SelectNodes('*[local-name()="stop"]')) } else { @() }
+    $notFoundOffsets = @(0, 0.20741798914805396, 0.20741798914805396, 0.4148359782961079, 0.4148359782961079, 0.585164021703892, 0.585164021703892, 0.792582010851946, 0.792582010851946, 1)
+    $notFoundColors = @('#ffffff', '#ffffff', '#da3633', '#da3633', '#ffffff', '#ffffff', '#da3633', '#da3633', '#ffffff', '#ffffff')
+    $notFoundStopsValid = $notFoundStops.Count -eq $notFoundOffsets.Count
+    if ($notFoundStopsValid) {
+        for ($stopIndex = 0; $stopIndex -lt $notFoundStops.Count; $stopIndex += 1) {
+            $stop = $notFoundStops[$stopIndex]
+            $offset = [double]::Parse($stop.GetAttribute('offset'), [Globalization.CultureInfo]::InvariantCulture)
+            $opacity = if ($notFoundColors[$stopIndex] -ceq '#ffffff') { '0.6' } else { '' }
+            $notFoundStopsValid = $notFoundStopsValid -and
+                [Math]::Abs($offset - $notFoundOffsets[$stopIndex]) -lt 0.000000000001 -and
+                $stop.GetAttribute('stop-color') -ceq $notFoundColors[$stopIndex] -and
+                $stop.GetAttribute('stop-opacity') -ceq $opacity
+        }
+    }
+    $notFoundBackground = $notFoundRoot.SelectSingleNode('*[local-name()="rect" and @fill="#da3633"]')
+    $notFoundPaint = $notFoundRoot.SelectSingleNode('*[local-name()="rect" and @fill="url(#custom-not-found-preview-gradient)"]')
+    $notFoundBorder = $notFoundRoot.SelectSingleNode('*[local-name()="rect" and @stroke="#da3633"]')
+    $notFoundSymbol = ([xml]$generatedSpriteContent).SelectSingleNode('//*[local-name()="symbol" and @id="custom-not-found"]')
+    $notFoundContractValid = $null -ne $notFoundGradient -and $null -ne $notFoundBackground -and $null -ne $notFoundPaint -and $null -ne $notFoundBorder -and
+        $null -ne $notFoundSymbol -and $notFoundRoot.InnerXml -ceq $notFoundSymbol.InnerXml -and
+        $notFoundRoot.GetAttribute('overflow') -ceq 'hidden' -and
+        $notFoundRoot.GetElementsByTagName('pattern').Count -eq 0 -and
+        $notFoundRoot.SelectNodes('//*[@rx or @ry]').Count -eq 0 -and
+        $notFoundStopsValid -and $notFoundGradient.GetAttribute('spreadMethod') -ceq 'pad' -and
+        $notFoundGradient.GetAttribute('gradientUnits') -ceq 'userSpaceOnUse' -and
+        $notFoundGradient.GetAttribute('x1') -ceq '2' -and $notFoundGradient.GetAttribute('y1') -ceq '2' -and
+        $notFoundGradient.GetAttribute('x2') -ceq '14' -and $notFoundGradient.GetAttribute('y2') -ceq '14' -and
+        $notFoundBackground.GetAttribute('width') -ceq '16' -and $notFoundBackground.GetAttribute('height') -ceq '16' -and
+        $notFoundPaint.GetAttribute('width') -ceq '16' -and $notFoundPaint.GetAttribute('height') -ceq '16' -and
+        $notFoundBorder.GetAttribute('x') -ceq '1' -and $notFoundBorder.GetAttribute('y') -ceq '1' -and
+        $notFoundBorder.GetAttribute('width') -ceq '14' -and $notFoundBorder.GetAttribute('height') -ceq '14' -and
+        $notFoundBorder.GetAttribute('stroke-width') -ceq '2'
     $customIconContractValid = $customIconRuntime.Configuration.symbolPrefix -ceq 'custom' -and
-        @(Compare-Object @('collection-issues-compact', 'discard-all') $customIconSources -CaseSensitive).Count -eq 0 -and
+        @(Compare-Object @('collection-issues-compact', 'discard-all', 'not-found') $customIconSources -CaseSensitive).Count -eq 0 -and
         $customIconAttribution -match 'Workbench-authored derivatives' -and
         $customIconAttribution -match 'discard-all\.svg' -and $customIconAttribution -match 'collection-issues-compact\.svg' -and
+        $customIconAttribution -match 'not-found\.svg' -and $notFoundContractValid -and
         (Get-Content -LiteralPath (Join-Path $customIconRoot 'LICENSE.txt') -Raw) -match 'Creative Commons' -and
         $discardAllContractValid -and $collectionIssuesContractValid
     $iconFamilyNames = @($iconRuntimes | ForEach-Object { Split-Path -Leaf $_.Directory } | Sort-Object)
@@ -1237,59 +1275,40 @@ $dependencyOutput = @()
     if (Test-ShouldRun -Name 'portable-icon-generation') {
         Start-TestResult -Name 'portable-icon-generation'
         $iconGenerationRoot = Join-Path $tempRoot 'icon-generation'
-        $generatedCodiconRoot = Join-Path $iconGenerationRoot 'codicons'
-        $generatedOcticonRoot = Join-Path $iconGenerationRoot 'octicons'
-        $generatedFluentIconRoot = Join-Path $iconGenerationRoot 'fluent'
+        $generatedSpriteRoot = Join-Path $tempRoot 'generated-sprite'
         $generatedLlmIconRoot = Join-Path $iconGenerationRoot 'llms'
         $generatedCustomIconRoot = Join-Path $iconGenerationRoot 'custom'
-        $customIconGeneratorPath = Join-Path $toolsRoot 'internal/workbench/New-WorkbenchCustomIconSprite.ps1'
         New-Item -ItemType Directory -Path $iconGenerationRoot -Force | Out-Null
-        Copy-Item -LiteralPath $codiconRoot -Destination $generatedCodiconRoot -Recurse
-        Copy-Item -LiteralPath $octiconRoot -Destination $generatedOcticonRoot -Recurse
-        Copy-Item -LiteralPath $fluentIconRoot -Destination $generatedFluentIconRoot -Recurse
-        Copy-Item -LiteralPath $llmIconRoot -Destination $generatedLlmIconRoot -Recurse
-        Copy-Item -LiteralPath $customIconRoot -Destination $generatedCustomIconRoot -Recurse
-        Remove-Item -LiteralPath (Join-Path $generatedCustomIconRoot 'sprite.svg'), (Join-Path $generatedCustomIconRoot 'preview.png') -Force
-        Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'sprite.svg'), (Join-Path $generatedLlmIconRoot 'preview.png') -Force
-        Remove-Item -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg'), (Join-Path $generatedCodiconRoot 'preview.png'), (Join-Path $generatedOcticonRoot 'sprite.svg'), (Join-Path $generatedOcticonRoot 'preview.png'), (Join-Path $generatedFluentIconRoot 'sprite.svg'), (Join-Path $generatedFluentIconRoot 'preview.png') -Force -ErrorAction SilentlyContinue
-        $codiconGenerationOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconDirectory $generatedCodiconRoot 2>&1)
-        $codiconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-        $octiconGenerationOutput = @(& pwsh -NoProfile -File $octiconGeneratorPath -IconDirectory $generatedOcticonRoot 2>&1)
-        $octiconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-        $fluentIconGenerationOutput = @(& pwsh -NoProfile -File $fluentIconGeneratorPath -IconDirectory $generatedFluentIconRoot 2>&1)
-        $fluentIconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-        $llmIconGenerationOutput = @(& pwsh -NoProfile -File $llmIconGeneratorPath -IconDirectory $generatedLlmIconRoot 2>&1)
-        $llmIconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-        $customIconGenerationOutput = @(& pwsh -NoProfile -File $customIconGeneratorPath -IconDirectory $generatedCustomIconRoot 2>&1)
-        $customIconGenerationExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-        $generatedCodiconSprite = if (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedCodiconRoot 'sprite.svg') -Raw } else { '' }
-        $generatedOcticonSprite = if (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedOcticonRoot 'sprite.svg') -Raw } else { '' }
-        $generatedFluentIconSprite = if (Test-Path -LiteralPath (Join-Path $generatedFluentIconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedFluentIconRoot 'sprite.svg') -Raw } else { '' }
-        $generatedLlmIconSprite = if (Test-Path -LiteralPath (Join-Path $generatedLlmIconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedLlmIconRoot 'sprite.svg') -Raw } else { '' }
-        $generatedCustomIconSprite = if (Test-Path -LiteralPath (Join-Path $generatedCustomIconRoot 'sprite.svg') -PathType Leaf) { Get-Content -LiteralPath (Join-Path $generatedCustomIconRoot 'sprite.svg') -Raw } else { '' }
-        $portableIconGenerationValid = $codiconGenerationExitCode -eq 0 -and $octiconGenerationExitCode -eq 0 -and $fluentIconGenerationExitCode -eq 0 -and $llmIconGenerationExitCode -eq 0 -and
-            $customIconGenerationExitCode -eq 0 -and
-            $generatedCustomIconSprite -ceq (Get-Content -LiteralPath (Join-Path $customIconRoot 'sprite.svg') -Raw) -and
-            (Test-PngFile -Path (Join-Path $generatedCustomIconRoot 'preview.png')) -and
-            -not (Test-Path -LiteralPath (Join-Path $generatedCustomIconRoot 'preview.svg')) -and
-            [regex]::Matches($generatedCodiconSprite, '<symbol id="codicon-').Count -eq $codiconRuntimeNames.Count -and
-            [regex]::Matches($generatedOcticonSprite, '<symbol id="octicon-').Count -eq $octiconRuntimeNames.Count -and
-            [regex]::Matches($generatedFluentIconSprite, '<symbol id="fluent-').Count -eq $fluentIconRuntimeNames.Count -and
-            $generatedLlmIconSprite -ceq $llmIconSpriteContent -and
-            (Test-PngFile -Path (Join-Path $generatedLlmIconRoot 'preview.png')) -and
-            (Test-PngFile -Path (Join-Path $generatedCodiconRoot 'preview.png')) -and
-            (Test-PngFile -Path (Join-Path $generatedOcticonRoot 'preview.png')) -and
-            (Test-PngFile -Path (Join-Path $generatedFluentIconRoot 'preview.png')) -and
-            -not (Test-Path -LiteralPath (Join-Path $generatedCodiconRoot 'preview.svg')) -and
-            -not (Test-Path -LiteralPath (Join-Path $generatedOcticonRoot 'preview.svg')) -and
-            -not (Test-Path -LiteralPath (Join-Path $generatedFluentIconRoot 'preview.svg')) -and
-            -not (Test-Path -LiteralPath (Join-Path $generatedLlmIconRoot 'preview.svg'))
+        foreach ($runtime in $iconRuntimes) {
+            $familyName = Split-Path -Leaf $runtime.Directory
+            $familyCopy = Join-Path $iconGenerationRoot $familyName
+            Copy-Item -LiteralPath $runtime.Directory -Destination $familyCopy -Recurse
+            Remove-Item -LiteralPath (Join-Path $familyCopy 'preview.png') -Force
+        }
+        $generationOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconRoot $iconGenerationRoot -Destination $generatedSpriteRoot 2>&1)
+        $generationExitCode = $LASTEXITCODE
+        $portableIconGenerationValid = $generationExitCode -eq 0 -and
+            (Get-Content -LiteralPath (Join-Path $generatedSpriteRoot 'sprite.svg') -Raw) -ceq $generatedSpriteContent -and
+            @(Get-ChildItem -LiteralPath $generatedSpriteRoot -Filter '*.svg' -Recurse -File).Count -eq 1
+        foreach ($runtime in $iconRuntimes) {
+            $familyName = Split-Path -Leaf $runtime.Directory
+            $familyCopy = Join-Path $iconGenerationRoot $familyName
+            $portableIconGenerationValid = $portableIconGenerationValid -and
+                (Test-PngFile -Path (Join-Path $familyCopy 'preview.png')) -and
+                -not (Test-Path -LiteralPath (Join-Path $familyCopy 'preview.svg')) -and
+                -not (Test-Path -LiteralPath (Join-Path $familyCopy 'sprite.svg'))
+            foreach ($legalFile in $runtime.RuntimeFiles) {
+                $portableIconGenerationValid = $portableIconGenerationValid -and
+                    (Get-FileHash -LiteralPath (Join-Path $runtime.Directory $legalFile)).Hash -ceq
+                    (Get-FileHash -LiteralPath (Join-Path $generatedSpriteRoot "$familyName/legal/$legalFile")).Hash
+            }
+        }
         Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'LICENSE.txt') -Force
-        $missingLlmLicenseOutput = @(& pwsh -NoProfile -File $llmIconGeneratorPath -IconDirectory $generatedLlmIconRoot 2>&1)
+        $missingLlmLicenseOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconRoot $iconGenerationRoot -Destination $generatedSpriteRoot -SkipPreviews 2>&1)
         $missingLlmLicenseExitCode = $LASTEXITCODE
         Copy-Item -LiteralPath (Join-Path $llmIconRoot 'LICENSE.txt') -Destination $generatedLlmIconRoot
         Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'openai.svg') -Force
-        $missingLlmSourceOutput = @(& pwsh -NoProfile -File $llmIconGeneratorPath -IconDirectory $generatedLlmIconRoot 2>&1)
+        $missingLlmSourceOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconRoot $iconGenerationRoot -Destination $generatedSpriteRoot -SkipPreviews 2>&1)
         $missingLlmSourceExitCode = $LASTEXITCODE
         Copy-Item -LiteralPath (Join-Path $llmIconRoot 'openai.svg') -Destination $generatedLlmIconRoot
         $customRuntimePath = Join-Path $generatedCustomIconRoot 'runtime.json'
@@ -1299,10 +1318,10 @@ $dependencyOutput = @()
             switch ($invalidCase) {
                 'missing-source' { $invalidRuntime.sprite.icons = @('notvendored') }
                 'duplicate-symbol' { $invalidRuntime.sprite.icons = @('discard-all', 'discard-all') }
-                'missing-license-declaration' { $invalidRuntime.runtimeFiles = @('sprite.svg', 'ATTRIBUTION.md') }
+                'missing-license-declaration' { $invalidRuntime.runtimeFiles = @('ATTRIBUTION.md') }
             }
             [IO.File]::WriteAllText($customRuntimePath, ($invalidRuntime | ConvertTo-Json -Depth 10))
-            $invalidRuntimeOutput = @(& pwsh -NoProfile -File $customIconGeneratorPath -IconDirectory $generatedCustomIconRoot 2>&1)
+            $invalidRuntimeOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconRoot $iconGenerationRoot -Destination $generatedSpriteRoot -SkipPreviews 2>&1)
             $portableIconGenerationValid = $portableIconGenerationValid -and $LASTEXITCODE -ne 0
         }
         [IO.File]::WriteAllText($customRuntimePath, $customRuntimeJson)
@@ -1310,10 +1329,10 @@ $dependencyOutput = @()
             ($missingLlmLicenseOutput -join "`n") -match 'LICENSE\.txt' -and $missingLlmSourceExitCode -ne 0 -and
             ($missingLlmSourceOutput -join "`n") -match 'Runtime icon has no source artwork: openai'
         $iconGenerationDetail = if ($portableIconGenerationValid) {
-            'Regenerated Codicons, Custom, Octicons, Fluent, and LLM sprites and PNG inventories in temporary directories; runtime selection is manifest-owned, Custom and LLM generation is deterministic, and missing artwork, duplicate symbols, and missing licenses are rejected.'
+            'Regenerated one deterministic combined sprite, all five complete PNG inventories, and byte-identical legal companions; missing artwork, duplicate symbols, and missing licenses are rejected.'
         }
         else {
-            "Codicon exit $codiconGenerationExitCode`: $(($codiconGenerationOutput | Out-String).Trim()); Custom exit $customIconGenerationExitCode`: $(($customIconGenerationOutput | Out-String).Trim()); Octicon exit $octiconGenerationExitCode`: $(($octiconGenerationOutput | Out-String).Trim()); Fluent exit $fluentIconGenerationExitCode`: $(($fluentIconGenerationOutput | Out-String).Trim()); LLM exit $llmIconGenerationExitCode`: $(($llmIconGenerationOutput | Out-String).Trim()); Missing LLM license exit $missingLlmLicenseExitCode`: $($missingLlmLicenseOutput -join ' '); Missing LLM source exit $missingLlmSourceExitCode`: $($missingLlmSourceOutput -join ' ')"
+            "Combined generation exit $generationExitCode`: $($generationOutput -join ' '); Missing LLM license exit $missingLlmLicenseExitCode`: $($missingLlmLicenseOutput -join ' '); Missing LLM source exit $missingLlmSourceExitCode`: $($missingLlmSourceOutput -join ' ')"
         }
         Add-TestResult -Name 'portable-icon-generation' -Passed $portableIconGenerationValid -Detail $iconGenerationDetail
     }
@@ -1542,7 +1561,7 @@ $dependencyOutput = @()
     Add-TestResult -Name 'scrollbar-theme-contract' -Passed $scrollbarThemeValid -Detail 'Every scroll surface uses an idle-hidden, flat, arrowless thumb with keyboard visibility and asymmetric reveal and hide timing.'
 
     $ideShellValid = $indexContent -match 'data-lucide="braces"' -and $indexContent -match 'data-lucide="git-fork"' -and $indexContent -match 'class="stage-link active clickable"[^>]*title="Eligible candidates"' -and $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and $indexContent -match '<h2 id="assessment-results-heading">Assessment Results:</h2>' -and $indexContent -match '<h2>Promotion Plan:</h2>' -and $indexContent -match '<h2>Promotion Preview:</h2>' -and $indexContent -notmatch 'Maintainer review|Read-only assessment audit|Selected changes|preview-editor-icon' -and $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px' -and $stylesContent -match '\.topbar\s*\{[^}]*grid-template-columns:\s*auto 1fr' -and $stylesContent -match '\.brand-block\s*\{[^}]*grid-column:\s*1;[^}]*margin-left:\s*8px' -and $stylesContent -match '\.topbar-actions\s*\{[^}]*grid-column:\s*2' -and $stylesContent -match '#candidate-panel > \.panel-heading,[\s\S]*?#preview-view > \.page-heading\s*\{[^}]*min-height:\s*48px' -and $stylesContent -match '#candidate-panel > \.panel-heading h2,[\s\S]*?#preview-view > \.page-heading h2\s*\{[^}]*font-size:\s*16px !important;[^}]*font-weight:\s*600 !important;[^}]*line-height:\s*22px !important;[^}]*text-transform:\s*uppercase' -and $stylesContent -match '#plan-view > \.page-heading,[\s\S]*?#preview-view > \.page-heading\s*\{[^}]*margin-bottom:\s*6px' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.status-left \.status-item:first-child svg\s*\{[^}]*width:\s*12px;[^}]*padding:\s*2px;[^}]*overflow:\s*visible' -and $stylesContent -notmatch '\.status-right \.status-item:nth-child' -and $stylesContent -match '\.catalog-toolbar\s*\{[^}]*min-height:\s*34px;[^}]*background:\s*var\(--paper\);[^}]*border:\s*0' -and $stylesContent -match '\.search-field\s*\{[^}]*height:\s*26px;[^}]*border-radius:\s*2px' -and $stylesContent -match '\.search-field:focus-within\s*\{[^}]*border-color:\s*var\(--line\)' -and $stylesContent -match '\.workspace-tab\.active::before\s*\{[^}]*background:\s*var\(--accent\)'
-    $codiconShellValid = $indexContent -match 'class="brand-icon codicon"[^>]*>[\s\S]*?icons/codicons/sprite\.svg#codicon-json' -and $indexContent -match 'icons/codicons/sprite\.svg#codicon-git-branch-compact' -and $indexContent -match 'class="stage-link active clickable"[^>]*title="Eligible candidates"' -and $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and $indexContent -match '<h2 id="assessment-results-heading">Assessment Results:</h2>' -and $indexContent -match '<h2>Promotion Plan:</h2>' -and $indexContent -match '<h2>Promotion Preview:</h2>' -and $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.status-left \.status-item:first-child svg\s*\{[^}]*width:\s*13px;[^}]*height:\s*13px' -and $stylesContent -match '\.workspace-tab\s*\{[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*text-transform:\s*uppercase'
+    $codiconShellValid = $indexContent -match 'class="brand-icon codicon"[^>]*>[\s\S]*?sprite/sprite\.svg#codicon-json' -and $indexContent -match 'sprite/sprite\.svg#codicon-git-branch-compact' -and $indexContent -match 'class="stage-link active clickable"[^>]*title="Eligible candidates"' -and $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and $indexContent -match '<h2 id="assessment-results-heading">Assessment Results:</h2>' -and $indexContent -match '<h2>Promotion Plan:</h2>' -and $indexContent -match '<h2>Promotion Preview:</h2>' -and $stylesContent -match '@media \(min-width: 768px\)[\s\S]*?grid-template-columns:\s*48px minmax\(0, 1fr\);[\s\S]*?grid-template-rows:\s*35px minmax\(0, 1fr\) 22px' -and $stylesContent -match '\.stage-link\.active::before\s*\{[^}]*background:\s*var\(--ink\)' -and $stylesContent -match '\.status-left \.status-item:first-child svg\s*\{[^}]*width:\s*13px;[^}]*height:\s*13px' -and $stylesContent -match '\.workspace-tab\s*\{[^}]*text-transform:\s*uppercase' -and $stylesContent -match '\.candidate-pane-tab\s*\{[^}]*text-transform:\s*uppercase'
     $codiconShellValid = $indexContent -match 'class="brand-icon codicon"' -and
         $indexContent -match 'class="stage-link active clickable"[^>]*data-workbench-tooltip="Show eligible candidates"' -and
         $indexContent -match '<h2 id="candidate-heading">Candidate Sources:</h2>' -and
@@ -1960,7 +1979,7 @@ $dependencyOutput = @()
     $noOpUpdateValid = $appContent -match 'function hasHostedTextChange\(' -and $appContent -match 'if \(hasHostedTextChange\(candidate, proposedText\)\) actions\.push\("update"\)' -and $appContent -match 'Current and proposed Hosted rule text are identical, so Update is unavailable\.' -and $appContent -match 'function isCurrentMappedNoChangeNoOp\(' -and $appContent -match 'function repairNoOpPlanMembership\(' -and $appContent -match 'changes\.inPlan === true && !canSelectCandidateForPlan' -and $appContent -match 'candidate-plan-unavailable'
     Add-TestResult -Name 'no-op-update-suppression' -Passed $noOpUpdateValid -Detail 'Current mapped No Change candidates omit no-op action and membership controls while preserving explicit promotion overrides.'
 
-    $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*icons/codicons/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
+    $mobileUnsupportedValid = $indexContent -match 'class="unsupported-brand-lockup"[\s\S]*sprite/sprite\.svg#codicon-json[\s\S]*class="unsupported-product-name">HOSTED COPILOT RULE MANAGER</p>' -and $indexContent -match 'Mobile devices are not supported' -and $indexContent -notmatch 'class="unsupported-mark"[^>]*>HR</span>' -and $appContent -match 'matchMedia\("\(max-width: 767\.98px\)"\)\.matches' -and $appContent -match 'userAgentData\?\.mobile' -and $appContent -match 'mobile-unsupported' -and $stylesContent -match '@media \(max-width: 767\.98px\)' -and $stylesContent -match '\.unsupported-brand-icon\s*\{[^}]*color:\s*#ffff00' -and $stylesContent -match 'html\.mobile-unsupported \.unsupported-device'
     Add-TestResult -Name 'mobile-unsupported-contract' -Passed $mobileUnsupportedValid -Detail 'Mobile detection replaces the Workbench with a laptop-or-desktop requirement.'
 
     Write-PreparationStatus -Status passed -Name 'source-contract-state'
@@ -1971,7 +1990,7 @@ $dependencyOutput = @()
     $null = New-Item -ItemType Directory -Path $reuseSiteDirectory -Force
     Copy-Item -LiteralPath $displayPath -Destination (Join-Path $reuseSiteDirectory 'workbench-display.json')
     Copy-Item -LiteralPath $ruleIssuesPath -Destination (Join-Path $reuseSiteDirectory 'workbench-rule-issues.json')
-    $sourceIconDirectory = Join-Path $workbenchRoot 'icons'
+    $sourceIconDirectory = $spriteRoot
     $sourceIconSnapshot = @(Get-ChildItem -LiteralPath $sourceIconDirectory -Recurse -File | Sort-Object FullName | ForEach-Object {
         [ordered]@{ path = [IO.Path]::GetRelativePath($sourceIconDirectory, $_.FullName); sha256 = (Get-FileHash -LiteralPath $_.FullName).Hash }
     }) | ConvertTo-Json -Depth 5 -Compress
@@ -1984,7 +2003,7 @@ $dependencyOutput = @()
     $reuseResult = if ($reuseExitCode -eq 0) { ($reuseOutput | Out-String) | ConvertFrom-Json } else { $null }
 
     $expectedRuntimeIcons = @(Get-WorkbenchRuntimeIconAssets -IconRoot $sourceIconDirectory)
-    $stagedIconDirectory = Join-Path $reuseSiteDirectory 'icons'
+    $stagedIconDirectory = Join-Path $reuseSiteDirectory 'sprite'
     $firstRuntimeIcons = @(Get-ChildItem -LiteralPath $stagedIconDirectory -Recurse -File | ForEach-Object {
         [IO.Path]::GetRelativePath($stagedIconDirectory, $_.FullName).Replace('\', '/')
     })
@@ -2855,8 +2874,8 @@ $dependencyOutput = @()
     foreach ($assetName in @('index.html', 'app.js', 'assistance-waiting-phrases.json', 'llm-brands.json', 'hierarchical-view.js', 'statusbar.js', 'styles.css', 'favicon.svg')) {
         Copy-Item -LiteralPath (Join-Path $workbenchRoot $assetName) -Destination (Join-Path $shutdownSiteDirectory $assetName)
     }
-    $browserIconDirectory = Join-Path $shutdownSiteDirectory 'icons'
-    Copy-WorkbenchRuntimeIconAssets -IconRoot (Join-Path $workbenchRoot 'icons') -Destination $browserIconDirectory
+    $browserIconDirectory = Join-Path $shutdownSiteDirectory 'sprite'
+    Copy-WorkbenchRuntimeIconAssets -IconRoot $spriteRoot -Destination $browserIconDirectory
     $browserIconFiles = @(Get-ChildItem -LiteralPath $browserIconDirectory -Recurse -File | ForEach-Object {
         [IO.Path]::GetRelativePath($browserIconDirectory, $_.FullName).Replace('\', '/')
     })
