@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "stage", "phase", "comparisons"],
+  "properties": {
+    "schemaVersion": { "const": 4 },
+    "stage": { "const": "adjudication" },
+    "phase": { "const": "relationships" },
+    "comparisons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["left", "right", "relationship", "title", "rationale", "needsReview", "leftQuote", "rightQuote"],
+        "properties": {
+          "left": { "$ref": "#/$defs/subject" },
+          "right": { "$ref": "#/$defs/subject" },
+          "relationship": { "enum": ["independent", "equivalent", "partial-overlap", "left-extends-right", "left-narrows-right", "conflicts"] },
+          "title": { "type": "string", "minLength": 1 },
+          "rationale": { "type": "string", "minLength": 1 },
+          "needsReview": { "type": "boolean" },
+          "leftQuote": { "$ref": "#/$defs/quote" },
+          "rightQuote": { "$ref": "#/$defs/quote" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "quote": { "type": ["string", "null"], "minLength": 1, "maxLength": 2000 },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["group", "rule"] },
+        "id": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

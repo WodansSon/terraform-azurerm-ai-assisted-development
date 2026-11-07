@@ -11,7 +11,7 @@
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Community Maintained](https://img.shields.io/badge/Community-Maintained-blue.svg)](https://github.com/WodansSon/terraform-azurerm-ai-assisted-development)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5391FE.svg?logo=powershell&logoColor=white)](https://docs.microsoft.com/powershell/)
-[![Bash](https://img.shields.io/badge/Bash-4EAA25.svg?logo=gnu-bash&logoColor=white)](https://www.gnu.org/software/bash/)
+![Bash](https://img.shields.io/badge/Bash-4EAA25.svg?logo=gnu-bash&logoColor=white)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows-0078D6.svg?logo=windows)](https://www.microsoft.com/windows)
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS-000000.svg?logo=apple)](https://www.apple.com/macos)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-FCC624.svg?logo=linux&logoColor=black)](https://www.linux.org/)

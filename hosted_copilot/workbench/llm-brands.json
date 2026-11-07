@@ -1,0 +1,6 @@
+[
+  { "prefix": "gpt-", "icon": "openai" },
+  { "prefix": "claude-", "icon": "claude" },
+  { "prefix": "gemini-", "icon": "gemini" },
+  { "prefix": "grok-", "icon": "grok" }
+]

@@ -18,11 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **User-Priority:**
   - **[Docs]** - Documentation reviews and writing now require four-backtick outer fences when examples contain nested fenced code blocks, matching upstream reference documentation standards.
 
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Implementation guidance now distinguishes legacy untyped Plugin SDK, typed `internal/sdk`, and framework-native models, preserves the current model during maintenance unless migration is explicit, and keeps typed as the current default for new ordinary resources and data sources while framework-native surfaces follow their specialized patterns.
+  - **[Internal]** - CI now reports Interactive, Hosted, and shared repository validation independently after fail-closed change discovery. Unrelated product changes no longer run the other product's validator, while shared changes still require both products; release guidance documents the separate required-check migration without changing tag publication or security thresholds.
+  - **[Internal]** - Defined the repository's two-toolkit architecture, an explicit Hosted Experiment MVP handoff, and changed-path validation dispatch so the versioned Interactive Toolkit and source-deployed Hosted experiment remain independently owned and validated across single-toolkit, mixed, shared, repository-maintenance, and unclassified changes; repo-local validation and test reports now consume one shared presentation module for standard sections, summaries, tables, statuses, streamed child progress, durations, and terminal spacing while preserving presentation-free JSON.
+  - **[Internal]** - Interactive validation now audits only its owned npm lockfile, reports installed packages as current when they match the audited lock, skips redundant reinstalls, and keeps Hosted validation and release assets outside the versioned Interactive workflow.
+  - **[Internal]** - Added a tracked repo-only Interactive rule catalog for searchable provenance and active, deprecated, and retired lifecycle history across all contract rule IDs; contract wording remains hand-authored, catalog validation detects rule drift and accidental shipping, upstream checks consume structured source mappings, and embedded provenance metadata and horizontal dividers no longer consume installed runtime context.
+
 ### Fixed
 
 - **Maintainer/Workflow:**
   - **[Internal]** - Upstream contributor drift checks now authenticate GitHub Contents API requests in CI, avoiding unauthenticated rate-limit failures.
   - **[Internal]** - Updated repository validation dependencies and reviewed transitive overrides to resolve reported npm security findings without downgrading the link checker or weakening audit thresholds; documented compatibility exceptions and the remaining encoding-package deprecation.
+  - **[Internal]** - Shared npm validation now parses audit JSON separately from stderr and reports vulnerability and diagnostic failures independently, preventing warnings from corrupting audit parsing while still failing on non-whitespace diagnostics or unsuccessful commands; lockfile checks use standardized timed progress and summaries without changing security thresholds or JSON output contracts.
 
 ## [3.9.1] - 2026-08-24
 

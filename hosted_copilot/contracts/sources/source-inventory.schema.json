@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "sourceDefinitionId", "sourceDefinitionSha256", "inventoryConfigurationSha256", "collectorVersion", "parserId", "parserContractSha256", "collectedAt", "collection", "records"],
+  "properties": {
+    "$schema": {
+      "const": "source-inventory.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "sourceDefinitionId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "sourceDefinitionSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "inventoryConfigurationSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "collectorVersion": {
+      "const": 1
+    },
+    "parserId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*-v[1-9][0-9]*$"
+    },
+    "parserContractSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "collectedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete", "sourceRevision", "inventorySha256"],
+      "properties": {
+        "complete": {
+          "const": true
+        },
+        "sourceRevision": {
+          "$ref": "#/$defs/sourceRevision"
+        },
+        "inventorySha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sourceRecord"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceRevision": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/repositoryWorktreeRevision"
+        },
+        {
+          "$ref": "#/$defs/githubCommitRevision"
+        }
+      ]
+    },
+    "repositoryWorktreeRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resolvedCommit", "worktreeDirty", "worktreeSha256"],
+      "properties": {
+        "kind": {
+          "const": "repository-worktree"
+        },
+        "resolvedCommit": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "worktreeDirty": {
+          "type": "boolean"
+        },
+        "worktreeSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "githubCommitRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "configuredRef", "overrideUsed", "resolvedCommit"],
+      "properties": {
+        "kind": {
+          "const": "github-commit"
+        },
+        "configuredRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "overrideUsed": {
+          "type": "boolean"
+        },
+        "resolvedCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "sourceRecord": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/maintainerProposalRecord"
+        },
+        {
+          "$ref": "#/$defs/interactiveToolkitRecord"
+        },
+        {
+          "$ref": "#/$defs/contributorGuidanceRecord"
+        }
+      ]
+    },
+    "maintainerProposalRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "presence", "sourceLifecycle", "location", "contentSha256", "content", "title", "surface", "ruleText", "provenance", "rationale", "evidence"],
+      "properties": {
+        "sourceId": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$"
+        },
+        "presence": {
+          "enum": ["present", "removed"]
+        },
+        "sourceLifecycle": {
+          "enum": ["active", "retired"]
+        },
+        "removedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surface": {
+          "enum": ["documentation", "implementation", "testing"]
+        },
+        "ruleText": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "enum": ["confirmed-maintainer-convention", "inferred-maintainer-convention", "local-safeguard"]
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "presence": {
+                "const": "removed"
+              }
+            },
+            "required": ["presence"]
+          },
+          "then": {
+            "required": ["removedAt"]
+          },
+          "else": {
+            "not": {
+              "required": ["removedAt"]
+            }
+          }
+        }
+      ]
+    },
+    "interactiveToolkitRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "presence", "sourceLifecycle", "location", "contentSha256", "content", "title", "contractPath", "provenance", "evidence", "sourceIds"],
+      "properties": {
+        "sourceId": {
+          "type": "string",
+          "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$"
+        },
+        "presence": {
+          "enum": ["present", "removed"]
+        },
+        "sourceLifecycle": {
+          "enum": ["active", "deprecated", "retired"]
+        },
+        "removedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contractPath": {
+          "type": "string",
+          "pattern": "^\\.github/instructions/[a-z0-9-]+-compliance-contract\\.instructions\\.md$"
+        },
+        "provenance": {
+          "enum": ["published-upstream-standard", "inferred-maintainer-convention", "local-safeguard", "unclassified"]
+        },
+        "evidence": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sourceIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          }
+        },
+        "replacementIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$"
+          }
+        },
+        "deprecatedOn": {
+          "type": "string",
+          "format": "date"
+        },
+        "retiredOn": {
+          "type": "string",
+          "format": "date"
+        },
+        "lifecycleReason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "presence": {
+                "const": "removed"
+              }
+            },
+            "required": ["presence"]
+          },
+          "then": {
+            "required": ["removedAt"]
+          },
+          "else": {
+            "not": {
+              "required": ["removedAt"]
+            }
+          }
+        }
+      ]
+    },
+    "contributorGuidanceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "presence", "sourceLifecycle", "location", "contentSha256", "content", "title", "repository", "resolvedCommit", "referenceUrl"],
+      "properties": {
+        "sourceId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "presence": {
+          "enum": ["present", "removed"]
+        },
+        "sourceLifecycle": {
+          "const": "active"
+        },
+        "removedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "location": {
+          "type": "string",
+          "pattern": "^contributing/(?:README\\.md|topics/[a-z0-9/-]+\\.md)$"
+        },
+        "contentSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository": {
+          "const": "hashicorp/terraform-provider-azurerm"
+        },
+        "resolvedCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "referenceUrl": {
+          "type": "string",
+          "pattern": "^https://github\\.com/hashicorp/terraform-provider-azurerm/blob/[0-9a-f]{40}/contributing/(?:README\\.md|topics/[a-z0-9/-]+\\.md)$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "presence": {
+                "const": "removed"
+              }
+            },
+            "required": ["presence"]
+          },
+          "then": {
+            "required": ["removedAt"]
+          },
+          "else": {
+            "not": {
+              "required": ["removedAt"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

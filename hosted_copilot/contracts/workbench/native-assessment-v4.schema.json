@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "stage", "sources"],
+  "properties": {
+    "schemaVersion": { "const": 4 },
+    "stage": { "const": "assessment" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceVersionId", "assessments"],
+        "properties": {
+          "sourceVersionId": { "type": "integer", "minimum": 1 },
+          "assessments": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/assessment" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "rating": { "type": "integer", "minimum": 0, "maximum": 5 },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["localResultKey", "title", "sourceMeaning", "impactDescription", "hostedApplicable", "applicabilityRationale", "selectionFactors", "selectionRationale", "confidence", "categories", "existingCoverage"],
+      "properties": {
+        "localResultKey": { "$ref": "#/$defs/text" },
+        "title": { "$ref": "#/$defs/text" },
+        "sourceMeaning": { "$ref": "#/$defs/text" },
+        "impactDescription": { "$ref": "#/$defs/text" },
+        "hostedApplicable": { "type": "boolean" },
+        "applicabilityRationale": { "$ref": "#/$defs/text" },
+        "selectionRationale": { "$ref": "#/$defs/text" },
+        "selectionFactors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["severity", "frequency", "breadth", "hostedDetectability", "evidenceStrength", "falsePositiveRisk", "redundancy"],
+          "properties": {
+            "severity": { "$ref": "#/$defs/rating" },
+            "frequency": { "$ref": "#/$defs/rating" },
+            "breadth": { "$ref": "#/$defs/rating" },
+            "hostedDetectability": { "$ref": "#/$defs/rating" },
+            "evidenceStrength": { "$ref": "#/$defs/rating" },
+            "falsePositiveRisk": { "$ref": "#/$defs/rating" },
+            "redundancy": { "$ref": "#/$defs/rating" }
+          }
+        },
+        "confidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["level", "rationale", "uncertainties"],
+          "properties": {
+            "level": { "enum": ["low", "medium", "high"] },
+            "rationale": { "$ref": "#/$defs/text" },
+            "uncertainties": { "type": "array", "items": { "$ref": "#/$defs/text" } }
+          }
+        },
+        "categories": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 128 } },
+        "existingCoverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["score", "rationale"],
+          "properties": { "score": { "$ref": "#/$defs/rating" }, "rationale": { "$ref": "#/$defs/text" } }
+        }
+      }
+    }
+  }
+}

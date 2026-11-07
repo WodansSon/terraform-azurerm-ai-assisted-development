@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/workbench-rule-issues-v4.schema.json",
+  "title": "Hosted Rule Workbench Rule Issues Version 4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "kind", "generatedAt", "readOnly", "sourceFiles", "issues"],
+  "properties": {
+    "$schema": { "const": "workbench-rule-issues-v4.schema.json" },
+    "schemaVersion": { "const": 4 },
+    "kind": { "const": "hosted-rule-workbench-rule-issues" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "readOnly": { "const": true },
+    "sourceFiles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/sourceFile" } },
+    "issues": { "type": "array", "items": { "$ref": "#/$defs/issue" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hostedId": { "type": "string", "maxLength": 32, "pattern": "^[A-Z]+(?:-[A-Z0-9]+)+-[0-9]{3}[A-Z]?$" },
+    "sourceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceDefinitionId", "sourceId", "contentSha256"],
+      "properties": {
+        "sourceDefinitionId": { "type": "string", "minLength": 1 },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "contentSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "disposition", "text", "candidateKeys"],
+      "properties": {
+        "id": { "$ref": "#/$defs/hostedId" },
+        "status": { "enum": ["protected", "active", "retired", "proposed"] },
+        "disposition": { "enum": ["keep", "promote", "replace", "retire", "exclude", "defer", "review"] },
+        "text": { "type": "string", "minLength": 1 },
+        "candidateKeys": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceRuleId", "relatedRuleId", "relationship", "kind", "rationale", "candidateKey"],
+      "properties": {
+        "sourceRuleId": { "$ref": "#/$defs/hostedId" },
+        "relatedRuleId": { "$ref": "#/$defs/hostedId" },
+        "relationship": { "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts"] },
+        "kind": { "enum": ["contradiction", "duplicate", "overlap"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "candidateKey": { "type": "string", "minLength": 1 }
+      }
+    },
+    "wording": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "label", "presentation", "text", "sourceRuleId"],
+          "properties": {
+            "status": { "enum": ["canonical", "selected"] },
+            "label": { "enum": ["Canonical Protected Wording", "Suggested Consolidated Wording"] },
+            "presentation": { "enum": ["section", "member"] },
+            "text": { "type": "string", "minLength": 1 },
+            "sourceRuleId": { "$ref": "#/$defs/hostedId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "label", "presentation", "reason"],
+          "properties": {
+            "status": { "const": "unresolved" },
+            "label": { "const": "Consolidated Wording Unresolved" },
+            "presentation": { "const": "section" },
+            "reason": { "type": "string", "minLength": 1, "maxLength": 400 }
+          }
+        }
+      ]
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateKey", "ruleId", "action", "proposedText", "retireHostedRuleIds"],
+      "properties": {
+        "candidateKey": { "type": "string", "minLength": 1 },
+        "ruleId": { "$ref": "#/$defs/hostedId" },
+        "action": { "enum": ["add", "update", "retire", "restore", "exclude", "defer"] },
+        "proposedText": { "type": "string", "minLength": 1 },
+        "retireHostedRuleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/hostedId" } }
+      }
+    },
+    "maintainerAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "operations"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1 },
+        "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" } }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "classification", "label", "title", "bannerTitle", "bannerMessage", "blocking", "ruleIds", "protectedRuleIds", "candidateKeys", "rules", "relationships", "assessmentSummary", "wording", "recommendedMaintainerAction"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "classification": { "enum": ["protected-integrity", "protected-conflict", "protected-coverage", "contradiction", "duplicate", "overlap"] },
+        "label": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "bannerTitle": { "type": "string", "minLength": 1 },
+        "bannerMessage": { "type": "string", "minLength": 1 },
+        "blocking": { "type": "boolean" },
+        "ruleIds": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "$ref": "#/$defs/hostedId" } },
+        "protectedRuleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/hostedId" } },
+        "candidateKeys": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "rules": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/rule" } },
+        "relationships": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/relationship" } },
+        "assessmentSummary": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "wording": { "$ref": "#/$defs/wording" },
+        "recommendedMaintainerAction": { "$ref": "#/$defs/maintainerAction" }
+      }
+    }
+  }
+}

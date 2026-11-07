@@ -1,0 +1,10 @@
+{
+  "default": {
+    "model": "gpt-6.1-sol",
+    "reasoningEffort": "high"
+  },
+  "ruleEvaluation": {
+    "model": "gpt-6-luna",
+    "reasoningEffort": "medium"
+  }
+}

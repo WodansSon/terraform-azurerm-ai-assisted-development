@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hosted Saved Rule Assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["candidateKey", "ruleTextSha256", "summary", "impactDescription", "hostedApplicable", "applicabilityRationale", "selectionFactors", "selectionRationale", "existingCoverage", "relatedHostedCoverage", "recommendation"],
+  "properties": {
+    "candidateKey": { "type": "string", "minLength": 1 },
+    "ruleTextSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "summary": { "type": "string", "minLength": 1 },
+    "impactDescription": { "type": "string", "minLength": 1 },
+    "hostedApplicable": { "type": "boolean" },
+    "applicabilityRationale": { "type": "string", "minLength": 1 },
+    "selectionFactors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "frequency", "breadth", "hostedDetectability", "evidenceStrength", "falsePositiveRisk", "redundancy"],
+      "properties": {
+        "severity": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "frequency": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "breadth": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "hostedDetectability": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "evidenceStrength": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "falsePositiveRisk": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "redundancy": { "type": "integer", "minimum": 0, "maximum": 5 }
+      }
+    },
+    "selectionRationale": { "type": "string", "minLength": 1 },
+    "existingCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "rationale"],
+      "properties": {
+        "score": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "relatedHostedCoverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hostedRuleId", "relationship", "rationale"],
+        "properties": {
+          "hostedRuleId": { "type": "string", "minLength": 1 },
+          "relationship": { "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts", "related", "none"] },
+          "rationale": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "recommendation": { "enum": ["add", "update", "retire", "restore", "no-change", "exclude", "defer"] }
+  }
+}

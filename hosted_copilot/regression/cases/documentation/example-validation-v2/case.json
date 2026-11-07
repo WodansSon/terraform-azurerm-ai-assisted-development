@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "documentation-example-validation-v2",
+  "contentRoot": "content",
+  "expectedFindings": [
+    {
+      "ruleId": "DOCS-EX-010",
+      "path": "website/docs/r/hosted_fixture_format_validation.html.markdown",
+      "match": "account_tier = \"Enterprise\"",
+      "reason": "The changed example uses a value outside the documented schema validation set."
+    },
+    {
+      "ruleId": "DOCS-WORD-005",
+      "path": "website/docs/r/hosted_fixture_format_validation.html.markdown",
+      "match": "`Standard`, `Premium` and `Ultra`",
+      "reason": "The changed possible-values list omits the mandatory Oxford comma."
+    },
+    {
+      "ruleId": "DOCS-FMT-005",
+      "path": "website/docs/r/hosted_fixture_format_validation.html.markdown",
+      "match": "- `account_tier`",
+      "reason": "The changed argument entry uses `-` instead of the mandatory `*` list marker."
+    }
+  ],
+  "unexpectedFindingPolicy": "Record every additional comment for maintainer adjudication."
+}

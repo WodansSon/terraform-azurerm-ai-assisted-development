@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "code": "terraform-azurerm",
+  "label": "Terraform AzureRM",
+  "runtimeRequestTokenLimit": 110000,
+  "guidanceTokenBudget": 25000,
+  "charactersPerToken": 4,
+  "safetyMarginPercent": 25,
+  "llmConfiguration": {
+    "models": [
+      { "key": "sol", "providerCode": "github-copilot", "modelCode": "gpt-6.1-sol" },
+      { "key": "luna", "providerCode": "github-copilot", "modelCode": "gpt-6-luna" }
+    ],
+    "assignments": [
+      { "taskCode": "assessment", "modelKey": "sol", "adapterCode": "copilot-cli", "reasoningEffort": "high" },
+      { "taskCode": "reconciliation", "modelKey": "sol", "adapterCode": "copilot-cli", "reasoningEffort": "high" },
+      { "taskCode": "adjudication", "modelKey": "sol", "adapterCode": "copilot-cli", "reasoningEffort": "high" },
+      { "taskCode": "chat", "modelKey": "sol", "adapterCode": "copilot-cli", "reasoningEffort": "high" },
+      { "taskCode": "rule-reevaluation", "modelKey": "luna", "adapterCode": "copilot-cli", "reasoningEffort": "medium" },
+      { "taskCode": "relationship-review", "modelKey": "luna", "adapterCode": "copilot-cli", "reasoningEffort": "medium" }
+    ]
+  },
+  "provenanceCodes": [
+    { "code": "published-upstream-standard", "label": "Published upstream standard" },
+    { "code": "inferred-maintainer-convention", "label": "Inferred maintainer convention" },
+    { "code": "confirmed-maintainer-convention", "label": "Confirmed maintainer convention" },
+    { "code": "local-safeguard", "label": "Local safeguard" },
+    { "code": "unclassified", "label": "Unclassified" }
+  ],
+  "categories": [
+    {
+      "code": "implementation",
+      "label": "Implementation",
+      "description": "Resource and data source implementation, Azure API behavior, schema validation, state, lifecycle and errors.",
+      "outputPath": ".github/instructions/azurerm-go.instructions.md",
+      "patterns": ["internal/**/*.go"],
+      "sections": ["Evidence And Resource Type", "Schema And State", "Create And Import Behavior", "Azure Update Semantics", "Errors"],
+      "budgetTokens": 8000
+    },
+    {
+      "code": "testing",
+      "label": "Testing",
+      "description": "Acceptance and unit test coverage, assertions, test lifecycle, generated configurations, and Azure test setup.",
+      "outputPath": ".github/instructions/azurerm-tests.instructions.md",
+      "patterns": ["internal/**/*_test.go"],
+      "sections": ["Evidence And Lifecycle", "Assertions And Validation", "Generated And Embedded Content", "Feature Branches And Azure Setup"],
+      "budgetTokens": 4000
+    },
+    {
+      "code": "documentation",
+      "label": "Documentation",
+      "description": "Resource and data source documentation, arguments, attributes, examples, imports, notes, structure and wording.",
+      "outputPath": ".github/instructions/azurerm-docs.instructions.md",
+      "patterns": ["website/docs/**/*.html.markdown"],
+      "sections": ["Evidence And Coverage", "Frontmatter And Structure", "Argument Accuracy", "Examples And Imports", "Wording"],
+      "budgetTokens": 8000
+    }
+  ],
+  "fixedGuidanceFiles": [
+    { "code": "repository", "path": ".github/copilot-instructions.md", "budgetTokens": 2000 },
+    { "code": "skill", "path": ".github/skills/code-review/SKILL.md", "budgetTokens": 3000 }
+  ],
+  "scoringFactors": [
+    { "code": "severity", "label": "Severity", "description": "Harm when missed", "weight": 6, "kind": "value" },
+    { "code": "frequency", "label": "Frequency", "description": "Frequency in provider changes", "weight": 3, "kind": "value" },
+    { "code": "breadth", "label": "Breadth", "description": "Scope across the provider", "weight": 3, "kind": "value" },
+    { "code": "hostedDetectability", "label": "Hosted detectability", "description": "Reviewable proof of the defect", "weight": 4, "kind": "value" },
+    { "code": "evidenceStrength", "label": "Evidence strength", "description": "Authority of supporting evidence", "weight": 4, "kind": "value" },
+    { "code": "falsePositiveRisk", "label": "False-positive risk", "description": "Risk of unsupported findings", "weight": 5, "kind": "risk" },
+    { "code": "redundancy", "label": "Existing coverage", "description": "Existing coverage of the meaning", "weight": 3, "kind": "risk" }
+  ]
+}
