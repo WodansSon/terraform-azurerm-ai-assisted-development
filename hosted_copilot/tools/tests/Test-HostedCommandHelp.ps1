@@ -281,21 +281,40 @@ try {
         Add-TestResult -Name 'cli-model-preflight' -Passed ($availability.protocolVersion -eq 3 -and $availability.profiles.Count -eq 2 -and $availability.commandPath -ceq $launch.commandPath) -Detail 'The complete fixture answers only status, authentication, and model metadata; both resolved profiles are required.'
         foreach ($case in @(
             @{ Scenario = 'unauthenticated'; Expected = 'not authenticated' },
-            @{ Scenario = 'missing-model'; Expected = 'unavailable for profile' },
-            @{ Scenario = 'missing-rule-model'; Expected = 'unavailable for profile' },
-            @{ Scenario = 'disabled-model'; Expected = 'disabled for profile' },
+            @{ Scenario = 'missing-model'; Expected = 'configured model is unavailable' },
+            @{ Scenario = 'missing-rule-model'; Expected = 'configured model is unavailable' },
+            @{ Scenario = 'disabled-model'; Expected = 'configured model is disabled' },
             @{ Scenario = 'unknown-policy'; Expected = 'availability could not be verified' },
             @{ Scenario = 'unsupported-effort'; Expected = 'reasoning effort.*unsupported' },
             @{ Scenario = 'duplicate-model'; Expected = 'duplicate model metadata' },
-            @{ Scenario = 'unsupported-protocol'; Expected = 'requires protocol 3' },
+            @{ Scenario = 'unsupported-protocol'; Expected = 'protocol=2;.*requires protocol 3' },
             @{ Scenario = 'rpc-error'; Expected = 'RPC code -32601' },
-            @{ Scenario = 'timeout'; Expected = 'timed out' }
+            @{ Scenario = 'timeout'; Expected = 'timed out' },
+            @{ Scenario = 'missing-version'; Expected = 'query=status.get;.*expected=result.version' },
+            @{ Scenario = 'missing-auth-field'; Expected = 'query=auth.getStatus;.*CLI=1.0.102;.*expected=result.isAuthenticated' },
+            @{ Scenario = 'missing-models-field'; Expected = 'query=models.list;.*expected=result.models:' },
+            @{ Scenario = 'missing-capability'; Expected = 'expected=result.models\[\].capabilities.supports.reasoningEffort' },
+            @{ Scenario = 'missing-efforts'; Expected = 'expected=result.models\[\].supportedReasoningEfforts' },
+            @{ Scenario = 'private-version-suffix'; Expected = 'CLI=1.0.102;.*availability could not be verified' },
+            @{ Scenario = 'malformed-private-response'; Expected = 'query=models.list;.*format validation failed' }
         )) {
             [Environment]::SetEnvironmentVariable('HOSTED_CLI_TEST_SCENARIO', $case.Scenario)
             $diagnostic = ''
             try { $null = Get-HostedCliAvailability -Launch $launch -Profiles $profiles -TimeoutSeconds $(if ($case.Scenario -ceq 'timeout') { 1 } else { 10 }) } catch { $diagnostic = [string]$_.Exception.Message }
-            Add-TestResult -Name "cli-preflight-$($case.Scenario)" -Passed ($diagnostic -match $case.Expected -and -not $diagnostic.Contains('SYNTHETIC_SENSITIVE_VALUE')) -Detail 'The precheck fails actionably without accepting an availability conclusion or exposing raw diagnostic content.'
+            Add-TestResult -Name "cli-preflight-$($case.Scenario)" -Passed ($diagnostic -match $case.Expected -and $diagnostic.Contains('query=') -and
+                $diagnostic.Contains('expected=') -and $diagnostic -notmatch 'SYNTHETIC[_-]SENSITIVE[_-]VALUE') -Detail 'The precheck identifies its query and expected field without accepting availability or exposing private metadata, version suffixes, or raw diagnostics.'
         }
+        [Environment]::SetEnvironmentVariable('HOSTED_CLI_TEST_SCENARIO', $null)
+        $privateDiagnostic = ''
+        $privateProfiles = [ordered]@{ 'SYNTHETIC_PRIVATE_ENTRY' = @{ model = 'SYNTHETIC_PRIVATE_MODEL'; reasoningEffort = 'SYNTHETIC_PRIVATE_EFFORT' } }
+        try { $null = Get-HostedCliAvailability -Launch $launch -Profiles $privateProfiles } catch { $privateDiagnostic = $_.Exception.Message }
+        Add-TestResult -Name 'cli-preflight-private-configuration-omitted' -Passed ($privateDiagnostic -match 'configured entry=1' -and
+            $privateDiagnostic -notmatch 'SYNTHETIC_PRIVATE|SYNTHETIC_SENSITIVE_VALUE') -Detail 'Configured entry names and model/effort values are not echoed into preflight failure messages.'
+        $startupDiagnostic = ''
+        $privateLaunch = [pscustomobject]@{ fileName = (Join-Path $tempRoot 'SYNTHETIC_PRIVATE_PATH-missing.exe'); arguments = @() }
+        try { $null = Get-HostedCliAvailability -Launch $privateLaunch -Profiles $profiles } catch { $startupDiagnostic = $_.Exception.Message }
+        Add-TestResult -Name 'cli-preflight-private-startup-path-omitted' -Passed ($startupDiagnostic -match 'query=process-start' -and
+            $startupDiagnostic -notmatch 'SYNTHETIC_PRIVATE_PATH|[A-Za-z]:[\\/]|SYNTHETIC_SENSITIVE_VALUE') -Detail 'Process-start failures identify the failed boundary without echoing executable or temporary user paths.'
     }
     finally { [Environment]::SetEnvironmentVariable('HOSTED_CLI_TEST_SCENARIO', $previousScenario) }
     $nativePath = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
@@ -341,7 +360,7 @@ try {
     [IO.File]::WriteAllText($sentinel, 'Synthetic prior staged asset')
     $blockedOutput = @(& pwsh -NoProfile -File $workbenchLauncherPath -SiteDirectory $blockedSite -EvaluatorCommand $metadataFixture -Model 'fixture-unavailable-startup' -SkipGitHubAuthorization -StageOnly -NoLaunch -OutputFormat Json 2>&1)
     $blockedExitCode = $LASTEXITCODE
-    Add-TestResult -Name 'cli-failed-startup-preserves-staging' -Passed ($blockedExitCode -ne 0 -and ($blockedOutput | Out-String) -match 'unavailable for profile' -and (Get-Content -LiteralPath $sentinel -Raw) -ceq 'Synthetic prior staged asset' -and @(Get-ChildItem -LiteralPath $blockedSite -Force).Count -eq 1) -Detail 'A real launcher invocation with an unavailable synthetic model fails before asset replacement, token creation, staging, rebuilding, or server startup.'
+    Add-TestResult -Name 'cli-failed-startup-preserves-staging' -Passed ($blockedExitCode -ne 0 -and ($blockedOutput | Out-String) -match 'configured model is unavailable' -and (Get-Content -LiteralPath $sentinel -Raw) -ceq 'Synthetic prior staged asset' -and @(Get-ChildItem -LiteralPath $blockedSite -Force).Count -eq 1) -Detail 'A real launcher invocation with an unavailable synthetic model fails before asset replacement, token creation, staging, rebuilding, or server startup.'
 }
 catch {
     $issues.Add([string]$_.Exception.Message)

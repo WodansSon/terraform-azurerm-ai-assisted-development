@@ -6,6 +6,6 @@
   "revision": "1c47ab36a4bb845c437866405c2fa67b8ca0fe36",
   "colorMode": "monochrome",
   "preview": { "icons": "all" },
-  "sprite": { "icons": ["collection-issues-compact", "discard-all", "not-found"] },
+  "sprite": { "icons": ["collection-issues-compact", "discard-all", "event-log", "not-found"] },
   "runtimeFiles": ["LICENSE.txt", "ATTRIBUTION.md"]
 }

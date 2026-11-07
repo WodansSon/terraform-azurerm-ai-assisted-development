@@ -5,7 +5,9 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'Worker')][switch]$WorkerOnly,
     [Parameter(Mandatory)][string]$TemporaryDirectory,
     [switch]$Quiet,
-    [int]$IndentLevel = 0
+    [switch]$Child,
+    [ValidateRange(1, 10)][int]$Level = 1,
+    [ValidateRange(1, 200)][Nullable[int]]$AlignmentWidth
 )
 
 Set-StrictMode -Version Latest
@@ -15,6 +17,14 @@ $toolsRoot = Join-Path $repositoryRoot 'hosted_copilot/tools'
 Import-Module (Join-Path $toolsRoot 'modules/workbench/RuleAssistance.psm1')
 Import-Module (Join-Path $toolsRoot 'modules/shared/HostedToolkit.Helpers.psm1')
 Import-Module (Join-Path $repositoryRoot 'tools/ValidationOutput.psm1')
+
+if (-not $Child -and $PSBoundParameters.ContainsKey('Level')) { throw 'Assistance nesting levels require the Child switch.' }
+$nesting = if ($Child) { @{ Child = $true; Level = $Level } } else { @{} }
+if ($null -eq $AlignmentWidth) {
+    $presentationAst = [Management.Automation.Language.Parser]::ParseFile($PSCommandPath, [ref]$null, [ref]$null)
+    $testNames = @($presentationAst.FindAll({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Start-AssistanceTest' }, $true) | ForEach-Object { $_.CommandElements[2].Value })
+    $AlignmentWidth = (Get-ValidationNameWidth -Names $testNames -MinimumWidth 30) + $(if ($Child) { 2 * $Level } else { 0 })
+}
 
 $testResults = [Collections.Generic.List[object]]::new()
 $currentTestName = 'assistance-inputs'
@@ -27,7 +37,7 @@ function Start-AssistanceTest {
     $script:currentTestName = $Name
     $script:caseStopwatch = [Diagnostics.Stopwatch]::StartNew()
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail -IndentLevel $IndentLevel)
+        Write-Host (Format-ValidationLifecycleLine -Status 'running' -Name $Name -Description $Detail -AlignmentWidth $AlignmentWidth @nesting)
     }
 }
 
@@ -38,13 +48,13 @@ function Add-AssistanceTestResult {
     $durationSeconds = $caseStopwatch.Elapsed.TotalSeconds
     $testResults.Add([pscustomobject]@{ name = $Name; status = 'passed'; detail = $Detail; durationSeconds = $durationSeconds })
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'passed' -Name $Name -Detail (Format-ValidationDuration -DurationSeconds $durationSeconds) -IndentLevel $IndentLevel)
+        Write-Host (Format-ValidationLifecycleLine -Status 'passed' -Name $Name -DurationSeconds $durationSeconds -AlignmentWidth $AlignmentWidth @nesting)
     }
 }
 
 function Complete-AssistanceTestOutput {
     $suiteStopwatch.Stop()
-    if ($Quiet -or $IndentLevel -gt 0) { return }
+    if ($Quiet -or $Child) { return }
     $failures = @($testResults | Where-Object status -CEQ 'failed')
     Write-ValidationSectionHeader -Title 'Hosted rule assistance test summary'
     Write-ValidationSummary -Fields ([ordered]@{ Status = if ($failures.Count) { 'FAILED' } else { 'PASSED' }; Tests = $testResults.Count; Issues = $failures.Count; Elapsed = Format-ValidationDuration -DurationSeconds $suiteStopwatch.Elapsed.TotalSeconds })
@@ -62,16 +72,16 @@ trap {
     $durationSeconds = $caseStopwatch.Elapsed.TotalSeconds
     $testResults.Add([pscustomobject]@{ name = $currentTestName; status = 'failed'; detail = $_.Exception.Message; durationSeconds = $durationSeconds })
     if (-not $Quiet) {
-        Write-Host (Format-ValidationStatusLine -Status 'failed' -Name $currentTestName -Detail (Format-ValidationDuration -DurationSeconds $durationSeconds) -IndentLevel $IndentLevel)
+        Write-Host (Format-ValidationLifecycleLine -Status 'failed' -Name $currentTestName -DurationSeconds $durationSeconds -AlignmentWidth $AlignmentWidth @nesting)
     }
     Complete-AssistanceTestOutput
-    if ($Quiet -or $IndentLevel -gt 0) {
+    if ($Quiet -or $Child) {
         [Console]::Error.WriteLine("$($currentTestName): $($_.Exception.Message)")
     }
     exit 1
 }
 
-if (-not $Quiet -and $IndentLevel -eq 0) { Write-ValidationSectionHeader -Title 'Hosted rule assistance tests' }
+if (-not $Quiet -and -not $Child) { Write-ValidationSectionHeader -Title 'Hosted rule assistance tests' }
 
 $normalProfile = Resolve-HostedLlmProfile -Profile default
 $fixtureCommand = Join-Path $PSScriptRoot 'fixtures/copilot-assistance-evaluator.ps1'
@@ -191,13 +201,13 @@ if ((@($registeredPrompts.Name | Sort-Object -CaseSensitive) -join ',') -cne 'As
 foreach ($prompt in $registeredPrompts) {
     $content = Get-Content -LiteralPath $prompt.FullName -Raw
     if ($prompt.Name -ceq 'RuleAssistance.md') {
-    if ($content -notmatch '(?m)^## Consolidation Objective\s*$') { throw 'Assistance prompt has no consolidation objective' }
-    $objective = (($content -split '(?m)^## Consolidation Objective\s*$', 2)[1] -split '(?m)^## ', 2)[0]
+    if ($content -notmatch '(?m)^### Consolidation Objective\s*$') { throw 'Assistance prompt has no consolidation objective' }
+    $objective = (($content -split '(?m)^### Consolidation Objective\s*$', 2)[1] -split '(?m)^#{2,3} ', 2)[0]
     foreach ($required in @('across source lanes', 'smallest accurate Hosted catalog result', 'shortest clear wording', 'all enforceable source obligations', 'avoid duplicating requirements', 'Preserve adequate current wording', '`guidanceCapacity` report supplied inline', 'Do not assume access to `adoption.json` or external policy files', 'total deployed Hosted guidance', 'not per rule or the chat input budget', 'do not invent token counts', 'projected Plan changes')) {
         if (-not $objective.Contains($required, [StringComparison]::Ordinal)) { throw "Assistance prompt omitted consolidation guidance: $required" }
     }
-    if ($content -notmatch '(?m)^## Assessment Evidence\s*$') { throw 'Assistance prompt has no assessment-evidence guidance' }
-    $evidence = (($content -split '(?m)^## Assessment Evidence\s*$', 2)[1] -split '(?m)^## ', 2)[0]
+    if ($content -notmatch '(?m)^### Assessment Evidence\s*$') { throw 'Assistance prompt has no assessment-evidence guidance' }
+    $evidence = (($content -split '(?m)^### Assessment Evidence\s*$', 2)[1] -split '(?m)^#{2,3} ', 2)[0]
     foreach ($required in @('recordedAssessment', 'matchesCurrentWording', 'not a fresh assessment', 'scoringDefinitions', 'meaningCoverageRationale', 'recorded claim, not proof', 'inherited from the primary source assessment', 'source IDs', 'Plan membership', 'say what is missing', 'does not rescore')) {
         if (-not $evidence.Contains($required, [StringComparison]::Ordinal)) { throw "Assistance prompt omitted evidence guidance: $required" }
     }

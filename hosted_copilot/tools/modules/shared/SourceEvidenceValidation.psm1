@@ -179,6 +179,58 @@ function Get-CurrentSourceDefinitionEvidence {
         InventoryConfigurationSha256 = Get-SourceEvidenceContentSha256 -Content ($configuration | ConvertTo-Json -Depth 10 -Compress)
         AssessmentBatchSize = [int]$definition.assessmentBatchSize
         AssessmentCardinality = [string]$contract.assessmentCardinality
+        Definition = $definition
+    }
+}
+
+function New-SourceInventoryHandoff {
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][ValidatePattern('^[a-z][a-z0-9-]*$')][string]$SourceDefinitionId,
+        [Parameter(Mandatory = $true)][string]$InventoryJson,
+        [Parameter(Mandatory = $true)][object]$Lane,
+        [Parameter(Mandatory = $true)][ValidateRange(1, [int]::MaxValue)][int]$RepositoryId,
+        [Parameter(Mandatory = $true)][string]$ContentFormat,
+        [Parameter(Mandatory = $true)][object]$ExpectedRevision,
+        [Nullable[int]]$ExpectedCollectionId = $null,
+        [Nullable[int]]$RepositoryContextId = $null
+    )
+
+    $evidence = Get-CurrentSourceDefinitionEvidence -RepositoryRoot $RepositoryRoot -SourceDefinitionId $SourceDefinitionId
+    $schemaPath = Join-Path $RepositoryRoot 'hosted_copilot/contracts/sources/source-inventory.schema.json'
+    if (-not (Test-Json -Json $InventoryJson -SchemaFile $schemaPath -ErrorAction Stop)) {
+        throw 'Source inventory does not satisfy its schema'
+    }
+    $inventory = $InventoryJson | ConvertFrom-Json -DateKind String
+    Assert-CurrentSourceInventory -Inventory $inventory -Evidence $evidence
+    if ([string]$inventory.sourceDefinitionSha256 -cne $evidence.SourceDefinitionSha256) {
+        throw 'Source inventory definition hash is stale'
+    }
+    $definition = $evidence.Definition
+    return [ordered]@{
+        profile = [ordered]@{
+            lane = $Lane
+            code = $evidence.SourceDefinitionId
+            label = [string]$definition.displayName
+            parserId = $evidence.ParserId
+            parserContractSha256 = $evidence.ParserContractSha256
+            definitionSha256 = $evidence.SourceDefinitionSha256
+            repositoryId = $RepositoryId
+            rootKind = [string]$definition.root.kind
+            location = [string]$definition.root.path
+            configuredRef = if ([string]$definition.root.kind -ceq 'github') { [string]$definition.root.ref } else { $null }
+            contentFormat = $ContentFormat
+            files = @($definition.files)
+            exclude = @($definition.exclude)
+            assessmentBatchSize = $evidence.AssessmentBatchSize
+            assessmentCardinality = $evidence.AssessmentCardinality
+        }
+        inventoryJson = $InventoryJson
+        captureSha256 = Get-SourceEvidenceContentSha256 -Content $InventoryJson
+        inventoryConfigurationSha256 = $evidence.InventoryConfigurationSha256
+        expectedRevision = $ExpectedRevision
+        expectedCollectionId = $ExpectedCollectionId
+        repositoryContextId = $RepositoryContextId
     }
 }
 
@@ -381,4 +433,4 @@ function Assert-CurrentSourceInventory {
     Assert-SourceInventoryIntegrity -Inventory $Inventory
 }
 
-Export-ModuleMember -Function Get-SourceEvidenceContentSha256, Get-SourceEvidenceFileSha256, Get-SourceEvidenceFileSnapshot, Get-SourceEvidenceRetryDelayMilliseconds, Invoke-SourceEvidenceWithRetry, Get-SourceEvidenceRecordsSha256, Get-SourceEvidenceParserContractSha256, Get-SourceAssessmentContractSha256, Get-CurrentSourceDefinitionEvidence, Get-ExpectedSourceDefinitionIds, Get-SourceAssessmentRunConfigurationSha256, Get-PriorSourceInventoryEvidence, Get-SourceInventoryTransition, Get-SourceInventoryProjectionRecords, Assert-SourceInventoryIntegrity, Assert-CurrentSourceInventory
+Export-ModuleMember -Function Get-SourceEvidenceContentSha256, Get-SourceEvidenceFileSha256, Get-SourceEvidenceFileSnapshot, Get-SourceEvidenceRetryDelayMilliseconds, Invoke-SourceEvidenceWithRetry, Get-SourceEvidenceRecordsSha256, Get-SourceEvidenceParserContractSha256, Get-SourceAssessmentContractSha256, Get-CurrentSourceDefinitionEvidence, New-SourceInventoryHandoff, Get-ExpectedSourceDefinitionIds, Get-SourceAssessmentRunConfigurationSha256, Get-PriorSourceInventoryEvidence, Get-SourceInventoryTransition, Get-SourceInventoryProjectionRecords, Assert-SourceInventoryIntegrity, Assert-CurrentSourceInventory

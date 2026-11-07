@@ -13,10 +13,13 @@ function Get-AuthoredRuleSha256 {
 }
 
 function Get-AuthoredRuleBlocks {
-    [CmdletBinding()]
+    [CmdletBinding(DefaultParameterSetName = 'Paths')]
     param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $true, ParameterSetName = 'Paths')]
         [string[]]$SourcePaths,
+
+        [Parameter(Mandatory = $true, ParameterSetName = 'Captured')]
+        [Collections.IDictionary]$SourceBytes,
 
         [Parameter(Mandatory = $true)]
         [string]$RepositoryRoot,
@@ -30,6 +33,14 @@ function Get-AuthoredRuleBlocks {
         [string[]]$AllowedFrontmatterFields = @('description', 'surface')
     )
 
+    if ($PSCmdlet.ParameterSetName -eq 'Captured') {
+        foreach ($sourcePath in $SourceBytes.Keys) {
+            if ($sourcePath -isnot [string] -or -not [IO.Path]::IsPathFullyQualified($sourcePath) -or $SourceBytes[$sourcePath] -isnot [byte[]]) {
+                throw 'Captured rule sources require absolute paths and byte arrays'
+            }
+        }
+        $SourcePaths = [string[]]@($SourceBytes.Keys)
+    }
     $idPrefixes = @{ documentation = 'DOCS-'; implementation = 'IMPL-'; testing = 'TEST-' }
     $orderedSourcePaths = [string[]]@($SourcePaths)
     [Array]::Sort($orderedSourcePaths, [StringComparer]::Ordinal)
@@ -38,12 +49,14 @@ function Get-AuthoredRuleBlocks {
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
     foreach ($sourcePath in $orderedSourcePaths) {
-        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        if ($PSCmdlet.ParameterSetName -eq 'Paths' -and -not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
             throw "$ChannelName rule source was not found: $sourcePath"
         }
 
         try {
-            $content = $utf8.GetString([IO.File]::ReadAllBytes($sourcePath))
+            if ($PSCmdlet.ParameterSetName -eq 'Captured') { $bytes = $SourceBytes[$sourcePath] }
+            else { $bytes = [IO.File]::ReadAllBytes($sourcePath) }
+            $content = $utf8.GetString([byte[]]$bytes)
         }
         catch {
             throw "$ChannelName rule source is not valid UTF-8: $sourcePath"

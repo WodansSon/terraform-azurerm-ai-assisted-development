@@ -181,54 +181,98 @@ function Get-HostedCliAvailability {
     )
 
     $directory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-cli-preflight-' + [guid]::NewGuid().ToString('N'))
-    $null = New-Item -ItemType Directory -Path $directory
     $process = [Diagnostics.Process]::new()
-    $process.StartInfo = New-HostedCliStartInfo -Launch $Launch -WorkingDirectory $directory -Arguments @(
-        '--headless', '--stdio', '--no-auto-update', '--no-custom-instructions', '--disable-builtin-mcps',
-        '--no-remote-export', '--disable-client-telemetry', '--log-level', 'none', '--log-dir', (Join-Path $directory 'logs')
-    )
-    $deadline = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds($TimeoutSeconds))
+    $deadline = $null
     $started = $false
     $stderr = $null
+    $query = 'process-start'
+    $expected = 'headless stdio JSON-RPC transport'
+    $diagnosticVersion = 'unknown'
+    $diagnosticProtocol = 'unknown'
+    $configuredEntry = 0
     try {
+        $null = New-Item -ItemType Directory -Path $directory
+        $process.StartInfo = New-HostedCliStartInfo -Launch $Launch -WorkingDirectory $directory -Arguments @(
+            '--headless', '--stdio', '--no-auto-update', '--no-custom-instructions', '--disable-builtin-mcps',
+            '--no-remote-export', '--disable-client-telemetry', '--log-level', 'none', '--log-dir', (Join-Path $directory 'logs')
+        )
+        $deadline = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds($TimeoutSeconds))
         $started = $process.Start()
         if (-not $started) { Stop-HostedCliPreflight 'Copilot CLI metadata process could not start' }
         $stderr = $process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+        $query = 'status.get'
+        $expected = 'JSON-RPC 2.0 envelope and result object'
         $status = Invoke-HostedCliMetadataRpc -Process $process -Identifier 1 -Method status.get -Cancellation $deadline.Token
-        if ($status.version -isnot [string] -or $status.version -notmatch '^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$' -or $status.protocolVersion -ne 3) {
-            Stop-HostedCliPreflight 'Copilot CLI does not report a supported version and metadata protocol; this precheck requires protocol 3'
+        $expected = 'result.version: semantic-version string'
+        if ($null -eq $status -or $null -eq $status.PSObject.Properties['version'] -or $status.version -isnot [string] -or
+            $status.version -notmatch '^(?<core>\d{1,6}\.\d{1,6}\.\d{1,6})(?:[-+][A-Za-z0-9.-]{1,128})?$') {
+            Stop-HostedCliPreflight 'Copilot CLI metadata omitted a valid version; no compatibility conclusion was accepted'
         }
+        $diagnosticVersion = $Matches['core']
+        $expected = 'result.protocolVersion: integer 3'
+        if ($null -ne $status.PSObject.Properties['protocolVersion'] -and $status.protocolVersion -is [long] -and
+            $status.protocolVersion -ge 0 -and $status.protocolVersion -le 1000) { $diagnosticProtocol = [string]$status.protocolVersion }
+        if ($null -eq $status.PSObject.Properties['protocolVersion'] -or $status.protocolVersion -isnot [long] -or $status.protocolVersion -ne 3) {
+            Stop-HostedCliPreflight 'Copilot CLI metadata is incompatible; this precheck requires protocol 3'
+        }
+        $diagnosticProtocol = '3'
+        $query = 'auth.getStatus'
+        $expected = 'JSON-RPC 2.0 envelope and result object'
         $auth = Invoke-HostedCliMetadataRpc -Process $process -Identifier 2 -Method auth.getStatus -Cancellation $deadline.Token
-        if ($auth.isAuthenticated -isnot [bool]) { Stop-HostedCliPreflight 'Copilot CLI authentication status could not be verified' }
+        $expected = 'result.isAuthenticated: boolean'
+        if ($null -eq $auth -or $null -eq $auth.PSObject.Properties['isAuthenticated'] -or $auth.isAuthenticated -isnot [bool]) {
+            Stop-HostedCliPreflight 'Copilot CLI authentication status could not be verified'
+        }
         if (-not $auth.isAuthenticated) { Stop-HostedCliPreflight 'Copilot CLI is not authenticated; sign in with the configured CLI before starting the Workbench' }
+        $query = 'models.list'
+        $expected = 'JSON-RPC 2.0 envelope and result object'
         $catalog = Invoke-HostedCliMetadataRpc -Process $process -Identifier 3 -Method models.list -Cancellation $deadline.Token
-        if ($catalog.models -isnot [array] -or $catalog.models.Count -gt 2048) { Stop-HostedCliPreflight 'Copilot CLI returned an invalid or oversized model catalog' }
+        $expected = 'result.models: array with at most 2048 entries'
+        if ($null -eq $catalog -or $null -eq $catalog.PSObject.Properties['models'] -or $catalog.models -isnot [array] -or $catalog.models.Count -gt 2048) {
+            Stop-HostedCliPreflight 'Copilot CLI returned an invalid or oversized model catalog'
+        }
         $resolvedProfiles = [Collections.Generic.List[object]]::new()
         foreach ($name in $Profiles.Keys) {
+            $configuredEntry++
             $profile = $Profiles[$name]
-            $entries = @($catalog.models | Where-Object { $null -ne $_.PSObject.Properties['id'] -and $_.id -ceq $profile.model })
+            $expected = 'result.models[].id: one exact configured-model match'
+            $entries = @($catalog.models | Where-Object { $null -ne $_ -and $null -ne $_.PSObject.Properties['id'] -and $_.id -is [string] -and $_.id -ceq $profile.model })
             if ($entries.Count -eq 0) {
-                Stop-HostedCliPreflight "Copilot CLI model '$($profile.model)' is unavailable for profile '$name'; update hosted_copilot/tools/config/llm.json or the explicit CLI override"
+                Stop-HostedCliPreflight 'The configured model is unavailable; verify the master-profile task assignment or selected LLM configuration against the installed CLI model catalog'
             }
-            if ($entries.Count -ne 1) { Stop-HostedCliPreflight "Copilot CLI returned duplicate model metadata for profile '$name'" }
+            if ($entries.Count -ne 1) { Stop-HostedCliPreflight 'Copilot CLI returned duplicate model metadata; no unique model match was accepted' }
             $entry = $entries[0]
-            if ($null -eq $entry.PSObject.Properties['policy'] -or $null -eq $entry.policy -or $null -eq $entry.policy.PSObject.Properties['state']) {
-                Stop-HostedCliPreflight "Copilot CLI model policy is missing for profile '$name'; availability could not be verified"
+            $expected = 'result.models[].policy.state: enabled'
+            if ($null -eq $entry.PSObject.Properties['policy'] -or $null -eq $entry.policy -or $null -eq $entry.policy.PSObject.Properties['state'] -or
+                $entry.policy.state -isnot [string]) {
+                Stop-HostedCliPreflight 'Copilot CLI model policy is missing or malformed; availability could not be verified'
             }
-            if ($entry.policy.state -ceq 'disabled') { Stop-HostedCliPreflight "Copilot CLI model '$($profile.model)' is disabled for profile '$name'; check account policy or select an enabled model" }
-            if ($entry.policy.state -cne 'enabled') { Stop-HostedCliPreflight "Copilot CLI model policy is not enabled for profile '$name'; availability could not be verified" }
-            if ($entry.capabilities.supports.reasoningEffort -isnot [bool] -or -not $entry.capabilities.supports.reasoningEffort -or
-                $entry.supportedReasoningEfforts -isnot [array] -or $profile.reasoningEffort -cnotin $entry.supportedReasoningEfforts) {
-                Stop-HostedCliPreflight "Copilot CLI reasoning effort '$($profile.reasoningEffort)' is unsupported for model '$($profile.model)' in profile '$name'; update hosted_copilot/tools/config/llm.json or the explicit CLI override"
+            if ($entry.policy.state -ceq 'disabled') { Stop-HostedCliPreflight 'The configured model is disabled; check account policy or explicitly select an enabled model' }
+            if ($entry.policy.state -cne 'enabled') { Stop-HostedCliPreflight 'Copilot CLI model policy is not enabled; availability could not be verified' }
+            $expected = 'result.models[].capabilities.supports.reasoningEffort: boolean true'
+            if ($null -eq $entry.PSObject.Properties['capabilities'] -or $null -eq $entry.capabilities -or
+                $null -eq $entry.capabilities.PSObject.Properties['supports'] -or $null -eq $entry.capabilities.supports -or
+                $null -eq $entry.capabilities.supports.PSObject.Properties['reasoningEffort'] -or $entry.capabilities.supports.reasoningEffort -isnot [bool]) {
+                Stop-HostedCliPreflight 'Copilot CLI reasoning-effort capability is missing or malformed'
+            }
+            if (-not $entry.capabilities.supports.reasoningEffort) { Stop-HostedCliPreflight 'The configured model does not support reasoning effort' }
+            $expected = 'result.models[].supportedReasoningEfforts: string array containing the configured effort'
+            if ($null -eq $entry.PSObject.Properties['supportedReasoningEfforts'] -or $entry.supportedReasoningEfforts -isnot [array] -or
+                @($entry.supportedReasoningEfforts | Where-Object { $_ -isnot [string] }).Count -ne 0) {
+                Stop-HostedCliPreflight 'Copilot CLI supported reasoning-effort metadata is missing or malformed'
+            }
+            if ($profile.reasoningEffort -cnotin $entry.supportedReasoningEfforts) {
+                Stop-HostedCliPreflight 'The configured reasoning effort is unsupported; verify the task assignment against the installed CLI supported efforts'
             }
             $resolvedProfiles.Add([ordered]@{ name = [string]$name; model = [string]$profile.model; reasoningEffort = [string]$profile.reasoningEffort })
         }
         return [pscustomobject]@{ version = [string]$status.version; protocolVersion = 3; commandPath = $Launch.commandPath; profiles = $resolvedProfiles.ToArray() }
     }
     catch {
-        if ($_.Exception.Data.Contains('HostedCliSafe')) { throw }
-        if ($deadline.IsCancellationRequested) { Stop-HostedCliPreflight 'Copilot CLI metadata precheck timed out; check CLI compatibility and connectivity; no model availability conclusion was accepted' }
-        Stop-HostedCliPreflight 'Copilot CLI metadata transport failed; check the configured executable, authentication, network, and protocol compatibility; raw diagnostics were not exposed'
+        $detail = 'Metadata transport or format validation failed; verify installed CLI compatibility and connectivity'
+        if ($_.Exception.Data.Contains('HostedCliSafe')) { $detail = $_.Exception.Message }
+        elseif ($null -ne $deadline -and $deadline.IsCancellationRequested) { $detail = 'Metadata precheck timed out; verify CLI compatibility and connectivity' }
+        Stop-HostedCliPreflight "Copilot CLI preflight failed [query=$query; CLI=$diagnosticVersion; protocol=$diagnosticProtocol; configured entry=$configuredEntry; expected=$expected]: $detail; no availability conclusion was accepted; private data and raw diagnostics were omitted"
     }
     finally {
         if ($started) {
@@ -236,7 +280,7 @@ function Get-HostedCliAvailability {
             if (-not $process.WaitForExit(5000)) { $process.Kill($true); $process.WaitForExit() }
             if ($null -ne $stderr) { try { $null = $stderr.Wait(1000) } catch {} }
         }
-        $deadline.Dispose()
+        if ($null -ne $deadline) { $deadline.Dispose() }
         $process.Dispose()
         Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction SilentlyContinue
     }

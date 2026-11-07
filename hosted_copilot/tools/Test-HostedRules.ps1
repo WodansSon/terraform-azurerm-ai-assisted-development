@@ -117,6 +117,9 @@ $instructionGenerationTestPath = Join-Path $PSScriptRoot 'tests/Test-Instruction
 $guidanceCapacityPath = Join-Path $PSScriptRoot 'internal/workbench/Get-GuidanceCapacity.ps1'
 $sourceInventoryCollectorPath = Join-Path $PSScriptRoot 'internal/collection/New-SourceInventory.ps1'
 $sourceInventoryTestPath = Join-Path $PSScriptRoot 'tests/Test-SourceInventory.ps1'
+$workbenchSqliteTestPath = Join-Path $PSScriptRoot 'tests/Test-WorkbenchSqlite.ps1'
+$workbenchSourceIngestionTestPath = Join-Path $PSScriptRoot 'tests/Test-WorkbenchSourceIngestion.ps1'
+$workbenchNodeTestsModulePath = Join-Path $PSScriptRoot 'modules/workbench/Workbench.NodeTests.psm1'
 $hostedToolkitHelpersPath = Join-Path $PSScriptRoot 'modules/shared/HostedToolkit.Helpers.psm1'
 $hostedGitHubHelpersPath = Join-Path $PSScriptRoot 'modules/shared/HostedGitHub.Helpers.psm1'
 $hostedCommandHelpModulePath = Join-Path $PSScriptRoot 'modules/shared/HostedCommandHelp.psm1'
@@ -400,6 +403,11 @@ if ($runtimeStarted) {
         $workbenchGitHubContextModulePath,
         $sourceInventoryCollectorPath,
         $sourceInventoryTestPath,
+        $workbenchSqliteTestPath,
+        $workbenchSourceIngestionTestPath,
+        $workbenchNodeTestsModulePath,
+        (Join-Path $PSScriptRoot 'tests/sqlite/workbench-sqlite.test.mjs'),
+        (Join-Path $PSScriptRoot 'tests/sqlite/workbench-source-ingestion.test.mjs'),
         $sourceAssessmentTestPath,
         $assessmentReconciliationContractSchemaPath,
         $assessmentReconciliationDraftSchemaPath,
@@ -693,6 +701,37 @@ if ($runtimeStarted) {
             $outputContractIssues.Add("$(Split-Path -Leaf $outputContract.Path) is missing output contract elements: $($missingFragments -join ', ')")
         }
     }
+    $nodeReporterContent = Get-Content -LiteralPath $workbenchNodeTestsModulePath -Raw
+    $nodeReporterFragments = @(
+        'Write-ValidationSectionHeader -Title $Title',
+        'Write-ValidationSummary -Fields',
+        "Format-ValidationLifecycleLine -Status running -Name 'JUnit tests.'",
+        'Format-ValidationLifecycleLine -Status running -Name $label -Description $runningDescription',
+        'Format-ValidationLifecycleLine -Status $test.status -Name $label -DurationSeconds $test.durationSeconds',
+        'Format-ValidationLifecycleLine -Status skipped -Name $label -Description $skipDescription',
+        '-AlignmentWidth $alignmentWidth -Child -Level 1',
+        "Write-ValidationSectionHeader -Title 'Failures'",
+        '$label = $test.shortName',
+        'Complete-ValidationTextOutput',
+        'ConvertFrom-WorkbenchNodeTestReport',
+        '--test-reporter=junit',
+        'RedirectStandardError = $true'
+    )
+    $missingNodeReporterFragments = @($nodeReporterFragments | Where-Object { -not $nodeReporterContent.Contains($_) })
+    if ($missingNodeReporterFragments.Count -gt 0) {
+        $outputContractIssues.Add("Native Node test reporter is missing output contract elements: $($missingNodeReporterFragments -join ', ')")
+    }
+    foreach ($nativeSuite in @(
+        @{ Path = $workbenchSqliteTestPath; Title = 'Hosted Workbench SQLite tests'; TestFile = 'sqlite/workbench-sqlite.test.mjs' },
+        @{ Path = $workbenchSourceIngestionTestPath; Title = 'Hosted Workbench source ingestion tests'; TestFile = 'sqlite/workbench-source-ingestion.test.mjs' }
+    )) {
+        $nativeWrapperContent = Get-Content -LiteralPath $nativeSuite.Path -Raw
+        $wrapperFragments = @('Workbench.NodeTests.psm1', 'Invoke-WorkbenchNodeTests', '-OutputFormat $OutputFormat', "-Title '$($nativeSuite.Title)'", "'$($nativeSuite.TestFile)'")
+        $missingWrapperFragments = @($wrapperFragments | Where-Object { -not $nativeWrapperContent.Contains($_) })
+        if ($missingWrapperFragments.Count -gt 0) {
+            $outputContractIssues.Add("$(Split-Path -Leaf $nativeSuite.Path) does not delegate its complete native test output contract: $($missingWrapperFragments -join ', ')")
+        }
+    }
     $sharedOutputContract = @(& pwsh -NoProfile -File $validationOutputContractTestPath -ProductScope Hosted -OutputFormat Json 2>&1)
     if ($LASTEXITCODE -ne 0) {
         $outputContractIssues.Add("shared Hosted presentation contract failed: $(($sharedOutputContract | Out-String).Trim())")
@@ -936,6 +975,25 @@ if ($runtimeStarted) {
     }
     catch {
         Add-ValidationIssue -Name 'v4-workbench-contracts' -Issue "Hosted version 4 Workbench contract validation failed: $($_.Exception.Message)"
+    }
+
+    foreach ($nativeSuite in @(
+        @{ Name = 'workbench-sqlite'; Path = $workbenchSqliteTestPath },
+        @{ Name = 'workbench-source-ingestion'; Path = $workbenchSourceIngestionTestPath }
+    )) {
+        Start-ValidationCheck -Name $nativeSuite.Name
+        try {
+            $nativeOutput = @(& pwsh -NoProfile -File $nativeSuite.Path -OutputFormat Json 2>&1)
+            if ($LASTEXITCODE -ne 0) { throw (($nativeOutput | Out-String).Trim()) }
+            $nativeResult = ($nativeOutput | Out-String) | ConvertFrom-Json
+            if ($nativeResult.status -ne 'passed' -or $nativeResult.testCount -le 0 -or $nativeResult.failedCount -ne 0) {
+                throw 'Native Workbench test suite did not report a complete passing result'
+            }
+            Add-CheckResult -Name $nativeSuite.Name -Passed $true -Detail "Passed $($nativeResult.testCount) focused native SQLite tests through the standard Hosted reporter."
+        }
+        catch {
+            Add-ValidationIssue -Name $nativeSuite.Name -Issue "Hosted native Workbench validation failed: $($_.Exception.Message)"
+        }
     }
 
     if ($SkipRuleWorkbench) {
@@ -1416,7 +1474,7 @@ if ($runtimeStarted) {
     }
 }
 else {
-    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'output-contracts', 'command-help', 'prompt-library', 'repository-adoption', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'rule-issue-adjudication', 'v4-workbench-contracts', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
+    foreach ($runtimeCheck in @('runtime-layout', 'lifecycle-tools', 'output-contracts', 'command-help', 'prompt-library', 'repository-adoption', 'instruction-frontmatter', 'instruction-boundaries', 'instruction-catalog', 'instruction-generation-tests', 'source-inventory-contracts', 'source-assessment', 'assessment-reconciliation', 'rule-issue-adjudication', 'v4-workbench-contracts', 'workbench-sqlite', 'workbench-source-ingestion', 'rule-workbench', 'upstream-sources', 'skill-metadata', 'manifest-coverage', 'manifest-sources', 'payload-secret-patterns', 'guidance-budgets', 'installer-dry-run', 'regression-cases', 'review-results', 'result-artifact-boundary')) {
         Add-SkippedCheck -Name $runtimeCheck -Detail 'Runtime validation is not applicable during the design phase.'
     }
 }

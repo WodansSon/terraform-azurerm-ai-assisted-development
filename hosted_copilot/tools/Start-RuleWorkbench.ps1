@@ -344,29 +344,40 @@ function Copy-FileAtomically {
     }
 }
 
+function Read-StagedWorkbenchDisplay {
+    $script:workbenchPhase = 'EXISTING DISPLAY VALIDATION'
+    if (-not (Test-Path -LiteralPath $stagedDisplayPath -PathType Leaf) -or -not (Test-Path -LiteralPath $stagedRuleIssuesPath -PathType Leaf)) {
+        throw "A complete staged Workbench display was not found in $resolvedSiteDirectory. Run Start-RuleWorkbench.ps1 -Rebuild to create one."
+    }
+    $stagedDisplayContent = Get-Content -LiteralPath $stagedDisplayPath -Raw
+    $stagedRuleIssuesContent = Get-Content -LiteralPath $stagedRuleIssuesPath -Raw
+    if (-not ($stagedDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
+        throw 'Staged Workbench display does not satisfy its schema'
+    }
+    if (-not ($stagedRuleIssuesContent | Test-Json -SchemaFile $ruleIssuesSchemaPath -ErrorAction Stop)) {
+        throw 'Staged Workbench Rule Issues do not satisfy their schema'
+    }
+    $validatedDisplay = $stagedDisplayContent | ConvertFrom-Json -DateKind String
+    $validatedRuleIssues = $stagedRuleIssuesContent | ConvertFrom-Json -DateKind String
+    $displaySourceFiles = @($validatedDisplay.sourceFiles | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive)
+    $ruleIssueSourceFiles = @($validatedRuleIssues.sourceFiles | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive)
+    if (@(Compare-Object $displaySourceFiles $ruleIssueSourceFiles -SyncWindow 0).Count -ne 0) {
+        throw 'Staged Workbench display and Rule Issues source files do not match'
+    }
+    Complete-WorkbenchStage -Name $script:workbenchPhase
+    return $validatedDisplay
+}
+
 function Update-StagedDisplay {
+    if ($Rebuild) {
+        return Invoke-WorkbenchRebuild
+    }
+    return Read-StagedWorkbenchDisplay
+}
+
+function Invoke-WorkbenchRebuild {
     if (-not $Rebuild) {
-        $script:workbenchPhase = 'EXISTING DISPLAY VALIDATION'
-        if (-not (Test-Path -LiteralPath $stagedDisplayPath -PathType Leaf) -or -not (Test-Path -LiteralPath $stagedRuleIssuesPath -PathType Leaf)) {
-            throw "A complete staged Workbench display was not found in $resolvedSiteDirectory. Run Start-RuleWorkbench.ps1 -Rebuild to create one."
-        }
-        $stagedDisplayContent = Get-Content -LiteralPath $stagedDisplayPath -Raw
-        $stagedRuleIssuesContent = Get-Content -LiteralPath $stagedRuleIssuesPath -Raw
-        if (-not ($stagedDisplayContent | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) {
-            throw 'Staged Workbench display does not satisfy its schema'
-        }
-        if (-not ($stagedRuleIssuesContent | Test-Json -SchemaFile $ruleIssuesSchemaPath -ErrorAction Stop)) {
-            throw 'Staged Workbench Rule Issues do not satisfy their schema'
-        }
-        $validatedDisplay = $stagedDisplayContent | ConvertFrom-Json -DateKind String
-        $validatedRuleIssues = $stagedRuleIssuesContent | ConvertFrom-Json -DateKind String
-        $displaySourceFiles = @($validatedDisplay.sourceFiles | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive)
-        $ruleIssueSourceFiles = @($validatedRuleIssues.sourceFiles | ForEach-Object { "$($_.sourceDefinitionId)`0$($_.sourceId)`0$($_.contentSha256)" } | Sort-Object -CaseSensitive)
-        if (@(Compare-Object $displaySourceFiles $ruleIssueSourceFiles -SyncWindow 0).Count -ne 0) {
-            throw 'Staged Workbench display and Rule Issues source files do not match'
-        }
-        Complete-WorkbenchStage -Name $script:workbenchPhase
-        return $validatedDisplay
+        throw 'Source collection and assessment require an explicit -Rebuild request.'
     }
 
     $runDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-rule-workbench/run-' + [guid]::NewGuid().ToString('N'))

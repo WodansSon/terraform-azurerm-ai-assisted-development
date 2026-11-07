@@ -57,6 +57,42 @@ The descriptor currently drives preflight and capacity configuration; it does no
 
 Run [Test-RepositoryAdoption.ps1](tests/Test-RepositoryAdoption.ps1) for focused policy, alternate-profile, browser-calculation and read-only diagnostic tests. Normal Hosted validation also runs this suite. A policy change requires explicit reconstruction of staged displays before use; the live Workbench and saved artifacts are not silently rewritten. An explicit rebuild may require fresh inference when behavior authority changes.
 
+## Focused SQLite Validation
+
+Run the connection and source-ingestion suites independently:
+
+```powershell
+pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-WorkbenchSqlite.ps1
+pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-WorkbenchSourceIngestion.ps1
+```
+
+Each PowerShell wrapper runs only its corresponding native test file under `tests/sqlite/`. It prints one `[RUNNING]  JUnit tests.` line, collects Node's built-in JUnit results, and formats each test's status and reported duration using the Hosted output helpers. Skipped tests show `[SKIPPED]` and their reason on the same row. The summary and failure details follow; a test failure does not count again merely because Node exits with code 1. Add `-OutputFormat Json` for structured results. No custom Node reporter, browser run, npm installation, collection, or live workspace migration is involved.
+
+## Test Output
+
+Each suite uses one title for its opening and `<title> SUMMARY` heading. The JUnit runner activity owns its indented case rows without adding another test to the summary counts. Executed cases display a running row and a timed completion row; skipped cases display one `[SKIPPED]` row with their reason, without a running row or execution duration. Failed cases retain their evidence in the separate failure section. Output ends with the standard summary and any failure details, without an extra success footer.
+
+Native labels prefer an optional `shortName`, then the native JUnit `name` unchanged, then `test-001` or the corresponding report-local ordinal when neither is supplied. Optional JSON diagnostics supply the short label and a separate description without replacing the native test identity:
+
+```javascript
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+test('metadata probe', (context) => {
+	context.diagnostic(JSON.stringify({
+		shortName: 'metadata-probe',
+		description: 'Probe structured metadata',
+	}));
+	assert.equal(2 + 3, 5);
+});
+
+test('skip probe', { skip: 'Synthetic skip reason' }, () => {});
+```
+
+The built-in JUnit reporter places these diagnostics in comments following their owning test case. Blank or omitted metadata falls back to the native name; malformed unrelated diagnostic comments are ignored, and invalid metadata field types fail report validation. Descriptions appear on running rows only when distinct from the label. Completion rows contain the label and duration, while skipped rows retain the reason. Structured results preserve the original name alongside the resolved short name and description. A skipped callback does not execute, so it cannot emit diagnostics; its native name remains available as its label.
+
+The shared PowerShell status and lifecycle formatters accept `-Child -Level 1` for children, `-Child -Level 2` for grandchildren, and so on. Every level adds two spaces. `-Child` alone defaults to level 1; `-Level` without `-Child` is rejected. Supply one `-AlignmentWidth` for the whole group so the renderer aligns `:` separators across levels. Preparation preserves its declared parent relationships, and the assistance helper receives the caller's nesting level and alignment width. The formatters do not retain an `-IndentLevel` compatibility parameter.
+
 ## Normal Operations
 
 | Task | Command |
@@ -70,12 +106,13 @@ All four normal-operation commands use the shared Hosted help renderer. Use `-He
 
 Ordinary Workbench launch first checks CLI model availability, then refreshes static assets, validates the live GitHub identity, local CODEOWNERS membership, writable fork, and synchronization status, and serves the last jointly validated display and Rule Issues artifacts without source collection or semantic work. Availability discovery is authenticated metadata access, not an inference request. Run `pwsh -NoProfile -File ./hosted_copilot/tools/Start-RuleWorkbench.ps1 -Rebuild` when current sources must be collected and the staged artifacts regenerated. A rebuild always executes deterministic collection, cache resolution, artifact reconstruction, schema validation, and atomic publication. A displayed phase therefore does not imply a model call: its `cached` and `evaluated` counts are authoritative. Add `-Force` only when every semantic result must be reevaluated, and use `-StageOnly` to validate and publish artifacts without starting the server.
 
-[config/llm.json](config/llm.json) is the sole owner of Hosted model and reasoning-effort defaults. Its `default` profile supplies source assessment, baseline generation, reconciliation, rebuild-time adjudication, standalone discovery, and AI Assistance; `ruleEvaluation` supplies explicit relationship review. Both Workbench startup paths pass the complete validated JSON profile collection to availability checking rather than maintaining another list. Saving wording, applying published recommendations, and opening promotion preview do not automatically invoke rule evaluation. Retained standalone reconciliation tools resolve their declared profiles through the same loader. Missing or invalid configuration fails without a hidden fallback model. Existing explicit `-Model` and effort arguments retain their selected-profile behavior. Configuration takes effect on the next command or server launch; changing the file does not restage or restart an existing Workbench.
+For the legacy Workbench and retained standalone commands, [config/llm.json](config/llm.json) owns model and reasoning-effort defaults. Its `default` profile supplies source assessment, baseline generation, reconciliation, rebuild-time adjudication, standalone discovery, and AI Assistance; `ruleEvaluation` supplies saved-rule reevaluation and explicit relationship review. Both legacy Workbench startup paths pass the complete validated JSON profile collection to availability checking rather than maintaining another list. Saving wording, applying published recommendations, and opening promotion preview do not automatically invoke rule evaluation. Retained standalone reconciliation tools resolve their declared profiles through the same loader. Missing or invalid configuration fails without a hidden fallback model. Existing explicit `-Model` and effort arguments retain their selected-profile behavior. Configuration takes effect on the next command or server launch; changing the file does not restage or restart an existing Workbench. The native database analysis command instead resolves versioned master-profile task assignments from its bound database; see the [database routing checkpoint](../docs/WORKBENCH_SQLITE_V1_DESIGN.md#master-profile-llm-routing-checkpoint-2026-11-06).
 
 ### CLI Availability And Installation Nuances
 
 - Both Workbench server entrypoints require metadata preflight. The main launcher reports `LLM Availability` before staging writes, source collection, or rebuilding. Help does not invoke it; `-StageOnly` and `-SkipGitHubAuthorization` do not bypass CLI authentication or availability.
 - [HostedCli.psm1](modules/shared/HostedCli.psm1) owns launch resolution and bounded headless-stdio JSON-RPC. It calls only `status.get`, `auth.getStatus`, and `models.list`; it creates no conversation and sends no prompt. Protocol 3, authenticated status, exact configured model IDs, enabled policy, and support for each selected reasoning effort are required. Missing, duplicate, disabled, or incomplete metadata fails without a silent model fallback. Catalog, authentication, and transport failures are not evidence of global model retirement.
+- Metadata-preflight failures identify the query, bounded numeric CLI version/protocol when known, configured-entry ordinal, and expected field/type. Unknown values remain `unknown`; entry `0` means no configured model was reached. Error messages omit configured entry/model/effort strings, raw response/stderr, version suffixes, user paths, credentials, and personal information. Process setup uses the same sanitized boundary. Check the installed CLI's protocol-3 compatibility, the reported field, connectivity/account policy, and the applicable master-profile assignment or legacy configuration; do not paste raw authentication or diagnostic payloads into reports.
 - The precheck and inference workers use the same shared resolver, normalized configured executable, inherited process environment, and `--no-auto-update` policy. An npm installation is resolved through its launcher, verified package metadata, and Node module resolution rather than guessed global directories. Explicit executable paths are supported without modifying PATH or aliases. Explicit PowerShell evaluator implementations must provide the same metadata protocol; unrecognized batch wrappers fail with executable-path guidance.
 - A Windows npm PowerShell shim can interfere with an open framed stdio exchange even when ordinary prompt calls work. On 2026-10-22, the shim-based probe timed out, while direct invocation of that npm installation's platform executable returned CLI `1.0.102`, protocol `3`, authenticated status, and enabled entries supporting the configured Sol/high and Luna/medium settings. This is evidence for that installed runtime and transport, not proof of all npm versions, standalone installers, operating systems, or future CLI protocols.
 - Testing the npm-bundled native executable by explicit path exercises the direct-executable launch path without installing a second CLI or changing command precedence. It does not test a standalone installer's packaging, PATH integration, or upgrade behavior. Verify those in an isolated VM or CI environment. Fixtures cover resolution and protocol behavior separately from real-installation integration.

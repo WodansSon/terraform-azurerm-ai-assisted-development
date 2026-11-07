@@ -30,14 +30,80 @@ function Format-ValidationStatusLine {
         [ValidateRange(1, 200)]
         [int]$NameWidth = 30,
 
-        [ValidateRange(0, 10)]
-        [int]$IndentLevel = 0
+        [Nullable[int]]$AlignmentWidth,
+
+        [switch]$Child,
+
+        [ValidateRange(1, 10)]
+        [int]$Level = 1
     )
 
+    if (-not $Child -and $PSBoundParameters.ContainsKey('Level')) {
+        throw 'Validation nesting levels require the Child switch.'
+    }
+    if ($null -eq $AlignmentWidth) { $AlignmentWidth = $NameWidth }
+    $padding = if ($Child) { 2 * $Level } else { 0 }
+    $NameWidth = $AlignmentWidth - $padding
+    if ($AlignmentWidth -gt 200 -or $NameWidth -lt 1) {
+        throw 'Validation alignment width must accommodate the declared nesting level.'
+    }
     $statusLabel = "[{0}]" -f $Status.ToUpperInvariant()
-    $indent = '  ' * $IndentLevel
+    $indent = ' ' * $padding
 
     return ("{0}{1,-10} {2,-$NameWidth} : {3}" -f $indent, $statusLabel, $Name, $Detail)
+}
+
+function Format-ValidationLifecycleLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('running', 'passed', 'failed', 'skipped')]
+        [string]$Status,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [string]$Description,
+
+        [Nullable[double]]$DurationSeconds,
+
+        [string]$ResultDetail,
+
+        [Nullable[int]]$AlignmentWidth,
+
+        [ValidateRange(1, 200)]
+        [int]$NameWidth = 30,
+
+        [switch]$Child,
+
+        [ValidateRange(1, 10)]
+        [int]$Level = 1
+    )
+
+    if (-not $Child -and $PSBoundParameters.ContainsKey('Level')) {
+        throw 'Validation nesting levels require the Child switch.'
+    }
+    $indentLevel = if ($Child) { $Level } else { 0 }
+    if ($null -eq $AlignmentWidth) { $AlignmentWidth = $NameWidth }
+    $NameWidth = $AlignmentWidth - (2 * $indentLevel)
+    if ($AlignmentWidth -gt 200 -or $NameWidth -lt 1 -or $Name.Length -gt $NameWidth) {
+        throw 'Validation alignment width must accommodate the label and its declared nesting level.'
+    }
+    if ($Status -in @('passed', 'failed')) {
+        if ($null -eq $DurationSeconds -or -not [double]::IsFinite($DurationSeconds) -or $DurationSeconds -lt 0) {
+            throw 'Completed validation checks require a finite nonnegative duration.'
+        }
+        $detail = Format-ValidationDuration -DurationSeconds $DurationSeconds
+        if (-not [string]::IsNullOrWhiteSpace($ResultDetail)) { $detail += " - $ResultDetail" }
+    }
+    else {
+        if ($null -ne $DurationSeconds) { throw 'Running and skipped validation checks must not report an execution duration.' }
+        $detail = $Description
+    }
+    if ([string]::IsNullOrWhiteSpace($detail)) {
+        return ('  ' * $indentLevel) + ('[{0}]' -f $Status.ToUpperInvariant()).PadRight(10) + ' ' + $Name
+    }
+    $nesting = if ($Child) { @{ Child = $true; Level = $Level } } else { @{} }
+    return Format-ValidationStatusLine -Status $Status -Name $Name -Detail $detail -AlignmentWidth $AlignmentWidth @nesting
 }
 
 function Get-ValidationNameWidth {
@@ -165,6 +231,7 @@ function Complete-ValidationTextOutput {
 Export-ModuleMember -Function @(
     'Write-ValidationSectionHeader',
     'Format-ValidationStatusLine',
+    'Format-ValidationLifecycleLine',
     'Get-ValidationNameWidth',
     'Add-ValidationIndent',
     'Format-ValidationDuration',

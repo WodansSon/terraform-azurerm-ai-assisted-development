@@ -21,16 +21,16 @@ $interactiveDefinitionPath = Join-Path $catalogRoot 'source-definitions/interact
 $contributorDefinitionPath = Join-Path $catalogRoot 'source-definitions/contributor-guidance.json'
 $definitionSchemaPath = Join-Path $catalogRoot '../contracts/sources/source-definition.schema.json'
 $inventorySchemaPath = Join-Path $catalogRoot '../contracts/sources/source-inventory.schema.json'
-$contractPath = Join-Path $catalogRoot '../contracts/parsers/maintainer-proposals-v2.json'
+$contractPath = Join-Path $catalogRoot '../contracts/parsers/maintainer-proposals-v4.json'
 $v4ContractPath = Join-Path $catalogRoot '../contracts/parsers/maintainer-proposals-v4.json'
-$interactiveContractPath = Join-Path $catalogRoot '../contracts/parsers/interactive-toolkit-v2.json'
-$contributorContractPath = Join-Path $catalogRoot '../contracts/parsers/contributor-guidance-v2.json'
+$interactiveContractPath = Join-Path $catalogRoot '../contracts/parsers/interactive-toolkit-v4.json'
+$contributorContractPath = Join-Path $catalogRoot '../contracts/parsers/contributor-guidance-v4.json'
 $contractSchemaPath = Join-Path $catalogRoot '../contracts/parsers/parser-contract.schema.json'
 $collectorPath = Join-Path $PSScriptRoot '../internal/collection/New-SourceInventory.ps1'
-$parserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/MaintainerProposalsV2.psm1'
+$parserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/MaintainerProposalsV4.psm1'
 $v4ParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/MaintainerProposalsV4.psm1'
-$interactiveParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/InteractiveToolkitV2.psm1'
-$contributorParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/ContributorGuidanceV2.psm1'
+$interactiveParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/InteractiveToolkitV4.psm1'
+$contributorParserModulePath = Join-Path $PSScriptRoot '../modules/source-parsers/ContributorGuidanceV4.psm1'
 $maintainerRoot = Join-Path $PSScriptRoot '../../authored-rules/proposals'
 $results = [Collections.Generic.List[object]]::new()
 $issues = [Collections.Generic.List[string]]::new()
@@ -175,7 +175,7 @@ try {
         $null = New-Item -ItemType Directory -Path (Split-Path -Parent $destinationPath) -Force
         Copy-Item -LiteralPath $sourcePath -Destination $destinationPath
     }
-    Copy-Item -LiteralPath $interactiveContractPath -Destination (Join-Path $interactiveFixtureRepositoryRoot 'hosted_copilot/contracts/parsers/interactive-toolkit-v2.json')
+    Copy-Item -LiteralPath $interactiveContractPath -Destination (Join-Path $interactiveFixtureRepositoryRoot 'hosted_copilot/contracts/parsers/interactive-toolkit-v4.json')
     $null = New-Item -ItemType Directory -Path $interactiveFixtureCatalogRoot, (Split-Path -Parent $interactiveFixtureContractPath) -Force
     $interactiveRuleContent = "### TEST-FIXTURE-001: Synthetic interactive rule`n`n- Rule: Validate the synthetic Interactive intake parser."
     [IO.File]::WriteAllText($interactiveFixtureContractPath, "# Synthetic Interactive contract`n`n## Rule IDs`n`n$interactiveRuleContent`n`n<!-- TEST-FIXTURE-CONTRACT-EOF -->`n", [Text.UTF8Encoding]::new($false))
@@ -335,8 +335,11 @@ try {
     )
     $parserContracts = @($contractPath, $v4ContractPath, $interactiveContractPath, $contributorContractPath) | ForEach-Object { Get-Content -LiteralPath $_ -Raw | ConvertFrom-Json }
     $missingParserValidationFiles = @($parserContracts | ForEach-Object { $contract = $_; $requiredParserValidationFiles | Where-Object { $_ -notin @($contract.behaviorFiles) } })
-    $maintainerCatalogSchemaPath = 'hosted_copilot/contracts/catalog/instruction-catalog.schema.json'
-    Add-TestResult -Name 'parser-validation-dependencies' -Passed ($missingParserValidationFiles.Count -eq 0 -and $maintainerCatalogSchemaPath -in @($parserContracts[0].behaviorFiles)) -Detail 'Every parser behavior identity includes its definition, contract, inventory, shared GitHub runtime, and parser-specific validation schemas.'
+    $maintainerBehaviorFiles = @($parserContracts[0].behaviorFiles)
+    $maintainerFormatFiles = @('hosted_copilot/tools/modules/source-parsers/AuthoredRules.psm1', 'hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV4.psm1')
+    $missingMaintainerFormatFiles = @($maintainerFormatFiles | Where-Object { $_ -notin $maintainerBehaviorFiles })
+    $retiredMaintainerDependencies = @($maintainerBehaviorFiles | Where-Object { $_ -match 'MaintainerProposalsV2|MaintainerSourceFacts|contracts/catalog/instruction-catalog.schema.json' })
+    Add-TestResult -Name 'parser-validation-dependencies' -Passed ($missingParserValidationFiles.Count -eq 0 -and $missingMaintainerFormatFiles.Count -eq 0 -and $retiredMaintainerDependencies.Count -eq 0) -Detail 'Parser identities include real format/schema dependencies; V4 owns maintainer extraction without a V2 wrapper or accepted-catalog validation dependency.'
     $collectorContent = Get-Content -LiteralPath $collectorPath -Raw
     $githubCliProcessOwnershipValid = $collectorContent -match 'HostedGitHub\.Helpers\.psm1' -and $collectorContent -match 'Invoke-HostedGitHubCli -Arguments' -and $collectorContent -notmatch 'ProcessStartInfo|\.Source api|& \$.*gh.* api'
     Add-TestResult -Name 'github-cli-process-ownership' -Passed $githubCliProcessOwnershipValid -Detail 'Source inventory retains transport fallback and retry policy while delegating GitHub CLI process execution to the shared helper.'
@@ -419,7 +422,7 @@ try {
         root = [ordered]@{ kind = 'repository'; path = 'fixtures/rules' }
         files = @('*.rules.md')
         exclude = @()
-        parser = 'maintainer-proposals-v2'
+        parser = 'maintainer-proposals-v4'
         assessmentBatchSize = 20
     })
     $snapshotSourcePath = Join-Path $snapshotSourceRoot 'implementation.rules.md'
@@ -437,7 +440,7 @@ try {
         }
         try {
 '@.TrimEnd())
-    Copy-Item -LiteralPath $parserModulePath -Destination (Join-Path $snapshotParserRoot 'MaintainerProposalsV2.psm1')
+    Copy-Item -LiteralPath $parserModulePath -Destination (Join-Path $snapshotParserRoot 'MaintainerProposalsV4.psm1')
     [IO.File]::WriteAllText((Join-Path $snapshotParserRoot 'AuthoredRules.psm1'), $snapshotParserContent, [Text.UTF8Encoding]::new($false))
     $snapshotSourceSha256 = (Get-FileHash -LiteralPath $snapshotSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
     $snapshotRevisionIdentity = 'fixtures/rules/implementation.rules.md' + [char]0 + $snapshotSourceSha256 + [char]0
@@ -478,7 +481,7 @@ try {
         root = [ordered]@{ kind = 'repository'; path = 'hosted_copilot/authored-rules/proposals' }
         files = @('**/*.rules.md')
         exclude = @('implementation.rules.md')
-        parser = 'maintainer-proposals-v2'
+        parser = 'maintainer-proposals-v4'
         assessmentBatchSize = 20
     })
     $filteredOutputPath = Join-Path $fixtureRoot 'maintainer-filtered.json'
@@ -495,7 +498,7 @@ try {
         root = [ordered]@{ kind = 'repository'; path = '../' }
         files = @('**/*.rules.md')
         exclude = @()
-        parser = 'maintainer-proposals-v2'
+        parser = 'maintainer-proposals-v4'
         assessmentBatchSize = 20
     })
     $escapingRun = Invoke-Collector -OutputPath (Join-Path $fixtureRoot 'escaping-output.json') -DefinitionPath $escapingDefinitionPath
@@ -523,15 +526,16 @@ try {
 
     $retiredPath = Join-Path $parserFixtureRoot 'retired.rules.md'
     Write-ProposalFixture -Path $retiredPath -Surface 'implementation' -Body "### IMPL-MAINT-902: Retired proposal`n`n- Rule: Reject an unbound retired proposal.`n- Provenance: local-safeguard`n- Rationale: Retirement requires an existing Hosted rule.`n- Status: retired"
-    Add-TestResult -Name 'retired-mapping-required' -Passed (Test-ThrowsLike -Action { Get-MaintainerProposalInventoryRecords -SourcePaths @($retiredPath) -RepositoryRoot $fixtureRoot } -Pattern '*does not map to a Hosted rule*') -Detail 'Retired Maintainer Proposals must resolve to an existing Hosted rule.'
+    $retiredRecords = @(Get-MaintainerProposalInventoryRecords -SourcePaths @($retiredPath) -RepositoryRoot $fixtureRoot)
+    Add-TestResult -Name 'retired-source-facts-retained' -Passed ($retiredRecords.Count -eq 1 -and $retiredRecords[0].sourceLifecycle -ceq 'retired' -and
+        -not $retiredRecords[0].Contains('approval') -and -not $retiredRecords[0].Contains('hostedRuleId')) -Detail 'Retired source facts are captured without accepted-catalog dependencies or implicit retirement approval.'
 
-    Write-TestProgress -Name 'remote-rules' -Detail 'Validating version 4 parser parity and imported Remote Rules boundaries'
-    $v2Module = Import-Module $parserModulePath -Force -PassThru
+    Write-TestProgress -Name 'remote-rules' -Detail 'Validating the sole version 4 parser and Remote Rules boundaries'
     $v4Module = Import-Module $v4ParserModulePath -Force -PassThru
     $repositoryProposalPaths = @(Get-ChildItem -LiteralPath $maintainerRoot -Filter '*.rules.md' -File | Select-Object -ExpandProperty FullName)
-    $v2RepositoryRecords = @(& $v2Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } $repositoryProposalPaths $repoRoot)
     $v4RepositoryRecords = @(& $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } $repositoryProposalPaths $repoRoot)
-    Add-TestResult -Name 'v4-repository-parser-parity' -Passed (($v2RepositoryRecords | ConvertTo-Json -Depth 20 -Compress) -ceq ($v4RepositoryRecords | ConvertTo-Json -Depth 20 -Compress)) -Detail 'Version 4 emits field-for-field identical records for the repository-owned version 2 Maintainer Proposals corpus.'
+    $v4RepeatedRecords = @(& $v4Module { param($paths, $root) Get-MaintainerProposalInventoryRecords -SourcePaths $paths -RepositoryRoot $root } $repositoryProposalPaths $repoRoot)
+    Add-TestResult -Name 'v4-repository-parser-deterministic' -Passed (($v4RepeatedRecords | ConvertTo-Json -Depth 20 -Compress) -ceq ($v4RepositoryRecords | ConvertTo-Json -Depth 20 -Compress)) -Detail 'The sole V4 parser emits deterministic source facts for the current proposal corpus.'
 
     $remoteRulesPath = Join-Path $parserFixtureRoot 'remote-testing.rules.md'
     $remoteRulesContent = "---`ndescription: `"Remote testing rules.`"`nsurface: testing`nremoteRulesVersion: 1`n---`n`n### TEST-REMOTE-A1B2C3D4-001: Validate remote rules`n`n- Rule: Validate imported remote rules.`n- Provenance: inferred-maintainer-convention`n- Rationale: Evaluate this remote rule independently against the destination corpus.`n"

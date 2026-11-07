@@ -108,6 +108,7 @@ try {
     Write-TestProgress -Name 'fixture-preparation' -Detail 'Staging the catalog, schema, and generated instruction files'
     $catalogDirectory = Join-Path $tempHostedRoot 'copilot-rule-catalog'
     $catalogContractDirectory = Join-Path $tempHostedRoot 'contracts/catalog'
+    $tempProtectedRulesPath = Join-Path $catalogDirectory 'protected-rules.json'
     New-Item -ItemType Directory -Path $catalogDirectory, $catalogContractDirectory -Force | Out-Null
     Copy-Item -LiteralPath $sourceCatalogPath -Destination (Join-Path $catalogDirectory 'instruction-catalog.json')
     Copy-Item -LiteralPath $sourceSchemaPath -Destination (Join-Path $catalogContractDirectory 'instruction-catalog.schema.json')
@@ -130,6 +131,55 @@ try {
     $baseline = Invoke-Generator
     Add-TestResult -Name 'baseline-freshness' -Passed ($baseline.exitCode -eq 0) -Detail $(if ($baseline.exitCode -eq 0) { 'Current catalog reproduces all committed instruction files.' } else { $baseline.output })
 
+    Import-Module (Join-Path $PSScriptRoot '../modules/source-parsers/ProtectedRules.psm1') -Force
+    $syntheticProtectedCatalog = [ordered]@{
+        '$schema' = 'protected-rules.schema.json'
+        schemaVersion = 1
+        rules = @([ordered]@{
+            id = 'IMPL-FIXTURE-001'
+            status = 'protected'
+            surfaceId = 'implementation'
+            title = 'Synthetic serialization rule'
+            text = "Preserve synthetic line one.`r`nPreserve synthetic line two."
+            provenance = 'local-safeguard'
+            protectionReason = 'Synthetic fixture rationale'
+            impact = 100
+            sourcePath = 'hosted_copilot/authored-rules/protected/implementation.rules.md'
+            contentSha256 = 'a' * 64
+        })
+    }
+    $syntheticProtectedJson = ConvertTo-ProtectedRulesJson -Catalog $syntheticProtectedCatalog
+    $serializationPassed = -not $syntheticProtectedJson.Contains("`r") -and
+        $syntheticProtectedJson.EndsWith("`n") -and -not $syntheticProtectedJson.EndsWith("`n`n") -and
+        [bool]($syntheticProtectedJson | Test-Json -SchemaFile $sourceProtectedRulesSchemaPath -ErrorAction SilentlyContinue) -and
+        ($syntheticProtectedJson | ConvertFrom-Json).rules[0].text -ceq $syntheticProtectedCatalog.rules[0].text
+    Add-TestResult -Name 'protected-canonical-line-endings' -Passed $serializationPassed -Detail $(if ($serializationPassed) { 'Protected serialization uses LF consistently while preserving embedded rule-text line endings and the complete schema.' } else { 'Protected serialization changed rule text or produced noncanonical output.' })
+
+    $originalProtectedContent = [IO.File]::ReadAllText($tempProtectedRulesPath)
+    $instructionHashes = @{}
+    foreach ($surface in @($catalog.surfaces)) {
+        $outputPath = Join-Path $tempHostedRoot ([string]$surface.outputPath)
+        $instructionHashes[$outputPath] = (Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash
+    }
+    try {
+        $staleProtectedCatalog = $originalProtectedContent | ConvertFrom-Json
+        $staleProtectedCatalog.rules[0].text += ' Synthetic stale wording.'
+        [IO.File]::WriteAllText($tempProtectedRulesPath, (ConvertTo-ProtectedRulesJson -Catalog $staleProtectedCatalog), [Text.UTF8Encoding]::new($false))
+        $staleProjectionHash = (Get-FileHash -LiteralPath $tempProtectedRulesPath -Algorithm SHA256).Hash
+        $staleProjection = Invoke-Generator
+        $unchangedInstructions = $true
+        foreach ($outputPath in $instructionHashes.Keys) {
+            if ((Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash -cne $instructionHashes[$outputPath]) { $unchangedInstructions = $false }
+        }
+        $staleProjectionPassed = $staleProjection.exitCode -ne 0 -and
+            $staleProjection.output -like '*Generated protected rules are stale*' -and $unchangedInstructions -and
+            (Get-FileHash -LiteralPath $tempProtectedRulesPath -Algorithm SHA256).Hash -ceq $staleProjectionHash
+        Add-TestResult -Name 'protected-stale-projection-read-only' -Passed $staleProjectionPassed -Detail $(if ($staleProjectionPassed) { 'Changed protected wording fails the exact freshness guard without modifying the projection or any instruction output.' } else { $staleProjection.output })
+    }
+    finally {
+        [IO.File]::WriteAllText($tempProtectedRulesPath, $originalProtectedContent, [Text.UTF8Encoding]::new($false))
+    }
+
     $implementationOutputPath = Join-Path $tempHostedRoot ([string]$catalog.surfaces[0].outputPath)
     $implementationOutput = Get-Content -LiteralPath $implementationOutputPath -Raw
     $modelRenderingPassed = $implementationOutput.Contains('- `[IMPL-WF-002B]` [legacy, typed]') -and
@@ -146,7 +196,6 @@ try {
 
     Write-TestProgress -Name 'catalog-behavior' -Detail 'Validating model applicability and catalog-native rule origins'
     $tempCatalogPath = Join-Path $catalogDirectory 'instruction-catalog.json'
-    $tempProtectedRulesPath = Join-Path $catalogDirectory 'protected-rules.json'
     $catalog.rules[0].origin = 'hosted-catalog-addition'
     $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
     $catalogAddition = Invoke-Generator
@@ -182,6 +231,56 @@ try {
     Add-TestResult -Name 'protected-rule-impact' -Passed ([int]$protectedRules.rules[0].impact -eq 100) -Detail 'Protected source compilation fixes impact at 100 without requiring an authored field.'
 
     $catalog | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempCatalogPath -Encoding utf8NoBOM
+
+    Write-TestProgress -Name 'empty-protected-inputs' -Detail 'Checking complete empty protected sources without relaxing missing-file or rule-field validation'
+    $protectedFixtureContents = @{}
+    try {
+        foreach ($surface in @($catalog.surfaces)) {
+            $surfacePath = Join-Path $tempProtectedRulesRoot "$($surface.id).rules.md"
+            $protectedFixtureContents[$surfacePath] = [IO.File]::ReadAllText($surfacePath)
+            $stub = "---`ndescription: Protected rule fixture`nsurface: $($surface.id)`n---`n`n# Protected Rules`n"
+            [IO.File]::WriteAllText($surfacePath, $stub, [Text.UTF8Encoding]::new($false))
+        }
+        $emptyProjection = Invoke-ProtectedGenerator
+        $emptyRules = Get-Content -LiteralPath $tempProtectedRulesPath -Raw | ConvertFrom-Json
+        $emptyProjectionPassed = $emptyProjection.exitCode -eq 0 -and $emptyRules.rules -is [array] -and $emptyRules.rules.Count -eq 0
+        Add-TestResult -Name 'protected-empty-projection' -Passed $emptyProjectionPassed -Detail $(if ($emptyProjectionPassed) { 'Complete empty category stubs generate a valid protected projection with an empty rules array.' } else { $emptyProjection.output })
+
+        $emptyInstructions = if ($emptyProjectionPassed) { Invoke-Generator -Write } else { $emptyProjection }
+        Add-TestResult -Name 'protected-empty-instructions' -Passed ($emptyInstructions.exitCode -eq 0) -Detail $(if ($emptyInstructions.exitCode -eq 0) { 'Instruction generation accepts a validated empty protected projection.' } else { $emptyInstructions.output })
+
+        foreach ($surface in @($catalog.surfaces)) {
+            $surfacePath = Join-Path $tempProtectedRulesRoot "$($surface.id).rules.md"
+            $stub = [IO.File]::ReadAllText($surfacePath)
+            $projectionHash = (Get-FileHash -LiteralPath $tempProtectedRulesPath -Algorithm SHA256).Hash
+            Remove-Item -LiteralPath $surfacePath
+            try {
+                $missingSurface = Invoke-ProtectedGenerator
+                $missingSurfacePassed = $missingSurface.exitCode -ne 0 -and
+                    $missingSurface.output -like "*missing surface file: $($surface.id)*" -and
+                    (Get-FileHash -LiteralPath $tempProtectedRulesPath -Algorithm SHA256).Hash -ceq $projectionHash
+                Add-TestResult -Name "protected-required-$($surface.id)" -Passed $missingSurfacePassed -Detail $(if ($missingSurfacePassed) { 'A missing required category file is rejected without replacing the prior protected projection.' } else { $missingSurface.output })
+            }
+            finally {
+                [IO.File]::WriteAllText($surfacePath, $stub, [Text.UTF8Encoding]::new($false))
+            }
+        }
+
+        $invalidProtectedRules = $protectedRules | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $invalidProtectedRules.rules[0].PSObject.Properties.Remove('text')
+        $invalidProtectedJson = $invalidProtectedRules | ConvertTo-Json -Depth 20
+        $invalidProtectedAccepted = [bool]($invalidProtectedJson | Test-Json -SchemaFile (Join-Path $catalogContractDirectory 'protected-rules.schema.json') -ErrorAction SilentlyContinue)
+        Add-TestResult -Name 'protected-rule-fields-required' -Passed (-not $invalidProtectedAccepted) -Detail 'Allowing an empty protected collection does not allow a rule with missing required fields.'
+    }
+    finally {
+        foreach ($surfacePath in $protectedFixtureContents.Keys) {
+            [IO.File]::WriteAllText($surfacePath, $protectedFixtureContents[$surfacePath], [Text.UTF8Encoding]::new($false))
+        }
+        $restoredProjection = Invoke-ProtectedGenerator
+        if ($restoredProjection.exitCode -ne 0) { throw $restoredProjection.output }
+        $restoredInstructions = Invoke-Generator -Write
+        if ($restoredInstructions.exitCode -ne 0) { throw $restoredInstructions.output }
+    }
 
     Write-TestProgress -Name 'write-boundaries' -Detail 'Checking read-only stale detection, explicit writes, and schema enforcement'
     $firstOutputPath = Join-Path $tempHostedRoot ([string]$catalog.surfaces[0].outputPath)

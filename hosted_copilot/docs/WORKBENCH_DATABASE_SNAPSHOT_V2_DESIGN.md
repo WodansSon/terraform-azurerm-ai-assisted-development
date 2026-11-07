@@ -81,7 +81,23 @@ The current browser-only hiding of the Draft options menu does not constitute th
 - Deliberate creation of a consistent whole-workspace sharing snapshot.
 - Compatibility and integrity inspection before opening a received snapshot.
 - A separate read-only inspection workspace without changing the recipient's active database.
+- A local maintainer database-inspection website with table/data browsing and relationship visualization, under the read-only boundary below.
 - Explicit restore or replacement only if its recovery requirements are implemented and accepted.
+
+### V2 Backlog: Maintainer Database Inspector
+
+Recorded on 2026-11-06. Provide an SSMS-style **inspection** experience inside the local Hosted maintainer tooling so maintainers can verify stored facts themselves rather than rely on assistant summaries or an external database extension. This is a deferred feature, not a V1 prerequisite or authorization to implement a new website now. A focused read-only inspector is feasible; a general-purpose SSMS replacement, database administration platform, or writable schema/data designer is not this backlog item.
+
+- Show the selected database path, GUID, schema version, recorded repository/branch, capture context, and read-only mode. Clearly distinguish a current workspace view from a received snapshot or historical capture; do not silently switch or merge them.
+- Provide a table/view explorer and bounded data grid with pagination, filtering, sorting, null/type display, and record details. Inspect actual SQLite tables and stored rows, not generated explanatory examples or a second editable JSON representation.
+- Show schema definitions, columns, PK/FK constraints, indexes, and trigger definitions as inert text. Support FK navigation in both directions and ER diagrams derived from recorded database constraints; identify any inferred relationships separately rather than presenting them as enforced FKs.
+- Let maintainers trace sources through evaluations, assessments, groups, decisions, findings, and audit history. Preserve original evaluator/input identity and make incomplete, failed, stale, and complete states distinguishable without promoting an unfinished run to current.
+- Reuse the shared SQLite connection/inspection owner and an explicitly bound, authenticated loopback server boundary. The browser does not open filesystem paths, execute SQL itself, or choose arbitrary files; an inspection request must stay bound to the selected database and authorized local session.
+- Keep queries read-only at the database/API boundary with existing authorizer, attachment/extension restrictions, and bounded time/row/response limits. Prefer typed browsing operations. Any later SQL console needs a reviewed read-only execution design, not a check that a string begins with `SELECT`.
+- Do not add edits, DDL, Save, repair, migration, source refresh, AI evaluation, approval/publication, or deployment to inspection. Render stored text as untrusted data and never execute scripts, paths, or policy instructions found in it. Sensitive data remains subject to the existing non-disclosure rules; inspection is not permission to persist credentials or expose them through a new UI.
+- Prove useful browsing and FK/ER navigation on the real normalized schema, read-only refusal through direct API calls, bounded cancellation/resource handling, database/WAL preservation, and preservation of the active Workbench session before acceptance. Use a consistent snapshot or the tested live read-only mechanism; do not inspect an unverified main-file copy from a WAL database.
+
+This document owns the inspector backlog together with snapshot inspection. V1 continues to implement persistence and the existing Workbench experience; it does not gain a database-browser stub, dependency, or UI redesign for this future feature.
 
 ### Out of Scope
 

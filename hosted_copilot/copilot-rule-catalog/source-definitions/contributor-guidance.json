@@ -14,6 +14,6 @@
     "topics/**/*.md"
   ],
   "exclude": [],
-  "parser": "contributor-guidance-v2",
+  "parser": "contributor-guidance-v4",
   "assessmentBatchSize": 5
 }

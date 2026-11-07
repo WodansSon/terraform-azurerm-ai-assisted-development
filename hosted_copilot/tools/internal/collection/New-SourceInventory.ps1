@@ -228,31 +228,26 @@ function Invoke-SourceInventoryParser {
     )
 
     switch ([string]$Definition.parser) {
-        'maintainer-proposals-v2' {
-            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV2.psm1'
-            Import-Module $modulePath -Force
-            return @(Get-MaintainerProposalInventoryRecords -SourcePaths @($MatchedFiles.FullName) -RepositoryRoot $RepositoryRoot -KnownHostedRuleIds @($HostedCatalog.rules.id))
-        }
         'maintainer-proposals-v4' {
             $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/modules/source-parsers/MaintainerProposalsV4.psm1'
             Import-Module $modulePath -Force
-            return @(Get-MaintainerProposalInventoryRecords -SourcePaths @($MatchedFiles.FullName) -RepositoryRoot $RepositoryRoot -KnownHostedRuleIds @($HostedCatalog.rules.id))
+            return @(Get-MaintainerProposalInventoryRecords -SourcePaths @($MatchedFiles.FullName) -RepositoryRoot $RepositoryRoot)
         }
-        'interactive-toolkit-v2' {
+        'interactive-toolkit-v4' {
             $catalogFiles = @($MatchedFiles | Where-Object { [string]$_.RelativePath -ceq 'rule-catalog.json' })
             $schemaFiles = @($MatchedFiles | Where-Object { [string]$_.RelativePath -ceq 'rule-catalog.schema.json' })
             if ($MatchedFiles.Count -ne 2 -or $catalogFiles.Count -ne 1 -or $schemaFiles.Count -ne 1) {
                 throw 'Interactive Toolkit source definition must resolve exactly rule-catalog.json and rule-catalog.schema.json'
             }
-            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/modules/source-parsers/InteractiveToolkitV2.psm1'
+            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/modules/source-parsers/InteractiveToolkitV4.psm1'
             Import-Module $modulePath -Force
             return @(Get-InteractiveToolkitInventoryRecords -CatalogPath ([string]$catalogFiles[0].FullName) -RepositoryRoot $RepositoryRoot)
         }
-        'contributor-guidance-v2' {
+        'contributor-guidance-v4' {
             if ([string]$Definition.root.kind -cne 'github') {
                 throw 'Contributor Guidance parser requires a GitHub source root'
             }
-            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/modules/source-parsers/ContributorGuidanceV2.psm1'
+            $modulePath = Join-Path $RepositoryRoot 'hosted_copilot/tools/modules/source-parsers/ContributorGuidanceV4.psm1'
             Import-Module $modulePath -Force
             return @(Get-ContributorGuidanceInventoryRecords -Documents $RemoteDocuments -Repository ([string]$Definition.root.repository) -ResolvedCommit ([string]$SourceRevision.resolvedCommit) -RootPath ([string]$Definition.root.path))
         }
@@ -624,20 +619,10 @@ switch ([string]$definition.root.kind) {
 }
 
 $catalog = $null
-if ([string]$definition.parser -in @('maintainer-proposals-v2', 'maintainer-proposals-v4')) {
-    $catalogSchemaPath = Join-Path $resolvedRepositoryRoot 'hosted_copilot/contracts/catalog/instruction-catalog.schema.json'
-    foreach ($requiredPath in @($resolvedCatalogPath, $catalogSchemaPath)) {
-        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-            throw "Required Maintainer Proposal parser input was not found: $requiredPath"
-        }
-    }
-    Test-JsonFile -Path $resolvedCatalogPath -SchemaPath $catalogSchemaPath
-    $catalog = Get-Content -LiteralPath $resolvedCatalogPath -Raw | ConvertFrom-Json
-}
 $records = @(Invoke-SourceInventoryParser -Definition $definition -RepositoryRoot $resolvedRepositoryRoot -MatchedFiles $matchedFiles -RemoteDocuments $remoteDocuments -SourceRevision $sourceRevision -HostedCatalog $catalog)
 
 $sortedRecords = @(Get-OrdinallySortedRecords -Records @($records))
-$inventorySha256 = Get-Sha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
+$inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records $sortedRecords
 
 if ([string]$definition.root.kind -ceq 'repository') {
     $revisionFiles = @(Get-InventoryRevisionFiles -RepositoryRoot $resolvedRepositoryRoot -MatchedFiles $matchedFiles -Records $sortedRecords)
@@ -670,7 +655,7 @@ if ([string]$definition.root.kind -ceq 'repository') {
         })
         $records = @(Invoke-SourceInventoryParser -Definition $definition -RepositoryRoot $snapshotRoot -MatchedFiles $snapshotMatchedFiles -RemoteDocuments @() -SourceRevision $null -HostedCatalog $catalog)
         $sortedRecords = @(Get-OrdinallySortedRecords -Records $records)
-        $inventorySha256 = Get-Sha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
+        $inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records $sortedRecords
         $worktreeSha256 = Get-CanonicalFileSetSha256 -Files $snapshotRevisionFiles.ToArray()
     }
     finally {
@@ -712,7 +697,7 @@ else {
         $parserContractSha256 = Get-SourceEvidenceParserContractSha256 -Contract $contract -RepositoryRoot $snapshotRoot
         $records = @(Invoke-SourceInventoryParser -Definition $definition -RepositoryRoot $snapshotRoot -MatchedFiles @() -RemoteDocuments $remoteDocuments -SourceRevision $sourceRevision -HostedCatalog $catalog)
         $sortedRecords = @(Get-OrdinallySortedRecords -Records $records)
-        $inventorySha256 = Get-Sha256 -Content ($sortedRecords | ConvertTo-Json -Depth 20 -Compress)
+        $inventorySha256 = Get-SourceEvidenceRecordsSha256 -Records $sortedRecords
     }
     finally {
         Remove-Item -LiteralPath $snapshotRoot -Recurse -Force -ErrorAction SilentlyContinue

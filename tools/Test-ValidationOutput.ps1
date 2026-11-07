@@ -20,16 +20,17 @@ $checkStopwatch = [Diagnostics.Stopwatch]::StartNew()
 
 if ($OutputFormat -eq 'Text') {
     Write-ValidationSectionHeader -Title 'Validation output contracts'
-    Write-Host (Format-ValidationStatusLine -Status 'running' -Name 'output-contracts' -Detail "Checking shared formatter sequences and $ProductScope presentation consumers")
+    Write-Host (Format-ValidationLifecycleLine -Status 'running' -Name 'output-contracts')
 }
 
 function Add-OutputTestResult {
     param([string]$Name, [bool]$Passed)
 
     $checkStopwatch.Stop()
+    $status = if ($Passed) { 'passed' } else { 'failed' }
     $results.Add([pscustomobject]@{
         name = $Name
-        status = if ($Passed) { 'passed' } else { 'failed' }
+        status = $status
         durationSeconds = $checkStopwatch.Elapsed.TotalSeconds
     })
     $checkStopwatch.Restart()
@@ -74,11 +75,83 @@ Assert-OutputSequence -Name 'long status line' -Actual @(
 ) -Expected @('[PASSED]   long-name                                : 1.25s')
 
 $stageNames = @('validate-artifacts', 'write-provenance-report')
+Assert-OutputSequence -Name 'passing lifecycle' -Actual @(
+    Format-ValidationLifecycleLine -Status running -Name 'check-1' -Description 'Verify the complete source description' -NameWidth 12
+    Format-ValidationLifecycleLine -Status passed -Name 'check-1' -DurationSeconds 1.25 -NameWidth 12
+) -Expected @(
+    '[RUNNING]  check-1      : Verify the complete source description',
+    '[PASSED]   check-1      : 1.25s'
+)
+Assert-OutputSequence -Name 'failed lifecycle' -Actual @(
+    Format-ValidationLifecycleLine -Status running -Name 'check-2' -Description 'Verify rollback' -AlignmentWidth 14 -Child
+    Format-ValidationLifecycleLine -Status failed -Name 'check-2' -DurationSeconds 0.5 -AlignmentWidth 14 -Child
+) -Expected @(
+    '  [RUNNING]  check-2      : Verify rollback',
+    '  [FAILED]   check-2      : 0.5s'
+)
+Assert-OutputSequence -Name 'skipped lifecycle' -Actual @(
+    Format-ValidationLifecycleLine -Status skipped -Name 'check-3' -Description 'Not applicable on this platform' -AlignmentWidth 14 -Child
+) -Expected @('  [SKIPPED]  check-3      : Not applicable on this platform')
+Assert-OutputSequence -Name 'parent and child lifecycle' -Actual @(
+    Format-ValidationLifecycleLine -Status running -Name 'parent' -Description 'Build fixtures' -AlignmentWidth 20
+    Format-ValidationLifecycleLine -Status running -Name 'child' -Description 'Verify fixture' -AlignmentWidth 20 -Child -Level 1
+    Format-ValidationLifecycleLine -Status passed -Name 'child' -DurationSeconds 0.25 -AlignmentWidth 20 -Child -Level 1
+    Format-ValidationLifecycleLine -Status passed -Name 'parent' -DurationSeconds 1.25 -AlignmentWidth 20
+) -Expected @(
+    ('[RUNNING]  {0,-20} : Build fixtures' -f 'parent'),
+    ('  [RUNNING]  {0,-18} : Verify fixture' -f 'child'),
+    ('  [PASSED]   {0,-18} : 0.25s' -f 'child'),
+    ('[PASSED]   {0,-20} : 1.25s' -f 'parent')
+)
+Assert-OutputSequence -Name 'nested failure and skip alignment' -Actual @(
+    Format-ValidationLifecycleLine -Status failed -Name 'grandchild' -DurationSeconds 0.5 -AlignmentWidth 24 -Child -Level 2
+    Format-ValidationLifecycleLine -Status skipped -Name 'optional-child' -Description 'Not applicable' -AlignmentWidth 24 -Child -Level 1
+) -Expected @(
+    ('    [FAILED]   {0,-20} : 0.5s' -f 'grandchild'),
+    ('  [SKIPPED]  {0,-22} : Not applicable' -f 'optional-child')
+)
+Assert-OutputSequence -Name 'three child levels' -Actual @(
+    Format-ValidationLifecycleLine -Status passed -Name 'root' -DurationSeconds 1 -AlignmentWidth 24
+    Format-ValidationLifecycleLine -Status passed -Name 'child' -DurationSeconds 0.75 -AlignmentWidth 24 -Child
+    Format-ValidationLifecycleLine -Status passed -Name 'grandchild' -DurationSeconds 0.5 -AlignmentWidth 24 -Child -Level 2
+    Format-ValidationLifecycleLine -Status passed -Name 'great-grandchild' -DurationSeconds 0.25 -AlignmentWidth 24 -Child -Level 3
+) -Expected @(
+    ('[PASSED]   {0,-24} : 1s' -f 'root'),
+    ('  [PASSED]   {0,-22} : 0.75s' -f 'child'),
+    ('    [PASSED]   {0,-20} : 0.5s' -f 'grandchild'),
+    ('      [PASSED]   {0,-18} : 0.25s' -f 'great-grandchild')
+)
+Assert-OutputSequence -Name 'default child alignment' -Actual @(
+    Format-ValidationLifecycleLine -Status passed -Name 'root' -DurationSeconds 1
+    Format-ValidationLifecycleLine -Status passed -Name 'child' -DurationSeconds 0.5 -Child
+) -Expected @(
+    ('[PASSED]   {0,-30} : 1s' -f 'root'),
+    ('  [PASSED]   {0,-28} : 0.5s' -f 'child')
+)
+Assert-OutputSequence -Name 'explicit completion evidence' -Actual @(
+    Format-ValidationLifecycleLine -Status passed -Name 'packages' -DurationSeconds 0.25 -ResultDetail 'CURRENT (MATCHES AUDITED LOCKFILE)' -NameWidth 12
+) -Expected @('[PASSED]   packages     : 0.25s - CURRENT (MATCHES AUDITED LOCKFILE)')
+foreach ($invalidLifecycle in @(
+    @{ Status = 'passed'; Name = 'missing-duration' },
+    @{ Status = 'failed'; Name = 'invalid-duration'; DurationSeconds = -1 },
+    @{ Status = 'passed'; Name = 'nonfinite-duration'; DurationSeconds = [double]::NaN },
+    @{ Status = 'skipped'; Name = 'skipped-duration'; DurationSeconds = 1 },
+    @{ Status = 'running'; Name = 'insufficient-width'; AlignmentWidth = 10; Child = $true },
+    @{ Status = 'running'; Name = 'level-without-child'; Level = 1 },
+    @{ Status = 'running'; Name = 'zero-child-level'; Child = $true; Level = 0 },
+    @{ Status = 'running'; Name = 'negative-child-level'; Child = $true; Level = -1 },
+    @{ Status = 'running'; Name = 'excessive-child-level'; Child = $true; Level = 11 }
+)) {
+    $rejected = $false
+    try { Format-ValidationLifecycleLine @invalidLifecycle | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { $issues.Add("$($invalidLifecycle.Name) was accepted by the lifecycle formatter") }
+    Add-OutputTestResult -Name "lifecycle rejection/$($invalidLifecycle.Name)" -Passed $rejected
+}
 $stageNameWidth = Get-ValidationNameWidth -Names $stageNames
 Assert-OutputSequence -Name 'computed name width' -Actual @($stageNameWidth) -Expected @('23')
 Assert-OutputSequence -Name 'nested status alignment' -Actual @(
-    Format-ValidationStatusLine -Status 'running' -Name $stageNames[0] -Detail 'IN PROGRESS' -NameWidth $stageNameWidth -IndentLevel 2
-    Format-ValidationStatusLine -Status 'passed' -Name $stageNames[1] -Detail '1.25s' -NameWidth $stageNameWidth -IndentLevel 2
+    Format-ValidationStatusLine -Status 'running' -Name $stageNames[0] -Detail 'IN PROGRESS' -AlignmentWidth ($stageNameWidth + 4) -Child -Level 2
+    Format-ValidationStatusLine -Status 'passed' -Name $stageNames[1] -Detail '1.25s' -AlignmentWidth ($stageNameWidth + 4) -Child -Level 2
 ) -Expected @(
     '    [RUNNING]  validate-artifacts      : IN PROGRESS',
     '    [PASSED]   write-provenance-report : 1.25s'
@@ -103,7 +176,7 @@ Assert-OutputSequence -Name 'duration precision' -Actual @(
 ) -Expected @('13.99s', '21.36s', '20.89s', '0s', '0.01s', '2s', '0s')
 
 Assert-OutputSequence -Name 'child duration precision' -Actual @(
-    Format-ValidationStatusLine -Status 'passed' -Name 'server/internal' -Detail (Format-ValidationDuration -DurationSeconds 13.9885322) -IndentLevel 1
+    Format-ValidationStatusLine -Status 'passed' -Name 'server/internal' -Detail (Format-ValidationDuration -DurationSeconds 13.9885322) -AlignmentWidth 32 -Child
 ) -Expected @('  [PASSED]   server/internal                : 13.99s')
 
 Assert-OutputSequence -Name 'summary' -Actual @(
@@ -259,6 +332,109 @@ if ($ProductScope -in @('All', 'Hosted')) {
         }
         Add-OutputTestResult -Name "duration owner/$([IO.Path]::GetFileName($relativePath))" -Passed ($issues.Count -eq $priorIssueCount)
     }
+
+    $checkStopwatch.Restart()
+    $preparationOutput = & {
+        $path = Join-Path $PSScriptRoot '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1'
+        $ast = [Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+        $helper = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Write-PreparationStatus' }, $true)
+        . ([scriptblock]::Create($helper.Extent.Text))
+        $OutputFormat = 'Text'
+        $script:statusNameWidth = 40
+        $testStartTimes = @{}
+        $lines = @(& {
+            Write-PreparationStatus -Status running -Name 'fixtures' -Detail 'Prepare fixtures'
+            Write-PreparationStatus -Status running -Name 'source' -Detail 'Prepare source' -Parent 'fixtures'
+            Write-PreparationStatus -Status running -Name 'records' -Detail 'Validate records' -Parent 'source' -Level 2
+            Write-PreparationStatus -Status running -Name 'fields' -Detail 'Validate fields' -Parent 'records' -Level 3
+            Write-PreparationStatus -Status passed -Name 'fields' -Parent 'records' -Level 3
+            Write-PreparationStatus -Status passed -Name 'records' -Parent 'source' -Level 2
+            Write-PreparationStatus -Status passed -Name 'source' -Parent 'fixtures'
+            Write-PreparationStatus -Status passed -Name 'fixtures'
+        } 6>&1 | ForEach-Object { $_.ToString() })
+        return [pscustomobject]@{
+            padding = @($lines | ForEach-Object { [regex]::Match($_, '^ *').Length })
+            columns = @($lines | ForEach-Object { $_.IndexOf(' : ') } | Sort-Object -Unique)
+            timers = $testStartTimes.Count
+        }
+    }
+    $preparationPassed = ($preparationOutput.padding -join ',') -ceq '0,2,4,6,6,4,2,0' -and $preparationOutput.columns.Count -eq 1 -and $preparationOutput.timers -eq 0
+    if (-not $preparationPassed) { $issues.Add('The actual preparation helper must preserve declared nesting, aligned separators and completed timer cleanup') }
+    Add-OutputTestResult -Name 'Hosted preparation nesting' -Passed $preparationPassed
+
+    $checkStopwatch.Restart()
+    $assistanceOutput = & {
+        $path = Join-Path $PSScriptRoot '../hosted_copilot/tools/tests/Test-RuleAssistance.ps1'
+        $ast = [Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+        foreach ($helperName in @('Start-AssistanceTest', 'Add-AssistanceTestResult')) {
+            $helper = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $helperName }, $true)
+            . ([scriptblock]::Create($helper.Extent.Text))
+        }
+        $Quiet = $false
+        $AlignmentWidth = 40
+        $testResults = [Collections.Generic.List[object]]::new()
+        $lines = @(& {
+            foreach ($depth in 1..3) {
+                $nesting = @{ Child = $true; Level = $depth }
+                Start-AssistanceTest -Name 'assistance-check' -Detail 'Verify grounded context'
+                Add-AssistanceTestResult -Name 'assistance-check' -Detail 'Grounded context verified'
+            }
+        } 6>&1 | ForEach-Object { $_.ToString() })
+        return [pscustomobject]@{
+            padding = @($lines | ForEach-Object { [regex]::Match($_, '^ *').Length })
+            columns = @($lines | ForEach-Object { $_.IndexOf(' : ') } | Sort-Object -Unique)
+            descriptions = @($lines | Where-Object { $_ -match 'Verify grounded context' }).Count
+            results = $testResults.Count
+        }
+    }
+    $assistancePassed = ($assistanceOutput.padding -join ',') -ceq '2,2,4,4,6,6' -and $assistanceOutput.columns.Count -eq 1 -and $assistanceOutput.descriptions -eq 3 -and $assistanceOutput.results -eq 3
+    if (-not $assistancePassed) { $issues.Add('The actual assistance helpers must preserve nesting and alignment without repeating descriptions on completion') }
+    Add-OutputTestResult -Name 'Hosted assistance nesting' -Passed $assistancePassed
+
+    $checkStopwatch.Restart()
+    $nodeGroupingPassed = & {
+        $path = Join-Path $PSScriptRoot '../hosted_copilot/tools/modules/workbench/Workbench.NodeTests.psm1'
+        Import-Module $path -Force
+        $report = ConvertFrom-WorkbenchNodeTestReport -Report '<testsuites><testcase name="passing case" time="1.25"/><!-- {"shortName":"pass-check","description":"passing case"} --><testcase name="skipped case" time="0"><skipped message="Not configured"/></testcase><testcase name="failed case" time="0.5"><failure>Expected fixture failure</failure></testcase><!-- {"shortName":"fail-check","description":"failed case"} --></testsuites>' -ExitCode 1
+        $ast = (Get-Command Invoke-WorkbenchNodeTests).ScriptBlock.Ast
+        $loop = $ast.Find({ param($node) $node -is [Management.Automation.Language.ForEachStatementAst] -and $node.Variable.VariablePath.UserPath -eq 'test' }, $true)
+        $renderLoop = [scriptblock]::Create($loop.Extent.Text)
+        $lines = @(& (Get-Module Workbench.NodeTests) {
+            param($RenderLoop, $Report)
+            $result = $Report
+            $alignmentWidth = 30
+            & $RenderLoop
+        } $renderLoop $report 6>&1 | ForEach-Object { $_.ToString() })
+        $padding = @($lines | ForEach-Object { [regex]::Match($_, '^ *').Length })
+        $parent = Format-ValidationLifecycleLine -Status failed -Name 'JUnit tests' -DurationSeconds 2
+        $columns = @(@($lines) + @($parent) | ForEach-Object { $_.IndexOf(' : ') } | Sort-Object -Unique)
+        return ($padding -join ',') -ceq '2,2,2,2,2' -and $columns.Count -eq 1 -and
+            $lines[0] -match '^  \[RUNNING\]\s+pass-check\s+: passing case$' -and
+            $lines[1] -match '^  \[PASSED\]\s+pass-check\s+: 1[.,]25s$' -and
+            $lines[2] -match '^  \[SKIPPED\]\s+skipped case\s+: Not configured$' -and
+            $lines[3] -match '^  \[RUNNING\]\s+fail-check\s+: failed case$' -and
+            $lines[4] -match '^  \[FAILED\]\s+fail-check\s+: 0[.,]5s$' -and
+            $report.testCount -eq 3 -and $report.skippedCount -eq 1 -and $report.failedCount -eq 1 -and $report.issueCount -eq 1 -and $report.exitCode -eq 1
+    }
+    if (-not $nodeGroupingPassed) { $issues.Add('Native case rows must be children of the JUnit activity, with one skipped row and unchanged failure counts and exit status') }
+    Add-OutputTestResult -Name 'Hosted JUnit activity children' -Passed $nodeGroupingPassed
+
+    $checkStopwatch.Restart()
+    $labelReport = ConvertFrom-WorkbenchNodeTestReport -Report '<testsuites><testcase name="metadata probe" time="0"/><!-- {"shortName":"metadata-probe","description":"Probe structured metadata"} --><testcase name="skip probe" time="0"><skipped message="Synthetic skip reason"/></testcase><testcase time="0"/><testcase name="native name" time="0"/><!-- {"shortName":"   ","description":""} --><testcase name=" " time="0"/></testsuites>' -ExitCode 0
+    $labelsPassed = $labelReport.status -ceq 'passed' -and
+        (@($labelReport.tests.shortName) -join ',') -ceq 'metadata-probe,skip probe,test-003,native name,test-005' -and
+        $labelReport.tests[0].name -ceq 'metadata probe' -and $labelReport.tests[0].description -ceq 'Probe structured metadata' -and
+        $labelReport.tests[1].detail -ceq 'Synthetic skip reason' -and $labelReport.skippedCount -eq 1 -and $labelReport.passedCount -eq 4
+    if (-not $labelsPassed) { $issues.Add('Native labels must prefer explicit shortName, then native name, then numbered fallback without losing skips or original names') }
+    Add-OutputTestResult -Name 'Hosted JUnit label precedence' -Passed $labelsPassed
+
+    $checkStopwatch.Restart()
+    $diagnosticReport = ConvertFrom-WorkbenchNodeTestReport -Report '<testsuites><testcase name="first" time="0"/><!-- {"shortName":"first-short"} --><!-- {invalid diagnostic --><testcase name="second" time="0"/><!-- {"unrelated":"diagnostic"} --></testsuites>' -ExitCode 0
+    $invalidMetadataReport = ConvertFrom-WorkbenchNodeTestReport -Report '<testsuites><testcase name="invalid metadata" time="0"/><!-- {"shortName":42} --></testsuites>' -ExitCode 0
+    $diagnosticsPassed = $diagnosticReport.status -ceq 'passed' -and $diagnosticReport.tests[0].shortName -ceq 'first-short' -and
+        $diagnosticReport.tests[1].shortName -ceq 'second' -and $invalidMetadataReport.status -ceq 'failed' -and $invalidMetadataReport.issueCount -eq 1
+    if (-not $diagnosticsPassed) { $issues.Add('Diagnostic metadata must stay with its owning case, ignore unrelated comments and reject invalid field types') }
+    Add-OutputTestResult -Name 'Hosted JUnit metadata boundaries' -Passed $diagnosticsPassed
 }
 
 foreach ($relativePath in @('Validate-ChangedToolkits.ps1') + $(if ($ProductScope -in @('All', 'Interactive')) { @('validate-ai-toolkit.ps1') } else { @() })) {
@@ -307,6 +483,7 @@ $result = [ordered]@{
     testCount = $results.Count
     passedCount = @($results | Where-Object status -CEQ 'passed').Count
     failedCount = @($results | Where-Object status -CEQ 'failed').Count
+    skippedCount = @($results | Where-Object status -CEQ 'skipped').Count
     elapsedSeconds = $suiteStopwatch.Elapsed.TotalSeconds
     tests = $results.ToArray()
     issueCount = $issues.Count
@@ -317,7 +494,14 @@ if ($OutputFormat -eq 'Json') {
     $result | ConvertTo-Json -Depth 4
 }
 else {
-    Write-Host (Format-ValidationStatusLine -Status $result.status -Name 'output-contracts' -Detail (Format-ValidationDuration -DurationSeconds $result.elapsedSeconds))
+    $progressNameWidth = Get-ValidationNameWidth -Names (@('output-contracts') + @($results.name)) -MinimumWidth 30
+    Write-Output ''
+    foreach ($test in $results) {
+        Write-Host (Format-ValidationLifecycleLine -Status running -Name $test.name -NameWidth $progressNameWidth)
+        Write-Host (Format-ValidationLifecycleLine -Status $test.status -Name $test.name -DurationSeconds $test.durationSeconds -NameWidth $progressNameWidth)
+    }
+    Write-Output ''
+    Write-Host (Format-ValidationLifecycleLine -Status $result.status -Name 'output-contracts' -DurationSeconds $result.elapsedSeconds -NameWidth $progressNameWidth)
     Write-ValidationSectionHeader -Title 'Validation output contract test summary'
     Write-ValidationSummary -Fields ([ordered]@{
         Status = $result.status.ToUpperInvariant()
@@ -325,6 +509,7 @@ else {
         Tests = $result.testCount
         Passed = $result.passedCount
         Failed = $result.failedCount
+        Skipped = $result.skippedCount
         'Issue Count' = $result.issueCount
         Elapsed = Format-ValidationDuration -DurationSeconds $result.elapsedSeconds
     })

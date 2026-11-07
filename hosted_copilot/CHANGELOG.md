@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- Normalized preparation, assistance, and native test reporting with explicit activity-child nesting, two-space indentation per level, and aligned status separators. Native labels prefer optional contributor metadata, then the original test name, then a numbered fallback. Skips retain one row and their reason, descriptions stay separate from timed completions, and summaries and failure evidence remain intact without an extra success footer.
 - Made assistance waiting messages use every phrase before reshuffling across conversations, prevent consecutive repeats between cycles, and retain one phrase throughout each request.
 - Separated Hosted CI results from Interactive and shared repository validation. Hosted-only changes run their own checks without running Interactive validation, while shared changes retain both product gates and Interactive releases retain their independent validation path.
 - Kept the Hosted tools root limited to its four supported commands and README. Repository adoption, model/deployment configuration, locked npm support, and the icon-preview renderer now live in their owning folders, with updated consumers and a root-layout regression check; adoption references remain Hosted-root-relative, and deployment contents and dependency versions are unchanged.
