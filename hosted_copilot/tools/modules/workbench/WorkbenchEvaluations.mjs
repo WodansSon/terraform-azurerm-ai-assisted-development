@@ -72,7 +72,7 @@ export function registerEvaluatorProfile(connection, profile) {
 
 export function prepareEvaluationInput(connection, request) {
   const fields = ['binding', 'runId', 'profileId', 'sourceVersionIds'];
-  requireSourceObject(request, [...fields, 'assessmentResultIds', 'reconciliationPhase', 'componentIds'], fields, 'Evaluation request');
+  requireSourceObject(request, [...fields, 'assessmentResultIds', 'reconciliationPhase', 'componentIds', 'componentProfileId', 'consolidatedComponentIds'], fields, 'Evaluation request');
   readSelectedCapacityConfiguration(connection, request.binding);
   for (const field of ['runId', 'profileId']) identity(request[field], field);
   if (!Array.isArray(request.sourceVersionIds) || request.sourceVersionIds.length === 0 || new Set(request.sourceVersionIds).size !== request.sourceVersionIds.length) {
@@ -166,7 +166,31 @@ export function prepareEvaluationInput(connection, request) {
           existingCoverage: { score: result.existing_coverage_score, rationale: result.existing_coverage_rationale } };
       });
       if (request.reconciliationPhase === 'routing') {
-        if (request.componentIds !== undefined) throw new Error('Routing requires source assessments, not intermediate components');
+        if (request.componentIds !== undefined || request.consolidatedComponentIds !== undefined || request.componentProfileId !== undefined) throw new Error('Routing requires source assessments, not intermediate components');
+      } else if (request.consolidatedComponentIds !== undefined) {
+        if (request.reconciliationPhase !== 'synthesis' || request.componentIds !== undefined || !Array.isArray(request.consolidatedComponentIds) ||
+          !request.consolidatedComponentIds.length || new Set(request.consolidatedComponentIds).size !== request.consolidatedComponentIds.length) {
+          throw new Error('Synthesis requires unique canonical consolidation components');
+        }
+        const members = new Set();
+        const merges = new Set();
+        input.components = request.consolidatedComponentIds.map(componentId => {
+          identity(componentId, 'Canonical consolidation component');
+          const component = connection.get(`SELECT component.*, merge.run_id, merge.evaluator_profile_id FROM consolidated_components component
+            JOIN consolidation_merges merge ON merge.id = component.merge_id WHERE component.id = ?`, [componentId]);
+          if (!component || component.run_id !== request.runId || component.evaluator_profile_id !== request.profileId) throw new Error('Synthesis refuses foreign canonical consolidation lineage');
+          merges.add(component.merge_id);
+          const lineage = connection.all(`SELECT evaluation.outcome, evaluation.evaluator_profile_id FROM consolidation_merge_evaluations used
+            JOIN evaluations evaluation ON evaluation.id = used.evaluation_id WHERE used.merge_id = ?`, [component.merge_id]);
+          if (!lineage.length || lineage.some(evaluation => evaluation.outcome !== 'complete' || evaluation.evaluator_profile_id !== request.profileId)) {
+            throw new Error('Synthesis requires complete canonical consolidation shard lineage');
+          }
+          const assessmentResultIds = connection.all('SELECT assessment_result_id AS id FROM consolidated_component_members WHERE component_id = ? ORDER BY assessment_result_id', [componentId]).map(row => row.id);
+          if (!assessmentResultIds.length || assessmentResultIds.some(id => !request.assessmentResultIds.includes(id) || members.has(id))) throw new Error('Canonical consolidation contains foreign or repeated membership');
+          assessmentResultIds.forEach(id => members.add(id));
+          return { componentId, mergeId: component.merge_id, phase: 'consolidation', semanticSummary: component.semantic_summary, assessmentResultIds };
+        });
+        if (merges.size !== 1 || members.size !== request.assessmentResultIds.length) throw new Error('Canonical consolidation must cover the exact synthesis input');
       } else {
         if (!Array.isArray(request.componentIds) || request.componentIds.length === 0 || new Set(request.componentIds).size !== request.componentIds.length) {
           throw new Error('Later reconciliation phases require unique completed component inputs');
@@ -178,7 +202,9 @@ export function prepareEvaluationInput(connection, request) {
           const component = connection.get(`SELECT component.*, evaluation.input_fingerprint, evaluation.evaluator_profile_id FROM reconciliation_components component
             JOIN evaluations evaluation ON evaluation.id = component.evaluation_id JOIN run_evaluations used ON used.evaluation_id = evaluation.id
             WHERE component.id = ? AND used.run_id = ? AND evaluation.outcome = 'complete'`, [componentId, request.runId]);
-          if (!component || component.evaluator_profile_id !== request.profileId ||
+          const parentProfileId = request.componentProfileId ?? request.profileId;
+          const parentProfile = connection.get('SELECT task_code, llm_assignment_id FROM evaluator_profiles WHERE id = ?', [parentProfileId]);
+          if (!component || component.evaluator_profile_id !== parentProfileId || parentProfile?.task_code !== 'reconciliation' || parentProfile.llm_assignment_id !== profile.llm_assignment_id ||
             (request.reconciliationPhase === 'synthesis' && component.phase_code !== 'consolidation')) {
             throw new Error('Component input must belong to the pinned completed reconciliation phase');
           }
@@ -188,6 +214,9 @@ export function prepareEvaluationInput(connection, request) {
               sourceVersionIds: recordedInputs.filter(row => row.role_code === 'source').map(row => row.source_version_id),
               assessmentResultIds: recordedInputs.filter(row => row.role_code === 'assessment-result').map(row => row.assessment_result_id),
               reconciliationPhase: component.phase_code };
+            parentRequest.profileId = parentProfileId;
+            const recordedParent = recordedInputs.find(row => row.role_code === 'component-profile')?.evaluator_profile_id;
+            if (recordedParent !== undefined) parentRequest.componentProfileId = recordedParent;
             if (component.phase_code !== 'routing') parentRequest.componentIds = recordedInputs.filter(row => row.role_code === 'component').map(row => row.reconciliation_component_id);
             if (sourceTextHash(prepareEvaluationInput(connection, parentRequest).serializedInput) !== component.input_fingerprint) {
               throw new Error('Component input refuses changed parent evaluation evidence');
@@ -205,17 +234,35 @@ export function prepareEvaluationInput(connection, request) {
         if (members.size !== request.assessmentResultIds.length) throw new Error('Component inputs must cover the exact supplied assessment set');
       }
       if (request.reconciliationPhase === 'consolidation') {
-        input.sources = input.sources.map(source => ({ sourceVersionId: source.sourceVersionId, observationId: source.observationId,
+        input.sources = input.sources.map(source => profile.code === 'native-reconciliation-v5' ? { sourceVersionId: source.sourceVersionId } : { sourceVersionId: source.sourceVersionId, observationId: source.observationId,
           sourceDefinitionId: source.sourceDefinitionId, sourceId: source.sourceId, contentSha256: source.contentSha256,
-          metadataSha256: source.metadataSha256, provenanceCodes: source.provenanceCodes }));
-        input.assessments = input.assessments.map(assessment => ({ assessmentResultId: assessment.assessmentResultId,
-          evaluationId: assessment.evaluationId, sourceVersionId: assessment.sourceVersionId, localResultKey: assessment.localResultKey }));
+          metadataSha256: source.metadataSha256, provenanceCodes: source.provenanceCodes });
+        input.assessments = input.assessments.map(assessment => profile.code === 'native-reconciliation-v5' ? { assessmentResultId: assessment.assessmentResultId } : { assessmentResultId: assessment.assessmentResultId,
+          evaluationId: assessment.evaluationId, sourceVersionId: assessment.sourceVersionId, localResultKey: assessment.localResultKey });
       }
-    } else if (request.assessmentResultIds !== undefined || request.reconciliationPhase !== undefined || request.componentIds !== undefined) {
+    } else if (request.assessmentResultIds !== undefined || request.reconciliationPhase !== undefined || request.componentIds !== undefined || request.consolidatedComponentIds !== undefined || request.componentProfileId !== undefined) {
       throw new Error('Assessment-result inputs require a reconciliation evaluator');
     }
     const serializedInput = JSON.stringify(input);
     return { context, sources, serializedInput };
+}
+
+export function readRecordedReconciliationRequest(connection, binding, runId, evaluationId, phase) {
+  const evaluation = connection.get(`SELECT evaluation.evaluator_profile_id FROM evaluations evaluation JOIN run_evaluations used ON used.evaluation_id = evaluation.id
+    WHERE evaluation.id = ? AND used.run_id = ?`, [evaluationId, runId]);
+  if (!evaluation) throw new Error('Reconciliation recovery requires its recorded run evaluation');
+  const inputs = connection.all('SELECT * FROM evaluation_inputs WHERE evaluation_id = ? ORDER BY id', [evaluationId]);
+  const request = { binding, runId, profileId: evaluation.evaluator_profile_id, reconciliationPhase: phase,
+    sourceVersionIds: inputs.filter(row => row.role_code === 'source').map(row => row.source_version_id),
+    assessmentResultIds: inputs.filter(row => row.role_code === 'assessment-result').map(row => row.assessment_result_id) };
+  if (phase !== 'routing') {
+    const canonical = inputs.filter(row => row.role_code === 'merged-component').map(row => row.consolidated_component_id);
+    if (canonical.length) request.consolidatedComponentIds = canonical;
+    else request.componentIds = inputs.filter(row => row.role_code === 'component').map(row => row.reconciliation_component_id);
+    const parentProfile = inputs.find(row => row.role_code === 'component-profile');
+    if (parentProfile) request.componentProfileId = parentProfile.evaluator_profile_id;
+  }
+  return request;
 }
 
 export function recordEvaluationRequest(connection, request) {
@@ -234,6 +281,10 @@ export function recordEvaluationRequest(connection, request) {
     for (const componentId of request.componentIds ?? []) {
       connection.run("INSERT INTO evaluation_inputs(evaluation_id, role_code, reconciliation_component_id) VALUES (?, 'component', ?)", [evaluationId, componentId]);
     }
+    for (const componentId of request.consolidatedComponentIds ?? []) {
+      connection.run("INSERT INTO evaluation_inputs(evaluation_id, role_code, consolidated_component_id) VALUES (?, 'merged-component', ?)", [evaluationId, componentId]);
+    }
+    if (request.componentProfileId !== undefined) connection.run("INSERT INTO evaluation_inputs(evaluation_id, role_code, evaluator_profile_id) VALUES (?, 'component-profile', ?)", [evaluationId, request.componentProfileId]);
     connection.run("INSERT INTO evaluation_inputs(evaluation_id, role_code, protected_snapshot_id) VALUES (?, 'protected', ?)", [evaluationId, context.protected_snapshot_id]);
     connection.run("INSERT INTO evaluation_inputs(evaluation_id, role_code, scoring_policy_id) VALUES (?, 'scoring', ?)", [evaluationId, context.scoring_policy_id]);
     connection.run("INSERT INTO evaluation_inputs(evaluation_id, role_code, capacity_policy_id) VALUES (?, 'capacity', ?)", [evaluationId, context.capacity_policy_id]);
@@ -333,9 +384,7 @@ export function commitReconciliationComponents(connection, request) {
     const sourceInputs = connection.all("SELECT source_version_id AS id FROM evaluation_inputs WHERE evaluation_id = ? AND role_code = 'source' ORDER BY id", [request.evaluationId]);
     const componentInputs = connection.all("SELECT reconciliation_component_id AS id FROM evaluation_inputs WHERE evaluation_id = ? AND role_code = 'component' ORDER BY id", [request.evaluationId]);
     if (request.result.phase === 'consolidation' && componentInputs.length === 0) throw new Error('Reconciliation result refuses changed phase or missing component inputs');
-    const preparedRequest = { binding: request.binding, runId: request.runId, profileId: evaluation.evaluator_profile_id,
-      sourceVersionIds: sourceInputs.map(row => row.id), assessmentResultIds: inputs.map(row => row.id), reconciliationPhase: request.result.phase };
-    if (request.result.phase !== 'routing') preparedRequest.componentIds = componentInputs.map(row => row.id);
+    const preparedRequest = readRecordedReconciliationRequest(connection, request.binding, request.runId, request.evaluationId, request.result.phase);
     const prepared = prepareEvaluationInput(connection, preparedRequest);
     if (sourceTextHash(prepared.serializedInput) !== evaluation.input_fingerprint) {
       throw new Error('Reconciliation result refuses changed phase or evaluation inputs');

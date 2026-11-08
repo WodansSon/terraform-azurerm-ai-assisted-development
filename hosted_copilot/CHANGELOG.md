@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- Added a yellow animated phase indicator with total elapsed time to native analysis commands, making quiet waits visible without interpreting batch numbers. Existing result rows remain intact, and cancellation restores terminal color and cursor state.
 - Introduced the source-deployed Hosted review experiment with compact path-specific guidance for documentation, Go implementation, and acceptance tests, plus controlled paired-review workflows for comparing Hosted and control results.
 - Added a normalized Hosted rule catalog and read-only intake workflow that evaluates upstream contributor guidance, Interactive rules, and Maintainer Proposals with reusable semantic assessments, guidance-capacity reporting, portable drafts, and auditable promotion contracts.
 - Added versioned source definitions, parser contracts, deterministic collection-only inventories, complete-corpus assessment and reconciliation, and one disposable Workbench display with canonical source and catalog binding.

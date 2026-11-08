@@ -24,7 +24,10 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/Workbench.Activity.psm1') -Force
 $resolvedDatabasePath = [IO.Path]::GetFullPath($DatabasePath)
+$analysisClock = [Diagnostics.Stopwatch]::StartNew()
+$commandOutput = [pscustomobject]@{ Completed = $false }
 if ($ResumeRunId -gt 0 -and $Force) { throw 'ResumeRunId cannot be combined with Force; fresh evaluation requires a new run' }
 if ($ContinueRunId -gt 0 -and ($ResumeRunId -gt 0 -or $Force)) { throw 'ContinueRunId cannot be combined with ResumeRunId or Force' }
 $runtimeRequest = [ordered]@{ databaseGuid = $DatabaseGuid }
@@ -51,6 +54,11 @@ foreach ($availableProfile in $availability.profiles) {
     Format-ValidationStatusLine -Status 'passed' -Name $availableProfile.name -Detail "$($availableProfile.model)/$($availableProfile.reasoningEffort); CLI $($availability.version)" | Write-Host
     $analysisChecks.Add([pscustomobject]@{ status = 'passed'; name = $availableProfile.name })
 }
+function Complete-NativeCommandTextOutput {
+    if ($commandOutput.Completed) { return }
+    $commandOutput.Completed = $true
+    Complete-ValidationTextOutput | Write-Host
+}
 function Write-NativeFailureSummary {
     param([object[]]$Checks, [string[]]$Failures)
 
@@ -61,7 +69,7 @@ function Write-NativeFailureSummary {
     Write-ValidationTwoColumnTable -Rows $Checks -FirstHeader 'Status' -FirstProperty 'status' -SecondHeader 'Check' -SecondProperty 'name' -UppercaseFirst | Write-Host
     Write-ValidationSectionHeader -Title 'Failures' | Write-Host
     foreach ($failure in $Failures) { Write-Host ('  - ' + $failure) }
-    Complete-ValidationTextOutput | Write-Host
+    Complete-NativeCommandTextOutput
 }
 function Write-NativeExecutionRefusal {
     param([object]$Event, [object[]]$CompletedChecks)
@@ -100,12 +108,14 @@ function Invoke-NativeDownstreamContinuation {
     $preparationClock = [Diagnostics.Stopwatch]::StartNew()
     Write-ValidationSectionHeader -Title ('Native ' + $phases[$phaseIndex] + ' Preparation') | Write-Host
     Format-ValidationStatusLine -Status running -Name ($phases[$phaseIndex] + '-preparation') -Detail $preparationDetails[$phases[$phaseIndex]] -AlignmentWidth 42 | Write-Host
-    ($Request | ConvertTo-Json -Compress) | & node $BridgePath continue-analysis $SelectedDatabasePath | ForEach-Object {
+    $activity = Start-WorkbenchActivity -Name 'Preparing Routing' -Clock $analysisClock
+    Invoke-WorkbenchActivityProcess -Arguments @($BridgePath, 'continue-analysis', $SelectedDatabasePath) -InputObject ($Request | ConvertTo-Json -Compress) -Activity $activity | ForEach-Object {
         try { $event = $_ | ConvertFrom-Json -Depth 100 -DateKind String }
         catch { throw 'Database continuation emitted invalid structured progress; raw content omitted' }
         if ($null -ne $refusal -or $null -ne $failureEvent) { throw 'Database continuation emitted output after a terminal failure' }
         if ($null -ne $event.PSObject.Properties['kind'] -and $event.kind -ceq 'execution-refused') {
             if ($phaseIndex -ne 0 -or $null -ne $plan -or $active.Count -ne 0) { throw 'Database continuation refused an already active execution' }
+            Stop-WorkbenchActivity -Activity $activity
             Write-NativeExecutionRefusal -Event $event -CompletedChecks $CompletedChecks
             $refusal = $event
             return
@@ -116,6 +126,7 @@ function Invoke-NativeDownstreamContinuation {
                 $null -eq $plan -or $failedBatches.Count -eq 0 -or $active.Count -ne 0) {
                 throw 'Database continuation failure does not match settled failed work; raw content omitted'
             }
+            Stop-WorkbenchActivity -Activity $activity
             Write-NativeFailureSummary -Checks $checkRecords.ToArray() -Failures $failureMessages.ToArray()
             $failureEvent = $event
             return
@@ -124,6 +135,7 @@ function Invoke-NativeDownstreamContinuation {
             if ($event.runId -ne $Request.runId -or $null -ne $completion) { throw 'Database continuation progress does not match its selected run' }
             if ($event.state -ceq 'complete') {
                 if ($phaseIndex -ne $phases.Count -or $active.Count -ne 0 -or $event.outcome -cne 'complete') { throw 'Database continuation completed without all required phases' }
+                Stop-WorkbenchActivity -Activity $activity
                 $completion = $event
                 return
             }
@@ -136,6 +148,7 @@ function Invoke-NativeDownstreamContinuation {
                 $completed.Clear()
                 $failedBatches.Clear()
                 $preparationClock.Stop()
+                Update-WorkbenchActivity -Activity $activity -Name ('Processing ' + [Globalization.CultureInfo]::InvariantCulture.TextInfo.ToTitleCase($event.phase))
                 Format-ValidationStatusLine -Status passed -Name ($event.phase + '-preparation') -Detail "Bounded workload planned : [Elapsed: $(Format-ElapsedDuration -Milliseconds $preparationClock.ElapsedMilliseconds)]" -AlignmentWidth 42 | Write-Host
                 $checkRecords.Add([pscustomobject]@{ status = 'passed'; name = $event.phase + '-preparation' })
                 Write-ValidationSectionHeader -Title ('Processing Native ' + $event.phase) | Write-Host
@@ -144,7 +157,7 @@ function Invoke-NativeDownstreamContinuation {
                 else {
                     $fields.Workers = $event.workerCount
                     $fields.Payload = Format-ByteSize -Bytes $event.pendingPayloadBytes
-                    $fields.Estimated = (Format-ElapsedDuration -Milliseconds $event.estimatedMilliseconds) + ' (provisional)'
+                    $fields.Estimated = Format-ElapsedDuration -Milliseconds $event.estimatedMilliseconds
                 }
                 Write-ValidationSummary -Fields $fields | Write-Host
                 Write-Host ''
@@ -161,8 +174,11 @@ function Invoke-NativeDownstreamContinuation {
                 $plan = $null
                 if ($phaseIndex -lt $phases.Count) {
                     $preparationClock.Restart()
+                    Update-WorkbenchActivity -Activity $activity -Name ('Preparing ' + [Globalization.CultureInfo]::InvariantCulture.TextInfo.ToTitleCase($phases[$phaseIndex]))
                     Write-ValidationSectionHeader -Title ('Native ' + $phases[$phaseIndex] + ' Preparation') | Write-Host
                     Format-ValidationStatusLine -Status running -Name ($phases[$phaseIndex] + '-preparation') -Detail $preparationDetails[$phases[$phaseIndex]] -AlignmentWidth 42 | Write-Host
+                } else {
+                    Update-WorkbenchActivity -Activity $activity -Name 'Completing Analysis'
                 }
                 return
             }
@@ -198,6 +214,7 @@ function Invoke-NativeDownstreamContinuation {
             $result = $event
         } else { throw 'Database continuation emitted an unsupported result; raw content omitted' }
     }
+    $LASTEXITCODE = $activity.ExitCode
     if ($null -ne $refusal) {
         if ($LASTEXITCODE -ne 1) { throw 'Database execution refusal requires a nonzero failure exit code' }
         return $refusal
@@ -219,6 +236,7 @@ if ($ContinueRunId -gt 0) {
     Write-ValidationSummary -Fields ([ordered]@{ Status = 'ANALYSIS COMPLETE; UI integration still pending'; Run = $downstreamResult.runId;
         Sources = $downstreamResult.sourceCount; Assessments = $downstreamResult.assessmentCount; Groups = $downstreamResult.groupCount;
         Comparisons = $downstreamResult.comparisonCount; 'Ready for UI' = $downstreamResult.readyForUi }) | Write-Host
+    Complete-NativeCommandTextOutput
     return
 }
 
@@ -231,18 +249,20 @@ if ($ResumeRunId -gt 0) {
     $operation = 'resume-assess'
 }
 Write-ValidationSectionHeader -Title 'Source Assessment' | Write-Host
+$activity = Start-WorkbenchActivity -Name 'Preparing Source Assessment' -Clock $analysisClock
 $activeBatches = @{}
 $completedBatches = [Collections.Generic.HashSet[int]]::new()
 $assessmentPlan = $null
 $completionEvent = $null
 $analysisResult = $null
 $executionRefusal = $null
-($request | ConvertTo-Json -Compress) | & node (Join-Path $PSScriptRoot '../../modules/workbench/WorkbenchDatabase.mjs') $operation $resolvedDatabasePath | ForEach-Object {
+Invoke-WorkbenchActivityProcess -Arguments @((Join-Path $PSScriptRoot '../../modules/workbench/WorkbenchDatabase.mjs'), $operation, $resolvedDatabasePath) -InputObject ($request | ConvertTo-Json -Compress) -Activity $activity | ForEach-Object {
     try { $event = $_ | ConvertFrom-Json -Depth 100 -DateKind String }
     catch { throw 'Database assessment emitted invalid structured progress; raw content omitted' }
     if ($null -ne $executionRefusal) { throw 'Database assessment emitted output after an execution refusal' }
     if ($null -ne $event.PSObject.Properties['kind'] -and $event.kind -ceq 'execution-refused') {
         if ($null -ne $assessmentPlan -or $activeBatches.Count -ne 0) { throw 'Database assessment refused an already active execution' }
+        Stop-WorkbenchActivity -Activity $activity
         Write-NativeExecutionRefusal -Event $event -CompletedChecks $analysisChecks.ToArray()
         $executionRefusal = $event
         return
@@ -252,6 +272,7 @@ $executionRefusal = $null
             if ($null -ne $assessmentPlan -or $event.totalSourceCount -ne ($event.cachedSourceCount + $event.recoveredSourceCount + $event.pendingSourceCount) -or
                 $event.workerCount -ne [Math]::Min($MaxParallelBatches, $event.batchCount)) { throw 'Database assessment emitted an invalid workload plan' }
             $assessmentPlan = $event
+            Update-WorkbenchActivity -Activity $activity -Name 'Processing Source Assessment'
             $fields = [ordered]@{ Sources = "$($event.totalSourceCount) total | $($event.cachedSourceCount) cached | $($event.recoveredSourceCount) recovered" }
             if ($event.pendingSourceCount -eq 0) {
                 $fields.Execution = 'No evaluation required'
@@ -274,6 +295,7 @@ $executionRefusal = $null
             if ($activeBatches.Count -ne 0 -or $completedBatches.Count -ne $assessmentPlan.batchCount -or $event.completedSources -ne $assessmentPlan.totalSourceCount) {
                 throw 'Database assessment completion does not cover its planned batches'
             }
+            Stop-WorkbenchActivity -Activity $activity
             $completionEvent = $event
             $detail = "$($event.sourceCount) sources | $($event.cachedSourceCount) cached | $($event.recoveredSourceCount) recovered | $($event.evaluatedSourceCount) evaluated : [Elapsed: $(Format-ElapsedDuration -Milliseconds $event.totalElapsedMilliseconds)]"
             Format-ValidationStatusLine -Status passed -Name 'source-assessment' -Detail $detail -AlignmentWidth 42 | Write-Host
@@ -306,6 +328,7 @@ $executionRefusal = $null
         $analysisResult = $event
     } else { throw 'Database assessment emitted an unsupported event; raw content omitted' }
 }
+$LASTEXITCODE = $activity.ExitCode
 if ($null -ne $executionRefusal) {
     if ($LASTEXITCODE -ne 1) { throw 'Database execution refusal requires a nonzero failure exit code' }
     exit 1
@@ -322,3 +345,4 @@ Write-ValidationSummary -Fields ([ordered]@{
     Assessments = $analysisResult.completedAssessments
     'Ready for UI' = $analysisResult.readyForUi
 }) | Write-Host
+Complete-NativeCommandTextOutput

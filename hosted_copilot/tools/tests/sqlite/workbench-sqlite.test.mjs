@@ -895,6 +895,46 @@ test('native reconciliation component commits require exact complete coverage an
   assert.equal(connection.isTransaction, false);
 });
 
+test('native consolidation merge schema upgrade preserves revision-two rows and rejects unowned merges', context => {
+  const { connection, binding, run } = nativeAssessmentFixture(context, { schemaVersion: 2 });
+  const tables = connection.all("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").map(row => row.name);
+  const before = tables.map(name => ({ name, columns: connection.all(`PRAGMA table_info(${name})`).map(row => row.name), rows: connection.all(`SELECT * FROM ${name}`) }));
+  const result = migrateWorkbenchApplication(connection, { databaseGuid: binding.databaseGuid, expectedSchemaVersion: 2 });
+  assert.equal(result.schemaVersion, 3);
+  assert.equal(validateWorkbenchApplicationSchema(connection).valid, true);
+  for (const table of before.filter(table => table.name !== 'application_migrations')) {
+    assert.deepEqual(connection.all(`SELECT ${table.columns.join(', ')} FROM ${table.name}`), table.rows);
+  }
+  assert.throws(() => connection.run('INSERT INTO consolidation_merges(run_id,evaluator_profile_id,plan_sha256,created_at) VALUES (?,?,?,?)',
+    [run.runId, 999999, 'a'.repeat(64), new Date().toISOString()]), /active run and its pinned evaluator/);
+});
+
+test('native consolidation shard planning preserves all within-block and cross-block comparisons', async () => {
+  const { planConsolidationShards, readWorkbenchBudgets, mergeConsolidationShards } = await import('../../modules/workbench/WorkbenchSharding.mjs');
+  const components = Array.from({ length: 6 }, (_, index) => ({ componentId: index + 1,
+    semanticSummary: `Synthetic requirement ${index + 1}: ${'meaning '.repeat(8)}`, assessmentResultIds: [index + 1] }));
+  const stagePayloadBudgetBytes = Buffer.byteLength(JSON.stringify({ components: components.slice(0, 2) }));
+  const budgets = { stagePayloadBudgetBytes, evaluatorPayloadBudgetBytes: stagePayloadBudgetBytes + 100 };
+  const measure = members => Buffer.byteLength(JSON.stringify({ components: members })) + 100;
+  const shards = planConsolidationShards(components, budgets, measure);
+  assert.ok(shards.length > 1);
+  assert.ok(shards.every(shard => shard.payloadBytes <= budgets.evaluatorPayloadBudgetBytes));
+  for (const left of components) for (const right of components) {
+    assert.ok(shards.some(shard => shard.componentIds.includes(left.componentId) && shard.componentIds.includes(right.componentId)));
+  }
+  assert.deepEqual(planConsolidationShards([...components].reverse(), budgets, measure), shards);
+  assert.throws(() => readWorkbenchBudgets({ ...budgets, evaluatorPayloadBudgetBytes: 1 }), /positive byte budgets/);
+  assert.throws(() => planConsolidationShards(components, budgets, () => budgets.evaluatorPayloadBudgetBytes + 1), /evaluator budget/);
+  const results = shards.map(shard => ({ componentIds: shard.componentIds, components: [{ assessmentResultIds: shard.componentIds }] }));
+  const merged = mergeConsolidationShards(components, shards, results);
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0].assessmentResultIds, [1, 2, 3, 4, 5, 6]);
+  assert.throws(() => mergeConsolidationShards(components, shards, results.slice(1)), /every planned shard/);
+  assert.throws(() => mergeConsolidationShards(components, shards.slice(0, 1), results.slice(0, 1)), /cross-block comparison coverage/);
+  assert.throws(() => mergeConsolidationShards(components, shards, results.map((result, index) => index ? result : { ...result, components: [] })), /exact complete shard membership/);
+  assert.equal(components.length, 6);
+});
+
 test('native downstream planning measures complete routing envelopes before dispatch', context => {
   const { connection, binding, run, profileId, assignments, sourceVersionIds } = nativeAssessmentFixture(context,
     { sourceCount: 3, content: 'x'.repeat(150000), taskCodes: ['assessment', 'reconciliation'] });

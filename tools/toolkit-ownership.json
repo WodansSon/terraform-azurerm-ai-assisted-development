@@ -42,6 +42,18 @@
       "ownership": "shared"
     },
     {
+      "pattern": "tools/Test-Pii.ps1",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "tools/Test-PiiChecker.ps1",
+      "ownership": "shared"
+    },
+    {
+      "pattern": "tools/privacy/**",
+      "ownership": "shared"
+    },
+    {
       "pattern": "tools/npm-validation/**",
       "ownership": "shared"
     },

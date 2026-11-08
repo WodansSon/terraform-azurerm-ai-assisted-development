@@ -1,5 +1,5 @@
 import { requireSourceObject, requireSourceText, requireSourceHash, sourceTextHash } from './WorkbenchSourceRecords.mjs';
-import { prepareEvaluationInput, withEvaluationTransaction } from './WorkbenchEvaluations.mjs';
+import { prepareEvaluationInput, withEvaluationTransaction, readRecordedReconciliationRequest } from './WorkbenchEvaluations.mjs';
 import { readSelectedCapacityConfiguration } from './WorkbenchWorkspace.mjs';
 
 function insert(connection, sql, values) {
@@ -27,10 +27,7 @@ export function commitSynthesisResults(connection, request) {
     if (!evaluation || evaluation.outcome !== 'running' || evaluation.run_outcome !== 'running' || evaluation.task_code !== 'reconciliation' ||
       evaluation.input_fingerprint !== request.inputFingerprint) throw new Error('Synthesis result does not match its running request identity');
     const inputs = connection.all('SELECT * FROM evaluation_inputs WHERE evaluation_id = ? ORDER BY id', [request.evaluationId]);
-    const prepared = prepareEvaluationInput(connection, { binding: request.binding, runId: request.runId, profileId: evaluation.evaluator_profile_id,
-      sourceVersionIds: inputs.filter(row => row.role_code === 'source').map(row => row.source_version_id),
-      assessmentResultIds: inputs.filter(row => row.role_code === 'assessment-result').map(row => row.assessment_result_id),
-      componentIds: inputs.filter(row => row.role_code === 'component').map(row => row.reconciliation_component_id), reconciliationPhase: 'synthesis' });
+    const prepared = prepareEvaluationInput(connection, readRecordedReconciliationRequest(connection, request.binding, request.runId, request.evaluationId, 'synthesis'));
     if (sourceTextHash(prepared.serializedInput) !== request.inputFingerprint) throw new Error('Synthesis result refuses changed evaluation inputs');
     const input = JSON.parse(prepared.serializedInput);
     const expected = new Set(input.assessments.map(assessment => assessment.assessmentResultId));

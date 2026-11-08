@@ -4,6 +4,7 @@ import { prepareAdjudicationInput } from './WorkbenchAdjudication.mjs';
 import { sourceTextHash } from './WorkbenchSourceRecords.mjs';
 import { readSelectedCapacityConfiguration } from './WorkbenchWorkspace.mjs';
 import { readWorkspaceLlmAssignments } from './WorkbenchLlmAssignments.mjs';
+import { readConsolidatedComponents } from './WorkbenchConsolidation.mjs';
 
 function pairKey(left, right) {
   return [left, right].sort().join('|');
@@ -11,7 +12,7 @@ function pairKey(left, right) {
 
 export function completeNativeAnalysis(connection, request) {
   const fields = ['binding', 'runId', 'sourceProfileId', 'reconciliationProfileId', 'adjudicationProfileId', 'expectedHeadRunId'];
-  requireSourceObject(request, fields, fields, 'Analysis completion');
+  requireSourceObject(request, [...fields, 'routingProfileId', 'consolidatedMergeId'], fields, 'Analysis completion');
   if (request.expectedHeadRunId !== null && (!Number.isSafeInteger(request.expectedHeadRunId) || request.expectedHeadRunId < 1)) {
     throw new Error('Analysis completion requires the explicit prior head identity');
   }
@@ -48,10 +49,20 @@ export function completeNativeAnalysis(connection, request) {
     if (dispositions.length !== sourceResults.length || sourceResults.some(result => !dispositions.some(row => row.assessment_result_id === result.id))) {
       throw new Error('Analysis completion requires a final disposition for every assessed meaning');
     }
+    if (request.consolidatedMergeId !== undefined) {
+      const components = readConsolidatedComponents(connection, request.runId, request.reconciliationProfileId, request.consolidatedMergeId);
+      const covered = components.flatMap(component => component.assessmentResultIds);
+      if (covered.length !== sourceResults.length || new Set(covered).size !== covered.length || sourceResults.some(result => !covered.includes(result.id))) {
+        throw new Error('Analysis completion requires complete canonical consolidation membership');
+      }
+    }
     const stageEvaluations = connection.all(`SELECT evaluation.*, profile.task_code FROM evaluations evaluation JOIN run_evaluations used ON used.evaluation_id = evaluation.id
       JOIN evaluator_profiles profile ON profile.id = evaluation.evaluator_profile_id WHERE used.run_id = ? AND profile.task_code IN ('reconciliation', 'adjudication')`, [request.runId]);
     if (stageEvaluations.some(evaluation => evaluation.outcome === 'running' ||
-      evaluation.evaluator_profile_id !== (evaluation.task_code === 'reconciliation' ? request.reconciliationProfileId : request.adjudicationProfileId))) {
+      (evaluation.evaluator_profile_id !== (evaluation.task_code === 'reconciliation' ? request.reconciliationProfileId : request.adjudicationProfileId) &&
+        !(evaluation.task_code === 'reconciliation' && evaluation.evaluator_profile_id === request.routingProfileId &&
+          connection.all('SELECT role_code FROM evaluation_inputs WHERE evaluation_id = ?', [evaluation.id]).every(input => ['source', 'source-metadata', 'assessment-result'].includes(input.role_code)) &&
+          connection.all('SELECT phase_code FROM reconciliation_components WHERE evaluation_id = ?', [evaluation.id]).every(component => component.phase_code === 'routing'))))) {
       throw new Error('Analysis completion refuses unfinished or mixed downstream evaluator identities');
     }
     const groups = connection.all(`SELECT version.id FROM group_versions version JOIN run_evaluations used ON used.evaluation_id = version.synthesis_evaluation_id

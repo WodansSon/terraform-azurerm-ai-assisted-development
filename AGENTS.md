@@ -40,11 +40,20 @@ These rules govern maintainer collaboration behavior before any formal review wo
 
 ## Sensitive Data Handling
 
+- Never put real personal or machine-specific information into tracked, trackable, shipped, or publishable files. This includes local account or Microsoft aliases, personal home paths, device names, private workspace directory layouts, local database identifiers, and run-specific artifact locations. Use synthetic placeholders or environment-variable-based examples instead.
+- Keep exact maintainer restart and recovery details only in explicitly requested ignored local-only notes, private memory, or external private checkpoints. A request to preserve context, update workspace notes, or commit WIP is not permission to copy private state into product documentation, repository artifacts, PR bodies, or public output. Product documents must not depend on private checkpoint files.
 - Never write, persist, commit, stage, log, echo, render, paste, or include real credentials or secret material in repository files, generated artifacts, fixtures, caches, command output, browser-visible surfaces, tool responses, or chat responses. This includes API, access, refresh, session, and personal-access tokens; passwords; private or signing keys; connection strings; authorization headers; and equivalent authentication material.
 - Treat commands that could print credentials or secret-bearing configuration as unsafe by default. Query only non-sensitive fields, suppress secret values at the source, and report redacted metadata rather than capturing output and masking it afterward.
 - Never repeat an accidentally exposed secret in analysis, summaries, diagnostics, examples, or remediation instructions. Refer to it only by type and location, redact any unavoidable excerpt, stop further propagation, and tell the maintainer to revoke or rotate it through the owning system.
 - Use synthetic placeholders in tests and documentation. Do not copy real values into sanitized fixtures, regression captures, screenshots, terminal transcripts, browser storage, or generated logs.
 - Allow an ephemeral least-privilege capability value only when an explicitly designed local runtime requires it. Keep it outside tracked files, prevent it from appearing in logs and chat, scope it to the minimum operation and lifetime, and remove its temporary storage when the runtime ends.
+
+### Mandatory Privacy Edit Gate
+
+- Read this file before the first write in a session and reread its privacy rules after a context restart or when using private notes, local command output, or user-profile data as source material. If the rules cannot be loaded, stop rather than assume they are satisfied.
+- Before each write, classify the destination as repository/public or explicitly private. Treat uncertain destinations as repository/public; do not infer privacy from an untracked file, a documentation folder, or a WIP label. Confirm that a local-only destination is excluded from Git before storing machine-specific restart state there.
+- Before staging or pushing, verify the actual staged content and outgoing commit range for sensitive material, not just the worktree or filenames. A check that failed to run, a missing scanner, or an unverified result is a blocker, not a passing privacy check. Do not bypass a privacy gate, suppress its failure, or add an exception for implementation convenience.
+- Report privacy matches only as safe file locations, line numbers, counts, or redacted classifications. Never echo the matched personal value. If exposure is suspected, stop further propagation and distinguish current local edits from the exact remote commit before claiming that published content is clean; do not rewrite history without explicit approval.
 
 ## Ownership Discipline
 

@@ -5,7 +5,7 @@ import { createProtectedSnapshotSchema } from './WorkbenchProtectedSnapshots.mjs
 import { createWorkspaceIdentitySchema } from './WorkbenchWorkspace.mjs';
 import { createAuthoredAuditSchema } from './WorkbenchAuthoredRefresh.mjs';
 
-export const workbenchSchemaVersion = 2;
+export const workbenchSchemaVersion = 3;
 
 function findingParticipantsDdl(includeRuleVersions) {
   return `CREATE TABLE finding_participants (
@@ -484,9 +484,52 @@ function createApplicationObjects(connection, schemaVersion) {
     ) STRICT;
   `);
   if (schemaVersion >= 2) createReconciliationComponents(connection);
-  createEvaluationInputs(connection, schemaVersion >= 2);
+  if (schemaVersion >= 3) createConsolidationMerges(connection);
+  createEvaluationInputs(connection, schemaVersion >= 2, schemaVersion >= 3);
   if (schemaVersion >= 2) createReconciliationComponentGuards(connection);
   createApplicationGuards(connection);
+}
+
+function createConsolidationMerges(connection) {
+  connection.exec(`
+    CREATE TABLE consolidation_merges (
+      id INTEGER PRIMARY KEY, run_id INTEGER NOT NULL REFERENCES analysis_runs(id), evaluator_profile_id INTEGER NOT NULL REFERENCES evaluator_profiles(id),
+      plan_sha256 TEXT NOT NULL CHECK(length(plan_sha256) = 64), created_at TEXT NOT NULL, UNIQUE(run_id, evaluator_profile_id, plan_sha256)
+    ) STRICT;
+    CREATE TABLE consolidation_merge_evaluations (
+      merge_id INTEGER NOT NULL REFERENCES consolidation_merges(id), evaluation_id INTEGER NOT NULL REFERENCES evaluations(id),
+      ordinal INTEGER NOT NULL CHECK(ordinal >= 0), PRIMARY KEY(merge_id, evaluation_id), UNIQUE(merge_id, ordinal)
+    ) STRICT;
+    CREATE TABLE consolidated_components (
+      id INTEGER PRIMARY KEY, merge_id INTEGER NOT NULL REFERENCES consolidation_merges(id), ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+      semantic_summary TEXT NOT NULL CHECK(length(semantic_summary) > 0), UNIQUE(merge_id, ordinal)
+    ) STRICT;
+    CREATE TABLE consolidated_component_members (
+      component_id INTEGER NOT NULL REFERENCES consolidated_components(id), assessment_result_id INTEGER NOT NULL REFERENCES assessment_results(id),
+      PRIMARY KEY(component_id, assessment_result_id)
+    ) STRICT;
+    CREATE TRIGGER consolidation_merge_scope_INSERT BEFORE INSERT ON consolidation_merges
+      WHEN NOT EXISTS(SELECT 1 FROM analysis_runs run JOIN analysis_run_llm_assignments assigned ON assigned.run_id = run.id
+        JOIN evaluator_profiles profile ON profile.llm_assignment_id = assigned.assignment_id AND profile.task_code = assigned.task_code
+        WHERE run.id = NEW.run_id AND run.outcome = 'running' AND profile.id = NEW.evaluator_profile_id AND profile.task_code = 'reconciliation')
+      BEGIN SELECT RAISE(ABORT, 'Consolidation merge requires an active run and its pinned evaluator'); END;
+    CREATE TRIGGER consolidation_merge_evaluation_scope_INSERT BEFORE INSERT ON consolidation_merge_evaluations
+      WHEN NOT EXISTS(SELECT 1 FROM consolidation_merges merge JOIN run_evaluations used ON used.run_id = merge.run_id
+        JOIN evaluations evaluation ON evaluation.id = used.evaluation_id
+        WHERE merge.id = NEW.merge_id AND evaluation.id = NEW.evaluation_id AND evaluation.outcome = 'complete'
+          AND evaluation.evaluator_profile_id = merge.evaluator_profile_id
+          AND EXISTS(SELECT 1 FROM reconciliation_components component WHERE component.evaluation_id = evaluation.id AND component.phase_code = 'consolidation'))
+      BEGIN SELECT RAISE(ABORT, 'Consolidation merge lineage requires its completed shard evaluations'); END;
+    CREATE TRIGGER consolidated_component_member_scope_INSERT BEFORE INSERT ON consolidated_component_members
+      WHEN NOT EXISTS(SELECT 1 FROM consolidated_components component JOIN consolidation_merge_evaluations lineage ON lineage.merge_id = component.merge_id
+        JOIN evaluation_inputs input ON input.evaluation_id = lineage.evaluation_id
+        WHERE component.id = NEW.component_id AND input.role_code = 'assessment-result' AND input.assessment_result_id = NEW.assessment_result_id)
+      BEGIN SELECT RAISE(ABORT, 'Consolidated member requires exact completed shard evidence'); END;
+  `);
+  for (const table of ['consolidation_merges', 'consolidation_merge_evaluations', 'consolidated_components', 'consolidated_component_members']) {
+    for (const operation of ['UPDATE', 'DELETE']) connection.exec(`CREATE TRIGGER application_${table}_${operation} BEFORE ${operation} ON ${table}
+      BEGIN SELECT RAISE(ABORT, 'Consolidation merge history is immutable'); END`);
+  }
 }
 
 function createReconciliationComponents(connection) {
@@ -524,7 +567,7 @@ function createReconciliationComponentGuards(connection) {
   }
 }
 
-function createEvaluationInputs(connection, includeAssessmentResults = false) {
+function createEvaluationInputs(connection, includeAssessmentResults = false, includeConsolidatedComponents = false) {
   const inputs = {
     source_version_id: 'source_versions', source_observation_id: 'source_observations', group_version_id: 'group_versions', wording_version_id: 'wording_versions',
     rule_version_id: 'rule_versions', catalog_version_id: 'catalog_versions', protected_snapshot_id: 'protected_snapshots', plan_version_id: 'plan_versions',
@@ -533,6 +576,10 @@ function createEvaluationInputs(connection, includeAssessmentResults = false) {
   if (includeAssessmentResults) {
     inputs.assessment_result_id = 'assessment_results';
     inputs.reconciliation_component_id = 'reconciliation_components';
+  }
+  if (includeConsolidatedComponents) {
+    inputs.consolidated_component_id = 'consolidated_components';
+    inputs.evaluator_profile_id = 'evaluator_profiles';
   }
   connection.exec(`CREATE TABLE evaluation_inputs (
     id INTEGER PRIMARY KEY, evaluation_id INTEGER NOT NULL REFERENCES evaluations(id), role_code TEXT NOT NULL,
@@ -619,7 +666,7 @@ function createApplicationGuards(connection) {
 
 export function migrateNewWorkbenchApplication(connection, { schemaVersion = workbenchSchemaVersion } = {}) {
   if (connection.readOnly || connection.isTransaction) throw new Error('Application initialization requires its own writable transaction');
-  if (![1, workbenchSchemaVersion].includes(schemaVersion)) throw new Error('Application schema revision is not supported');
+  if (![1, 2, workbenchSchemaVersion].includes(schemaVersion)) throw new Error('Application schema revision is not supported');
   if (connection.get("SELECT name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' LIMIT 1")) throw new Error('Application initialization requires an empty database; existing schemas need an explicit supported migration');
   connection.exec('BEGIN IMMEDIATE');
   try {
@@ -655,14 +702,14 @@ function expectedSchemaSignature(schemaVersion) {
 
 export function migrateWorkbenchApplication(connection, { databaseGuid, expectedSchemaVersion }) {
   if (connection.readOnly || connection.isTransaction) throw new Error('Application upgrade requires its own writable transaction');
-  if (expectedSchemaVersion !== 1 || typeof databaseGuid !== 'string' || databaseGuid.length === 0) {
+  if (![1, 2].includes(expectedSchemaVersion) || typeof databaseGuid !== 'string' || databaseGuid.length === 0) {
     throw new Error('Application upgrade requires the selected database identity and supported prior schema revision');
   }
   if (connection.get('SELECT database_guid FROM workspace_identity WHERE id = 1')?.database_guid !== databaseGuid) {
     throw new Error('Application upgrade refuses a mismatched database identity');
   }
   const versions = connection.all('SELECT version FROM application_migrations ORDER BY version');
-  if (versions.length !== 1 || versions[0].version !== expectedSchemaVersion || schemaSignature(connection) !== expectedSchemaSignature(expectedSchemaVersion)) {
+  if (versions.at(-1)?.version !== expectedSchemaVersion || !validateWorkbenchApplicationSchema(connection, { schemaVersion: expectedSchemaVersion }).valid) {
     throw new Error('Application upgrade refuses an unsupported or altered source schema');
   }
   if (connection.get('PRAGMA foreign_keys')?.foreign_keys !== 1 || connection.all('PRAGMA foreign_key_check').length ||
@@ -673,18 +720,26 @@ export function migrateWorkbenchApplication(connection, { databaseGuid, expected
   try {
     const columns = connection.all('PRAGMA table_info(evaluation_inputs)').map(column => column.name);
     const indexes = connection.all('PRAGMA index_list(evaluation_inputs)').filter(index => index.origin === 'c');
+    if (expectedSchemaVersion === 2) {
+      for (const name of ['reconciliation_component_scope_INSERT', 'reconciliation_component_member_scope_INSERT',
+        'application_reconciliation_components_UPDATE', 'application_reconciliation_components_DELETE',
+        'application_reconciliation_component_members_UPDATE', 'application_reconciliation_component_members_DELETE']) connection.exec(`DROP TRIGGER ${name}`);
+    }
     connection.exec('ALTER TABLE evaluation_inputs RENAME TO evaluation_inputs_revision_one');
     for (const index of indexes) connection.exec(`DROP INDEX "${index.name}"`);
-    createReconciliationComponents(connection);
-    createEvaluationInputs(connection, true);
+    if (expectedSchemaVersion === 1) createReconciliationComponents(connection);
+    createConsolidationMerges(connection);
+    createEvaluationInputs(connection, true, true);
     connection.exec(`INSERT INTO evaluation_inputs (${columns.join(', ')}) SELECT ${columns.join(', ')} FROM evaluation_inputs_revision_one`);
     connection.exec('DROP TABLE evaluation_inputs_revision_one');
     createReconciliationComponentGuards(connection);
-    const participantColumns = connection.all('PRAGMA table_info(finding_participants)').map(column => column.name);
-    connection.exec('ALTER TABLE finding_participants RENAME TO finding_participants_revision_one');
-    connection.exec(findingParticipantsDdl(true));
-    connection.exec(`INSERT INTO finding_participants (${participantColumns.join(', ')}) SELECT ${participantColumns.join(', ')} FROM finding_participants_revision_one`);
-    connection.exec('DROP TABLE finding_participants_revision_one');
+    if (expectedSchemaVersion === 1) {
+      const participantColumns = connection.all('PRAGMA table_info(finding_participants)').map(column => column.name);
+      connection.exec('ALTER TABLE finding_participants RENAME TO finding_participants_revision_one');
+      connection.exec(findingParticipantsDdl(true));
+      connection.exec(`INSERT INTO finding_participants (${participantColumns.join(', ')}) SELECT ${participantColumns.join(', ')} FROM finding_participants_revision_one`);
+      connection.exec('DROP TABLE finding_participants_revision_one');
+    }
     connection.run('INSERT INTO application_migrations(version, applied_at) VALUES (?, ?)', [workbenchSchemaVersion, new Date().toISOString()]);
     if (schemaSignature(connection) !== expectedSchemaSignature(workbenchSchemaVersion) || connection.all('PRAGMA foreign_key_check').length) {
       throw new Error('Application upgrade failed target schema or referential verification');
@@ -702,12 +757,13 @@ export function migrateWorkbenchApplication(connection, { databaseGuid, expected
 
 export function validateWorkbenchApplicationSchema(connection, { schemaVersion = workbenchSchemaVersion } = {}) {
   const problems = [];
-  if (![1, workbenchSchemaVersion].includes(schemaVersion)) return { valid: false, schemaVersion, problems: ['unsupported-schema-version'] };
+  if (![1, 2, workbenchSchemaVersion].includes(schemaVersion)) return { valid: false, schemaVersion, problems: ['unsupported-schema-version'] };
   if (schemaSignature(connection) !== expectedSchemaSignature(schemaVersion)) problems.push('schema-shape-mismatch');
   try {
     const versions = connection.all('SELECT version FROM application_migrations ORDER BY version');
     const revisions = versions.map(row => row.version);
-    if (JSON.stringify(revisions) !== JSON.stringify([schemaVersion]) && JSON.stringify(revisions) !== JSON.stringify([1, schemaVersion])) {
+    if (revisions.at(-1) !== schemaVersion || revisions.some((revision, index) => !Number.isInteger(revision) || revision < 1 ||
+      revision > schemaVersion || (index > 0 && revision <= revisions[index - 1]))) {
       problems.push('unsupported-schema-version');
     }
   } catch { problems.push('missing-migration-history'); }

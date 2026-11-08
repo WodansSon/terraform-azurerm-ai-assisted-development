@@ -588,6 +588,7 @@ Add-TestResult -Name 'native-evaluator-supported-tool-free-cli-arguments' -Passe
 
 Write-TestProgress -Name 'native-analysis-availability' -Detail 'Executing the native command preflight with offline CLI and analysis boundaries'
 Import-Module (Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '../modules/workbench/Workbench.Activity.psm1') -Force
 Write-TestProgress -Name 'native-estimate-parity' -Detail 'Measuring the actual native prompt assembly and comparing numeric estimates with the legacy throughput algorithm'
 $nativePromptStatements = @($nativeEvaluatorAst.FindAll({ param($node)
     $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ceq '$inlinePrompt'
@@ -667,7 +668,7 @@ function Invoke-NativeAvailabilityFixture {
         $MaxParallelBatches = 3
         $DatabaseGuid = '12345678-1234-4234-8234-123456789abc'
         $DatabasePath = Join-Path ([IO.Path]::GetTempPath()) 'not-created-native-availability.sqlite'
-        $LASTEXITCODE = 0
+        $global:LASTEXITCODE = 0
         $script:nativeSelectedProfiles = $null
         $script:nativeAnalysisRequest = $null
         $script:nativeAnalysisStarted = $false
@@ -678,6 +679,13 @@ function Invoke-NativeAvailabilityFixture {
             if ($UnavailableRuleProfile -and $Profiles.Contains('rule-reevaluation')) { throw 'Fixture assigned reevaluation model unavailable' }
             $resolved = @($Profiles.Keys | ForEach-Object { [pscustomobject]@{ name = $_; model = $Profiles[$_].model; reasoningEffort = $Profiles[$_].reasoningEffort } })
             [pscustomobject]@{ version = '1.0.102'; profiles = $resolved }
+        }
+        function Invoke-WorkbenchActivityProcess {
+            param([string[]]$Arguments, [string]$InputObject, [object]$Activity)
+            try {
+                $InputObject | & node @Arguments
+                $Activity.ExitCode = $global:LASTEXITCODE
+            } finally { Stop-WorkbenchActivity -Activity $Activity }
         }
         function node {
             [CmdletBinding(PositionalBinding = $false)]
@@ -796,6 +804,37 @@ catch { $nativeForceResumeRejected = $_.Exception.Message -like '*cannot be comb
 Add-TestResult -Name 'native-analysis-force-resume-conflict-rejected' -Passed $nativeForceResumeRejected -Detail 'Force and same-run continuation have distinct authority and cannot be combined.'
 
 $nativeContinued = Invoke-NativeAvailabilityFixture -Body $nativeBody -ContinueRunId 5
+$completionFunctions = @($nativeAst.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Complete-NativeCommandTextOutput'
+}, $true))
+$completionValid = $completionFunctions.Count -eq 1
+foreach ($rendered in @($nativeAvailable.rendered, $nativeContinued.rendered)) {
+    $records = [regex]::Split($rendered, '\r?\n')
+    if ($records.Count -lt 2) { $completionValid = $false; continue }
+    $separatorCases = @(
+        @{ records = $records; expected = $true }
+        @{ records = @($records[0..($records.Count - 2)]); expected = $false }
+        @{ records = @($records) + @(''); expected = $false }
+    )
+    foreach ($separatorCase in $separatorCases) {
+        $caseRecords = @($separatorCase.records)
+        $hasOneSeparator = $caseRecords.Count -ge 2 -and $caseRecords[-1] -ceq '' -and
+            -not [string]::IsNullOrWhiteSpace($caseRecords[-2])
+        $completionValid = $completionValid -and $hasOneSeparator -eq $separatorCase.expected
+    }
+}
+if ($completionFunctions.Count -eq 1) {
+    $serialCompletion = @(& {
+        param([string]$Definition)
+        $commandOutput = [pscustomobject]@{ Completed = $false }
+        . ([scriptblock]::Create($Definition))
+        Complete-NativeCommandTextOutput
+        Complete-NativeCommandTextOutput
+        Complete-NativeCommandTextOutput
+    } $completionFunctions[0].Extent.Text 6>&1 | ForEach-Object { [string]$_ })
+    $completionValid = $completionValid -and $serialCompletion.Count -eq 1 -and $serialCompletion[0] -ceq ''
+}
+Add-TestResult -Name 'native-analysis-completion-separator-does-not-stack' -Passed $completionValid -Detail 'Captured source/downstream output ends with exactly one blank record after nonblank content, without checking summary fields. Missing/stacked separator variants are rejected, and three serial completion calls emit one blank record.'
 $preparationOrderValid = $true
 foreach ($phase in @('routing', 'consolidation', 'synthesis', 'adjudication')) {
     $header = 'NATIVE ' + $phase.ToUpperInvariant() + ' PREPARATION'
@@ -810,10 +849,11 @@ foreach ($phase in @('routing', 'consolidation', 'synthesis', 'adjudication')) {
         $planningPosition -gt $statusPosition -and $processingPosition -gt $planningPosition -and $headerCount -eq 1 -and $processingCount -eq 1
 }
 Add-TestResult -Name 'native-analysis-preparation-headers-precede-planning' -Passed $preparationOrderValid -Detail 'Each actual phase header and preparation status precedes backend planning, without duplicate headers or invented planning percentages.'
-Add-TestResult -Name 'native-analysis-processing-rows-preserve-assessment-timing-and-spacing' -Passed ($nativeContinued.rendered -match 'Estimated\s+: .+ \(provisional\)' -and
+Add-TestResult -Name 'native-analysis-processing-rows-preserve-assessment-timing-and-spacing' -Passed ($nativeContinued.rendered -match '(?m)^\s*Estimated\s+: \d+:\d{2}:\d{2}\r?$' -and
+    $nativeContinued.rendered -notmatch '\(provisional\)' -and
     $nativeContinued.rendered -match '(?m)^\[RUNNING\]\s+routing 1/1\s+: Evaluating database evidence\r?$' -and
     $nativeContinued.rendered -match '(?m)^\[PASSED\]\s+routing 1/1\s+: Total Elapsed .+ : \[Batch: .+\] : \[Remaining: .+\]\r?$' -and
-    $nativeContinued.rendered -notmatch 'Evaluating pinned database evidence') -Detail 'Processing phases retain actual workload numbers with a provisional estimate, readable evidence wording and matching assessment elapsed/batch/remaining labels.'
+    $nativeContinued.rendered -notmatch 'Evaluating pinned database evidence') -Detail 'Processing phases retain actual workload numbers with a duration-only estimate, readable evidence wording and matching assessment elapsed/batch/remaining labels.'
 Add-TestResult -Name 'native-analysis-downstream-continuation-is-distinct-from-source-resume' -Passed ($nativeContinued.request.runId -eq 5 -and
     -not $nativeContinued.request.PSObject.Properties['force'] -and $nativeContinued.rendered -match 'NATIVE ROUTING' -and
     $nativeContinued.rendered -match 'NATIVE CONSOLIDATION' -and $nativeContinued.rendered -match 'NATIVE SYNTHESIS' -and
@@ -825,7 +865,7 @@ catch { $nativeContinuationConflictRejected = $_.Exception.Message -like '*canno
 Add-TestResult -Name 'native-analysis-source-and-downstream-continuation-conflict-rejected' -Passed $nativeContinuationConflictRejected -Detail 'Source recovery and downstream continuation cannot be combined in an ambiguous command.'
 
 $availabilityFixtureAst = (Get-Command Invoke-NativeAvailabilityFixture).ScriptBlock.Ast
-$offlineAvailabilityFunctions = @('Resolve-HostedCliLaunch', 'Get-HostedCliAvailability') | ForEach-Object {
+$offlineAvailabilityFunctions = @('Resolve-HostedCliLaunch', 'Get-HostedCliAvailability', 'Invoke-WorkbenchActivityProcess') | ForEach-Object {
     $functionName = $_
     $definition = $availabilityFixtureAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $functionName }.GetNewClosure(), $true)
     $definition.Extent.Text
@@ -833,6 +873,7 @@ $offlineAvailabilityFunctions = @('Resolve-HostedCliLaunch', 'Get-HostedCliAvail
 $assignmentJson = @($expectedAssignments) | ConvertTo-Json -Depth 10 -Compress
 $formatterPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../tools/ValidationOutput.psm1'))
 $nativeHelpersPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1'))
+$nativeActivityPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../modules/workbench/Workbench.Activity.psm1'))
 $busyOutputValid = $true
 $settledFailureOutputValid = $true
 $prematureFailureRejected = $false
@@ -849,6 +890,7 @@ Set-StrictMode -Version Latest
 `$ErrorActionPreference = 'Stop'
 Import-Module '$($nativeHelpersPath.Replace("'", "''"))' -Force
 Import-Module '$($formatterPath.Replace("'", "''"))' -Force
+Import-Module '$($nativeActivityPath.Replace("'", "''"))' -Force
 `$expectedAssignments = '$($assignmentJson.Replace("'", "''"))' | ConvertFrom-Json
 `$UnavailableRuleProfile = `$false
 `$ResumeRunId = 0
@@ -951,6 +993,131 @@ $nativeBody
 Add-TestResult -Name 'native-analysis-busy-command-preserves-checks-and-clean-failure-summary' -Passed $busyOutputValid -Detail 'Actual source/downstream command bodies exit one with the aligned failure, current availability counts, results table and failure bullet; no raw exception or fabricated previous-run passes.'
 Add-TestResult -Name 'native-analysis-failed-phase-reports-retained-success-after-workers-settle' -Passed $settledFailureOutputValid -Detail 'Matching failed/passed batch rows settle before the failed summary, retained successes remain counted, exit is nonzero and no later phase starts.'
 Add-TestResult -Name 'native-analysis-rejects-failure-summary-before-workers-settle' -Passed $prematureFailureRejected -Detail 'A failed execution event cannot falsely claim completion while tracked workers remain active.'
+
+Write-TestProgress -Name 'native-activity' -Detail 'Checking the activity renderer, quiet transport, and owned-process cancellation without models or a database'
+$activityModule = Get-Module Workbench.Activity
+$activity = Start-WorkbenchActivity -Name 'Processing Routing'
+$clock = $activity.Clock
+$capture = [IO.StringWriter]::new()
+$consoleOutput = [Console]::Out
+$activityFramesValid = $false
+try {
+    [Console]::SetOut($capture)
+    $activity.Interactive = $true
+    foreach ($frame in 0..7) {
+        if ($frame -gt 0) { $activity.NextFrameMilliseconds = 0 }
+        & $activityModule { param($Activity) Write-WorkbenchActivityFrame -Activity $Activity -Force } $activity
+    }
+    Update-WorkbenchActivity -Activity $activity -Name 'Processing Synthesis'
+    $activityFramesValid = [object]::ReferenceEquals($clock, $activity.Clock) -and $clock.IsRunning -and $activity.Name -ceq 'Processing Synthesis'
+    Stop-WorkbenchActivity -Activity $activity
+    $frames = @([regex]::Matches($capture.ToString(), 'Processing Routing: ([. ]{3}) \[Elapsed: \d+:\d{2}:\d{2}\]') | ForEach-Object { $_.Groups[1].Value.TrimEnd() })
+    $activityFramesValid = $activityFramesValid -and ($frames -join '|') -ceq '.|..|...||.|..|...|' -and
+        $capture.ToString().Contains($PSStyle.Foreground.Yellow) -and $capture.ToString().Contains("$([char]27)[?25l") -and
+        $capture.ToString().EndsWith($PSStyle.Reset + "$([char]27)[?25h") -and -not $activity.Active -and -not $activity.CursorHidden
+} finally {
+    try { Stop-WorkbenchActivity -Activity $activity }
+    finally { [Console]::SetOut($consoleOutput); $capture.Dispose() }
+}
+Add-TestResult -Name 'native-activity-four-frames-total-clock-and-terminal-cleanup' -Passed $activityFramesValid -Detail 'The actual yellow renderer repeats dot/double/triple/blank frames, preserves its clock across phase changes, and restores cursor/color without a progress bar.'
+
+$activityTransportValid = $false
+$activity = Start-WorkbenchActivity -Name 'Preparing Routing'
+$transportCode = @'
+import {readFileSync} from 'node:fs';
+const input=JSON.parse(readFileSync(0,'utf8'));
+process.stdout.write(JSON.stringify({state:'running',input})+'\n');
+process.stderr.write('S'.repeat(10000));
+setTimeout(()=>{process.stdout.write(JSON.stringify({state:'complete'})+'\n');process.exitCode=7;},1200);
+'@
+try {
+    $inputText = @{ value = ('Synthetic ' + [char]0xE9); number = 4 } | ConvertTo-Json -Compress
+    $rows = @(Invoke-WorkbenchActivityProcess -Activity $activity -Arguments @('--input-type=module', '-e', $transportCode) -InputObject $inputText | ForEach-Object {
+        Update-WorkbenchActivity -Activity $activity -Name 'Processing Routing'
+        $_
+    })
+    $parsed = @($rows | ForEach-Object { $_ | ConvertFrom-Json -DateKind String })
+    $activityTransportValid = $rows.Count -eq 2 -and $parsed[0].input.value -ceq ('Synthetic ' + [char]0xE9) -and
+        $parsed[0].input.number -eq 4 -and $parsed[1].state -ceq 'complete' -and $activity.ExitCode -eq 7 -and
+        $activity.StderrCharacters -eq 10000 -and -not $activity.Active -and -not $activity.CursorHidden
+} finally { Stop-WorkbenchActivity -Activity $activity }
+Add-TestResult -Name 'native-activity-quiet-process-preserves-json-stderr-and-exit' -Passed $activityTransportValid -Detail 'The actual native reader preserves UTF-8 stdin and structured stdout across silence, drains more than one stderr buffer without mixing diagnostics, and retains a nonzero exit.'
+
+$ownedProcessCode = @'
+import {spawn} from 'node:child_process';
+process.stdin.resume();
+process.stdin.on('end',()=>{
+  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});
+  process.stdout.write(JSON.stringify({parent:process.pid,child:child.pid})+'\n');
+  setTimeout(()=>process.stdout.write(JSON.stringify({late:true})+'\n'),20000);
+});
+'@
+foreach ($mode in @('receiver-failure', 'pipeline-cancellation')) {
+    $ownedIds = @()
+    $pipeline = $null
+    $output = $null
+    $enumerator = $null
+    $activity = $null
+    $stopped = $false
+    $problemTypes = [Collections.Generic.List[string]]::new()
+    try {
+        if ($mode -ceq 'receiver-failure') {
+            $activity = Start-WorkbenchActivity -Name 'Processing Routing'
+            $rejected = $false
+            try {
+                Invoke-WorkbenchActivityProcess -Activity $activity -Arguments @('--input-type=module', '-e', $ownedProcessCode) -InputObject '{}' | ForEach-Object {
+                    $packet = $_ | ConvertFrom-Json
+                    $ownedIds = @([int]$packet.parent, [int]$packet.child)
+                    throw 'Synthetic event rejection'
+                }
+            } catch { $rejected = $_.Exception.Message -ceq 'Synthetic event rejection' }
+            $stopped = $rejected
+        } else {
+            $pipeline = [powershell]::Create()
+            $output = [Management.Automation.PSDataCollection[psobject]]::new()
+            $output.BlockingEnumerator = $true
+            $cancelScript = @'
+param([string]$ModulePath, [string]$Program)
+$ErrorActionPreference = 'Stop'
+Import-Module $ModulePath -Force
+$activity = Start-WorkbenchActivity -Name 'Processing Routing'
+Invoke-WorkbenchActivityProcess -Activity $activity -Arguments @('--input-type=module', '-e', $Program) -InputObject '{}'
+'@
+            $null = $pipeline.AddScript($cancelScript).AddArgument($nativeActivityPath).AddArgument($ownedProcessCode)
+            $invocation = $pipeline.BeginInvoke[psobject, psobject]($null, $output)
+            $enumerator = $output.GetEnumerator()
+            if (-not $enumerator.MoveNext()) { throw 'Synthetic cancellation fixture did not produce an ownership record' }
+            $packet = [string]$enumerator.Current | ConvertFrom-Json
+            $ownedIds = @([int]$packet.parent, [int]$packet.child)
+            $pipeline.Stop()
+            $activity = $pipeline.Runspace.SessionStateProxy.GetVariable('activity')
+            $stopped = $pipeline.InvocationStateInfo.State -eq [Management.Automation.PSInvocationState]::Stopped -and $output.Count -eq 1
+        }
+        $stopped = $stopped -and $ownedIds.Count -eq 2 -and $null -ne $activity -and -not $activity.Active -and -not $activity.CursorHidden
+        foreach ($ownedId in $ownedIds) {
+            try {
+                $owned = [Diagnostics.Process]::GetProcessById($ownedId)
+                try { if (-not $owned.HasExited) { $stopped = $false } }
+                finally { $owned.Dispose() }
+            } catch [ArgumentException] { }
+        }
+    } catch {
+        $problemTypes.Add($_.Exception.GetType().Name)
+        $stopped = $false
+    } finally {
+        if ($null -ne $pipeline) { $pipeline.Stop(); $pipeline.Dispose() }
+        if ($null -ne $enumerator) { $enumerator.Dispose() }
+        if ($null -ne $output) { $output.Dispose() }
+        foreach ($ownedId in $ownedIds) {
+            try {
+                $owned = [Diagnostics.Process]::GetProcessById($ownedId)
+                try { if (-not $owned.HasExited) { $owned.Kill($true); $null = $owned.WaitForExit(5000) } }
+                finally { $owned.Dispose() }
+            } catch [ArgumentException] { }
+        }
+    }
+    Add-TestResult -Name ('native-activity-' + $mode + '-stops-owned-children') -Passed $stopped -Detail ('The actual reader stops its synthetic Node parent and child on interruption, prevents late output, and completes terminal cleanup. Diagnostic types: ' + ($problemTypes -join ', '))
+}
 
 $result = [ordered]@{
     status = if ($issues.Count -eq 0) { 'passed' } else { 'failed' }
