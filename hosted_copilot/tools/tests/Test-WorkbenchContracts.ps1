@@ -62,7 +62,7 @@ function Write-TestProgress {
     )
 
     if ($OutputFormat -eq 'Text') {
-        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail)
+        Write-Host (Format-ValidationStatusLine -Status 'running' -Name $Name -Detail $Detail -AlignmentWidth 42)
     }
 }
 
@@ -543,19 +543,436 @@ else {
     Add-TestResult -Name 'validator-upstream-skip-contract' -Passed $false -Detail 'The explicit upstream skip parameter or its production branch is missing or invalid.'
 }
 
+Write-TestProgress -Name 'native-catalog-initializer' -Detail 'Executing the initializer catalog preflight and capture guard without collecting sources or opening a database'
+$initializerTokens = $null
+$initializerErrors = $null
+$initializerAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot '../internal/workbench/Initialize-WorkbenchDatabase.ps1'), [ref]$initializerTokens, [ref]$initializerErrors)
+$baselineAssignments = @($initializerAst.EndBlock.Statements | Where-Object {
+    $_ -is [Management.Automation.Language.AssignmentStatementAst] -and $_.Left.Extent.Text -in @('$baselineProbe', '$baselineCaptureText', '$baseline')
+})
+$baselineChecks = @($initializerAst.EndBlock.Statements | Where-Object {
+    $_ -is [Management.Automation.Language.IfStatementAst] -and
+    $_.Extent.Text -match 'Initial catalog input is invalid|Test-Json -Json \$baseline.content'
+})
+$catalogCaptureGuard = @($initializerAst.FindAll({ param($node)
+    $node -is [Management.Automation.Language.IfStatementAst] -and $node.Extent.Text -match 'Initial catalog input changed during source capture'
+}, $true))
+$baselineRecapture = @($initializerAst.FindAll({ param($node)
+    $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -ceq '$currentBaselineText'
+}, $true))
+$baselineHandoff = @($initializerAst.FindAll({ param($node)
+    $node -is [Management.Automation.Language.IfStatementAst] -and
+    $node.Extent.Text -match '\$request.catalogJson\s*=\s*\$baseline.content'
+}, $true))
+if (@($initializerErrors).Count -ne 0 -or $baselineAssignments.Count -ne 3 -or $baselineChecks.Count -ne 2 -or
+    $catalogCaptureGuard.Count -ne 1 -or $baselineRecapture.Count -ne 1 -or $baselineHandoff.Count -ne 1) {
+    throw 'Native catalog initializer boundaries must be uniquely parseable'
+}
+$initializerFixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-baseline-initializer-' + [guid]::NewGuid().ToString('N'))
+$fixtureInitialPath = Join-Path $initializerFixtureRoot 'copilot-rule-catalog/initial-rules.json'
+$fixtureCatalogPath = Join-Path $initializerFixtureRoot 'copilot-rule-catalog/published/instruction-catalog.json'
+$fixtureSchemaPath = Join-Path $initializerFixtureRoot 'contracts/catalog/instruction-catalog.schema.json'
+$initializerProfile = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../config/workbench-terraform-profile.json') -Raw | ConvertFrom-Json
+$expectedInitialJson = [ordered]@{
+    instructionFiles = @($initializerProfile.categories | ForEach-Object {
+        [ordered]@{
+            fileName = [IO.Path]::GetFileName($_.outputPath)
+            applyTo = $_.patterns[0]
+            rules = @([ordered]@{ id = 'SYN-' + $_.code.ToUpperInvariant() + '-001'; text = 'Preserve synthetic ' + $_.code + ' evidence.' })
+        }
+    })
+} | ConvertTo-Json -Depth 20
+$expectedCatalogJson = [ordered]@{
+    '$schema' = 'instruction-catalog.schema.json'
+    schemaVersion = 1
+    lastSemanticReview = '2026-11-14'
+    upstreamSnapshot = [ordered]@{ repository = 'hashicorp/terraform-provider-azurerm'; baselineCommit = '1' * 40; currentRef = 'synthetic' }
+    ruleDefaults = [ordered]@{ requirementLevel = 'mandatory'; enforcementMethod = 'model-based'; documentationGap = $false }
+    sources = @()
+    evidence = @([ordered]@{ id = 'synthetic'; type = 'architecture'; description = 'Synthetic evidence'; reference = 'fixtures/catalog.md' })
+    surfaces = @([ordered]@{
+        id = 'testing'; outputPath = '.github/instructions/synthetic.instructions.md'; description = 'Synthetic instructions'
+        applyTo = 'internal/**/*_test.go'; title = 'Synthetic testing'; introduction = 'Preserve evidence.'; closing = 'Keep history.'
+        sections = @([ordered]@{ heading = 'Rules'; ruleIds = @('TEST-SYN-001') })
+    })
+    canonicalCandidateMappings = [ordered]@{ 'TEST-SYN-001' = [ordered]@{ sourceDefinitionId = 'maintainer-proposals'; sourceId = 'TEST-SYN-901' } }
+    rules = @([ordered]@{
+        id = 'TEST-SYN-001'; origin = 'hosted-catalog-addition'; status = 'active'; text = 'Preserve synthetic test evidence.'
+        provenance = @('local-safeguard'); sourceIds = @(); evidenceIds = @('synthetic')
+    })
+} | ConvertTo-Json -Depth 20
+$preflightStatements = @($baselineAssignments + $baselineChecks | Sort-Object { $_.Extent.StartOffset })
+try {
+$null = New-Item -ItemType Directory -Path (Split-Path -Parent $fixtureCatalogPath), (Split-Path -Parent $fixtureSchemaPath)
+[IO.File]::WriteAllText($fixtureInitialPath, $expectedInitialJson)
+Copy-Item -LiteralPath (Join-Path $catalogRoot '../contracts/catalog/instruction-catalog.schema.json') -Destination $fixtureSchemaPath
+$catalogInitializerChecks = & {
+    param($Preflight, [string]$Handoff, [string]$Recapture, [string]$Guard, [string]$HostedRoot, [string]$ProductionRoot)
+    function Invoke-InitializerPreflight {
+        foreach ($statement in $Preflight) {
+            . ([scriptblock]::Create('param($PSScriptRoot)' + "`n" + $statement.Extent.Text)) $ProductionRoot
+        }
+        return [pscustomobject]@{ baseline = $baseline; captured = $baselineCaptureText; probe = $baselineProbe }
+    }
+    function Test-InitializerCapture {
+        param($Captured)
+        $baselineProbe = $Captured.probe
+        $baselineCaptureText = $Captured.captured
+        . ([scriptblock]::Create('param($PSScriptRoot)' + "`n" + $Recapture)) $ProductionRoot
+        . ([scriptblock]::Create($Guard))
+    }
+    function Get-InitializerHandoff {
+        param($Baseline)
+        $request = [ordered]@{}
+        . ([scriptblock]::Create($Handoff))
+        return $request
+    }
+    $initial = Invoke-InitializerPreflight
+    Test-InitializerCapture $initial
+    $initialRequest = Get-InitializerHandoff $initial.baseline
+    [IO.File]::AppendAllText($fixtureInitialPath, "`n")
+    $changedInitialRejected = $false
+    try { Test-InitializerCapture $initial }
+    catch { $changedInitialRejected = $_.Exception.Message -ceq 'Initial catalog input changed during source capture; retry initialization' }
+    [IO.File]::WriteAllText($fixtureInitialPath, '{"instructionFiles":[]}')
+    $invalidInitialRejected = $false
+    try { $null = Invoke-InitializerPreflight 2>&1 }
+    catch { $invalidInitialRejected = $_.Exception.Message -ceq 'Initial catalog input is invalid; no database was created' }
+    [IO.File]::WriteAllText($fixtureCatalogPath, $expectedCatalogJson)
+    $published = Invoke-InitializerPreflight
+    Test-InitializerCapture $published
+    $publishedRequest = Get-InitializerHandoff $published.baseline
+    [IO.File]::AppendAllText($fixtureCatalogPath, "`n")
+    $changedPublishedRejected = $false
+    try { Test-InitializerCapture $published }
+    catch { $changedPublishedRejected = $_.Exception.Message -ceq 'Initial catalog input changed during source capture; retry initialization' }
+    [IO.File]::WriteAllText($fixtureInitialPath, $expectedInitialJson)
+    [IO.File]::WriteAllText($fixtureCatalogPath, '{"schemaVersion":0}')
+    $invalidPublishedRejected = $false
+    try { $null = Invoke-InitializerPreflight 2>&1 }
+    catch { $invalidPublishedRejected = $true }
+    [pscustomobject]@{
+        initial = $initial.baseline; initialRequest = $initialRequest
+        published = $published.baseline; publishedRequest = $publishedRequest
+        invalidInitialRejected = $invalidInitialRejected; invalidPublishedRejected = $invalidPublishedRejected
+        changedInitialRejected = $changedInitialRejected; changedPublishedRejected = $changedPublishedRejected
+    }
+} $preflightStatements $baselineHandoff[0].Extent.Text $baselineRecapture[0].Extent.Text $catalogCaptureGuard[0].Extent.Text $initializerFixtureRoot (Join-Path $PSScriptRoot '../internal/workbench')
+} finally {
+    Remove-Item -LiteralPath $initializerFixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+Add-TestResult -Name 'native-catalog-initializer-validates-exact-captured-input' -Passed (
+    $catalogInitializerChecks.initial.format -ceq 'initial-rules-json' -and
+    $catalogInitializerChecks.initialRequest.initialRulesCapture.content -ceq $expectedInitialJson -and
+    -not $catalogInitializerChecks.initialRequest.Contains('catalogJson') -and
+    $catalogInitializerChecks.published.format -ceq 'published-catalog' -and
+    $catalogInitializerChecks.publishedRequest.catalogJson -ceq $expectedCatalogJson -and
+    -not $catalogInitializerChecks.publishedRequest.Contains('initialRulesCapture') -and
+    $catalogInitializerChecks.invalidInitialRejected -and $catalogInitializerChecks.invalidPublishedRejected -and
+    $catalogInitializerChecks.changedInitialRejected -and $catalogInitializerChecks.changedPublishedRejected -and
+    $baselineChecks[-1].Extent.StartOffset -lt $baselineHandoff[0].Extent.StartOffset -and
+    $baselineHandoff[0].Extent.EndOffset -lt $catalogCaptureGuard[0].Extent.StartOffset
+) -Detail 'The production preflight selects valid initial JSON only without publication, prefers valid publication, hands off exact captured input, rejects invalid inputs without fallback, and refuses changes to either capture before database creation; no collection, database, or model process is invoked.'
+
+Write-TestProgress -Name 'native-workbench-separation' -Detail 'Checking independent legacy and SQL launchers share the normal legacy port policy with explicit comparison overrides'
+$legacyLauncher = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '../Start-RuleWorkbench.ps1'))
+$newLauncherPath = Join-Path $PSScriptRoot '../Start-RuleWorkbenchNew.ps1'
+$newLauncher = if (Test-Path -LiteralPath $newLauncherPath -PathType Leaf) { [IO.File]::ReadAllText($newLauncherPath) } else { '' }
+Add-TestResult -Name 'native-workbench-launchers-are-independent' -Passed (
+    $legacyLauncher -match '\[int\]\$Port\s*=\s*43143' -and
+    $newLauncher -match '\[int\]\$Port\s*=\s*43143' -and
+    $newLauncher.Contains('WorkbenchNewServer.mjs') -and
+    $newLauncher -notmatch 'Start-RuleWorkbench\.ps1|Copy-WorkbenchRuntimeIconAssets|workbench-display\.json'
+) -Detail 'Both launchers use the normal 43143 default; explicit ports 43147/43148 enable comparison, and Workbench New never invokes legacy staging or display generation.'
+
+function Invoke-NewLauncherPreflightFixtureCore {
+    param([string]$newLauncherPath, [bool]$SqlReady, [bool]$CliAvailable, [bool]$GitHubAvailable, [hashtable]$Result)
+
+    $tokens = $null
+    $errors = $null
+    $ast = [Management.Automation.Language.Parser]::ParseFile($newLauncherPath, [ref]$tokens, [ref]$errors)
+    $definitions = @($ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -in @('Add-WorkbenchNewLaunchCheck', 'Write-WorkbenchNewLaunchSummary') }, $true))
+    $preflight = @($ast.EndBlock.Statements | Where-Object {
+        $_ -is [Management.Automation.Language.TryStatementAst] -and $_.Body.Extent.Text.Contains('$preflight = Invoke-WorkbenchNewLaunchProbe')
+    })
+    if ($errors.Count -ne 0 -or $definitions.Count -ne 2 -or $preflight.Count -ne 1) { throw 'New launcher preflight boundary is ambiguous' }
+    $checks = [Collections.Generic.List[object]]::new()
+    $Result.checks = $checks
+    $observed = $Result
+    $DatabasePath = 'synthetic.sqlite'
+    $EvaluatorCommand = 'synthetic-copilot'
+    $Port = 43148
+    $scriptRootAssignment = '$PSScriptRoot = ''' + (Split-Path -Parent $newLauncherPath).Replace("'", "''") + "'`n"
+    $phase = 'runtime'
+    $phaseDetail = 'Synthetic runtime preflight'
+    function Import-Module { param($Name, [switch]$Force) }
+    function Get-Command { param($Name, $CommandType, $ErrorAction) [pscustomobject]@{ Source = 'synthetic-node' } }
+    function Test-Path { param($LiteralPath, $PathType) return $true }
+    function git { $global:LASTEXITCODE = 0; return 'refs/heads/synthetic' }
+    function Write-Host { param([Parameter(ValueFromPipeline)]$Object) process {} }
+    function Get-HostedWorkbenchGitHubContext {
+        param($RepositoryRoot)
+        return [pscustomobject]@{ maintainerIdentity = @{ status = if ($GitHubAvailable) { 'unauthorized' } else { 'unavailable' } };
+            targetRepository = @{ status = if ($GitHubAvailable) { 'validated' } else { 'unavailable' } } }
+    }
+    function Invoke-WorkbenchNewLaunchProbe {
+        param($NodePath, $ServerPath, $Context)
+        $observed.probeOnly = $Context.preflightOnly
+        return [pscustomobject]@{ kind = 'preflight'; ready = $SqlReady;
+            checks = @([pscustomobject]@{ name = 'completed-analysis'; status = if ($SqlReady) { 'passed' } else { 'failed' }; detail = 'Synthetic SQL readiness' });
+            llmAssignments = @('assessment', 'reconciliation', 'adjudication' | ForEach-Object {
+                [pscustomobject]@{ taskCode = $_; providerCode = 'github-copilot'; adapterCode = 'copilot-cli'; model = 'synthetic-model'; reasoningEffort = 'high' }
+            }) }
+    }
+    function Resolve-HostedCliLaunch { param($EvaluatorCommand) return @{ commandPath = $EvaluatorCommand } }
+    function Get-HostedCliAvailability {
+        param($Launch, $Profiles)
+        $observed.cliChecked = $true
+        $observed.profiles = @($Profiles.Keys)
+        if (-not $CliAvailable) { throw 'Synthetic unavailable CLI metadata' }
+        return [pscustomobject]@{ version = '1.0.0'; profiles = @($Profiles.Keys | ForEach-Object {
+            [pscustomobject]@{ name = $_; model = $Profiles[$_].model; reasoningEffort = $Profiles[$_].reasoningEffort }
+        }) }
+    }
+    foreach ($definition in $definitions) { . ([scriptblock]::Create($definition.Extent.Text)) }
+    . ([scriptblock]::Create($scriptRootAssignment + $preflight[0].Extent.Text))
+    $Result.accepted = $true
+    $Result.finalProbeOnly = $launchContext.preflightOnly
+}
+
+function Invoke-NewLauncherPreflightFixture {
+    param([bool]$SqlReady = $true, [bool]$CliAvailable = $true, [bool]$GitHubAvailable = $true)
+
+    $state = [hashtable]::Synchronized(@{ accepted = $false; cliChecked = $false; profiles = @(); probeOnly = $false;
+        checks = @(); finalProbeOnly = $null })
+    $pipeline = [powershell]::Create()
+    try {
+        $formatter = Join-Path (Split-Path -Parent $newLauncherPath) '../../tools/ValidationOutput.psm1'
+        $null = $pipeline.AddScript('param($Path); Import-Module $Path -Force').AddArgument($formatter).AddStatement()
+        $null = $pipeline.AddScript(${function:Invoke-NewLauncherPreflightFixtureCore}.ToString()).AddArgument($newLauncherPath).
+            AddArgument($SqlReady).AddArgument($CliAvailable).AddArgument($GitHubAvailable).AddArgument($state)
+        $null = $pipeline.Invoke()
+        $state.exitCode = $pipeline.Runspace.SessionStateProxy.GetVariable('LASTEXITCODE')
+        $state.errorCount = $pipeline.Streams.Error.Count
+        return [pscustomobject]$state
+    } finally { $pipeline.Dispose() }
+}
+Write-TestProgress -Name 'native-launcher-readiness' -Detail 'Executing actual startup checks with offline SQL/CLI boundaries; no models, browser, or retained database'
+$readyLaunch = Invoke-NewLauncherPreflightFixture
+$missingAnalysisLaunch = Invoke-NewLauncherPreflightFixture -SqlReady $false
+$unavailableCliLaunch = Invoke-NewLauncherPreflightFixture -CliAvailable $false
+$unavailableGitHubLaunch = Invoke-NewLauncherPreflightFixture -GitHubAvailable $false
+Add-TestResult -Name 'native-launcher-ready-non-codeowner-authenticated-context' -Passed ($readyLaunch.accepted -and $readyLaunch.probeOnly -and
+    $readyLaunch.finalProbeOnly -eq $false -and $readyLaunch.cliChecked -and $readyLaunch.profiles.Count -eq 3) -Detail 'The actual startup owner accepts ready SQL plus verified configured models without reviving CODEOWNER-only launch restrictions.'
+Add-TestResult -Name 'native-launcher-incomplete-analysis-refuses-after-cli-check' -Passed (-not $missingAnalysisLaunch.accepted -and $missingAnalysisLaunch.cliChecked -and
+    $missingAnalysisLaunch.exitCode -eq 1 -and $missingAnalysisLaunch.errorCount -eq 0 -and
+    @($missingAnalysisLaunch.checks | Where-Object { $_.name -ceq 'completed-analysis' -and $_.status -ceq 'failed' }).Count -eq 1) -Detail 'Incomplete SQL is a blocking launch requirement; CLI availability is still checked and no server/browser is started.'
+Add-TestResult -Name 'native-launcher-unavailable-cli-refuses-before-server' -Passed (-not $unavailableCliLaunch.accepted -and $unavailableCliLaunch.cliChecked -and
+    @($unavailableCliLaunch.checks | Where-Object { $_.name -ceq 'llm-availability' -and $_.status -ceq 'failed' }).Count -eq 1) -Detail 'A missing or incompatible CLI/model check cannot be reported as launch success.'
+Add-TestResult -Name 'native-launcher-unavailable-github-refuses-before-server' -Passed (-not $unavailableGitHubLaunch.accepted -and
+    @($unavailableGitHubLaunch.checks | Where-Object { $_.name -ceq 'github-context' -and $_.status -ceq 'failed' }).Count -eq 1) -Detail 'An unavailable GitHub context returned without an exception still refuses launch.'
+Write-TestProgress -Name 'native-launcher-friendly-failure' -Detail 'Capturing actual missing-database refusal without a browser, network, CLI, or retained database'
+$friendlyProcess = [Diagnostics.Process]::new()
+try {
+    $friendlyProcess.StartInfo.FileName = (Get-Command pwsh -CommandType Application).Source
+    $friendlyProcess.StartInfo.UseShellExecute = $false
+    $friendlyProcess.StartInfo.CreateNoWindow = $true
+    $friendlyProcess.StartInfo.RedirectStandardOutput = $true
+    $friendlyProcess.StartInfo.RedirectStandardError = $true
+    foreach ($argument in @('-NoProfile', '-File', $newLauncherPath, '-NoLaunch', '-DatabasePath',
+        (Join-Path ([IO.Path]::GetTempPath()) ('missing-workbench-' + [guid]::NewGuid().ToString('N') + '.sqlite')))) {
+        $friendlyProcess.StartInfo.ArgumentList.Add($argument)
+    }
+    $null = $friendlyProcess.Start()
+    $friendlyOutput = $friendlyProcess.StandardOutput.ReadToEndAsync()
+    $friendlyError = $friendlyProcess.StandardError.ReadToEndAsync()
+    if (-not $friendlyProcess.WaitForExit(15000)) { throw 'Friendly launcher fixture timed out' }
+    $friendlyText = $friendlyOutput.GetAwaiter().GetResult()
+    Add-TestResult -Name 'native-launcher-friendly-failure-keeps-status-and-final-spacing' -Passed (
+        $friendlyProcess.ExitCode -eq 1 -and $friendlyError.GetAwaiter().GetResult().Length -eq 0 -and
+        $friendlyText.Contains('Workbench New was not started.') -and
+        $friendlyText -match 'Failed\s+:\s+1\r?\n\r?\n\s+STATUS\s+CHECK' -and
+        $friendlyText -match 'FAILED\s+repository-database\r?\n\r?\n-+\r?\nFAILURE SUMMARY\r?\n-+\r?\n\r?\n  - Workbench New was not started\.' -and
+        $friendlyText -match '  - No ingestion or inference was performed\.(?:\r?\n){2}$' -and
+        $friendlyText -match '(?:\r?\n){2}$'
+    ) -Detail 'Actual launch refusal preserves exit 1 without a PowerShell exception, separates summary and table, includes the bullet-form failure summary, and ends with a visible blank line.'
+} finally {
+    if ($friendlyProcess.Id -gt 0 -and -not $friendlyProcess.HasExited) { $friendlyProcess.Kill($true); $friendlyProcess.WaitForExit() }
+    $friendlyProcess.Dispose()
+}
+
+Write-TestProgress -Name 'native-repository-database-location' -Detail 'Checking normal launch resolves an explicit initialized repository/branch location without a picker, GUID or file scan'
+Import-Module (Join-Path $PSScriptRoot '../modules/workbench/Workbench.DatabaseLocation.psm1') -Force
+$locationRoot = Join-Path ([IO.Path]::GetTempPath()) ('workbench-location-fixture-' + [guid]::NewGuid().ToString('N'))
+$locationValid = $false
+try {
+    $storage = Join-Path $locationRoot 'runtime'
+    $repository = Join-Path $locationRoot 'repository'
+    $null = New-Item -ItemType Directory -Path $repository -Force
+    $database = Join-Path $locationRoot 'synthetic.sqlite'
+    [IO.File]::WriteAllText($database, 'Synthetic locator target; SQL binding is verified by the server.')
+    $scope = @{ RepositoryRoot = $repository; BranchRef = 'refs/heads/synthetic'; StorageDirectory = $storage }
+    $missingRejected = $false
+    try { $null = Get-WorkbenchDatabaseLocation @scope } catch { $missingRejected = $_.Exception.Message -ceq 'No initialized database location is recorded for this repository and branch.' }
+    Set-WorkbenchDatabaseLocation @scope -DatabasePath $database
+    $resolved = Get-WorkbenchDatabaseLocation @scope
+    $branchRejected = $false
+    try { $null = Get-WorkbenchDatabaseLocation -RepositoryRoot $repository -BranchRef 'refs/heads/other' -StorageDirectory $storage }
+    catch { $branchRejected = $_.Exception.Message -ceq 'No initialized database location is recorded for this repository and branch.' }
+    $repositoryRejected = $false
+    try { $null = Get-WorkbenchDatabaseLocation -RepositoryRoot (Join-Path $locationRoot 'other') -BranchRef $scope.BranchRef -StorageDirectory $storage }
+    catch { $repositoryRejected = $_.Exception.Message -ceq 'No initialized database location is recorded for this repository and branch.' }
+    $records = @(Get-ChildItem -LiteralPath $storage -File)
+    [IO.File]::WriteAllText($records[0].FullName, '{"databasePath":"relative.sqlite"}')
+    $invalidRejected = $false
+    try { $null = Get-WorkbenchDatabaseLocation @scope } catch { $invalidRejected = $_.Exception.Message -ceq 'The repository database location record is invalid.' }
+    Set-WorkbenchDatabaseLocation @scope -DatabasePath $database
+    Remove-Item -LiteralPath $database
+    $deletedRejected = $false
+    try { $null = Get-WorkbenchDatabaseLocation @scope } catch { $deletedRejected = $_.Exception.Message -ceq 'The recorded database for this repository and branch is missing.' }
+    $parameters = [Management.Automation.Language.Parser]::ParseFile($newLauncherPath, [ref]$null, [ref]$null).ParamBlock.Parameters
+    $pathParameter = @($parameters | Where-Object { $_.Name.VariablePath.UserPath -ceq 'DatabasePath' })
+    $locationValid = $missingRejected -and $resolved -ceq $database -and $branchRejected -and $repositoryRejected -and
+        $invalidRejected -and $deletedRejected -and $records.Count -eq 1 -and $pathParameter.Count -eq 1 -and
+        -not $pathParameter[0].Extent.Text.Contains('Mandatory') -and
+        @($parameters | Where-Object { $_.Name.VariablePath.UserPath -ceq 'DatabaseGuid' }).Count -eq 0
+} finally { Remove-Item -LiteralPath $locationRoot -Recurse -Force -ErrorAction SilentlyContinue }
+Add-TestResult -Name 'native-launch-resolves-repository-database-without-selection-wrapper' -Passed $locationValid -Detail 'Private locations are keyed to repository and branch; missing, deleted and invalid targets fail without guessing or initialization. Normal launch has no mandatory path or GUID.'
+
+Write-TestProgress -Name 'native-node-output-paths' -Detail 'Checking relative repository locations, external path redaction and unchanged failure semantics'
+Import-Module (Join-Path $PSScriptRoot '../modules/workbench/Workbench.NodeTests.psm1') -Force
+$nodeOutputRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
+$nodeOutputRelative = 'hosted_copilot/tools/modules/workbench/WorkbenchWorkspace.mjs'
+$nodeOutputAbsolute = Join-Path $nodeOutputRoot $nodeOutputRelative
+$nodeOutputUri = ([Uri]::new($nodeOutputAbsolute)).AbsoluteUri
+$nodeOutputDocument = [Xml.XmlDocument]::new()
+$nodeOutputSuite = $nodeOutputDocument.CreateElement('testsuite')
+$null = $nodeOutputDocument.AppendChild($nodeOutputSuite)
+$nodeOutputCase = $nodeOutputDocument.CreateElement('testcase')
+$nodeOutputCase.SetAttribute('name', 'Synthetic failure at ' + $nodeOutputAbsolute)
+$nodeOutputCase.SetAttribute('time', '0.125')
+$null = $nodeOutputSuite.AppendChild($nodeOutputCase)
+$nodeOutputFailure = $nodeOutputDocument.CreateElement('failure')
+$nodeOutputFailure.InnerText = "AssertionError: expected 6 meanings, received 5`n  at readNativeWorkspaceView (${nodeOutputUri}:277:59)`n  at fixture (${nodeOutputAbsolute}:9:3)`n  at external (file:///C:/synthetic-home/temporary/outside.mjs:4:2)`nReference: https://example.com/reference"
+$null = $nodeOutputCase.AppendChild($nodeOutputFailure)
+$nodeOutputReport = ConvertFrom-WorkbenchNodeTestReport -Report $nodeOutputDocument.OuterXml -ExitCode 1 -Diagnostics 'Synthetic warning from "C:\synthetic-home\fixture folder\outside.mjs"'
+$nodeOutputText = $nodeOutputReport | ConvertTo-Json -Depth 10 -Compress
+$relativeNodeOutputValid = $nodeOutputReport.status -ceq 'failed' -and $nodeOutputReport.failedCount -eq 1 -and
+    $nodeOutputReport.exitCode -eq 1 -and $nodeOutputReport.nativeExitCode -eq 1 -and $nodeOutputReport.issueCount -eq 1 -and
+    $nodeOutputText -notmatch 'file:///|(?<!\w)[A-Za-z]:[\\/]|synthetic-home' -and
+    $nodeOutputReport.tests[0].detail.Contains($nodeOutputRelative + ':277:59') -and
+    $nodeOutputReport.tests[0].detail.Contains(($nodeOutputRelative.Replace('/', [IO.Path]::DirectorySeparatorChar)) + ':9:3') -and
+    $nodeOutputReport.tests[0].detail.Contains('AssertionError: expected 6 meanings, received 5') -and
+    $nodeOutputReport.tests[0].detail.Contains('https://example.com/reference') -and
+    $nodeOutputReport.diagnostics.Contains('[external-path]')
+Add-TestResult -Name 'native-node-output-paths-are-relative-and-failures-preserved' -Passed $relativeNodeOutputValid -Detail 'Repository stack locations remain relative with line/column information; external local paths are redacted; assertion evidence, reference URLs, failure counts and exit codes remain intact.'
+
 Write-TestProgress -Name 'native-evaluator-boundaries' -Detail 'Checking every registered native prompt rejects injected instructions and uses an existing result schema'
 $nativeStageRegistry = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../contracts/workbench/native-evaluation-stages-v4.json') -Raw | ConvertFrom-Json
 $nativeBoundaryIssues = [Collections.Generic.List[string]]::new()
 foreach ($stage in $nativeStageRegistry.stages) {
     $promptText = Get-Content -LiteralPath (Join-Path $PSScriptRoot "../../$($stage.prompt)") -Raw
-    if ($promptText -notmatch '(?m)^## Boundaries\s*$' -or $promptText -notmatch 'untrusted quoted data' -or
-        $promptText -notmatch 'prompt injection' -or $promptText -notmatch 'tool requests' -or $promptText -notmatch 'role changes' -or
-        $promptText -notmatch 'output-format changes' -or $promptText -notmatch 'policy claims' -or
+    $boundaryText = [regex]::Match($promptText, '(?ms)^## Boundaries[ \t]*\r?\n(?<body>.*?)(?=^## |\z)').Groups['body'].Value
+    if ($boundaryText -notmatch 'untrusted quoted data' -or $boundaryText -notmatch 'source' -or
+        $boundaryText -notmatch 'assessment' -or $boundaryText -notmatch 'catalog' -or
+        $boundaryText -notmatch 'prompt injection' -or $boundaryText -notmatch 'tool requests' -or $boundaryText -notmatch 'role changes' -or
+        $boundaryText -notmatch 'output-format changes' -or $boundaryText -notmatch 'policy claims' -or
+        ($stage.code -ceq 'reconciliation' -and $promptText -notmatch '(?s)## Boundaries.*prior-group') -or
+        ($stage.code -ceq 'reconciliation' -and $promptText -notmatch '(?s)## Boundaries.*canonical.binding') -or
+        ($stage.code -ceq 'adjudication' -and $promptText -notmatch '(?s)## Boundaries.*relationship') -or
         -not (Test-Path -LiteralPath (Join-Path $PSScriptRoot "../../$($stage.resultSchema)") -PathType Leaf)) {
         $nativeBoundaryIssues.Add($stage.code)
     }
 }
-Add-TestResult -Name 'native-prompt-injection-boundaries' -Passed ($nativeStageRegistry.schemaVersion -eq 4 -and @($nativeStageRegistry.stages).Count -gt 0 -and $nativeBoundaryIssues.Count -eq 0) -Detail 'Every registered native evaluator treats supplied source/assessment/catalog data as untrusted and rejects injected tool, role, format and policy instructions.'
+Add-TestResult -Name 'native-prompt-injection-boundaries' -Passed ($nativeStageRegistry.schemaVersion -eq 4 -and @($nativeStageRegistry.stages).Count -gt 0 -and $nativeBoundaryIssues.Count -eq 0) -Detail 'Every registered native evaluator explicitly treats source/assessment/catalog data as untrusted within its Boundaries section and rejects injected tool, role, format and policy instructions.'
+
+$nativeSynthesisSchema = Join-Path $PSScriptRoot "../../$(@($nativeStageRegistry.stages | Where-Object code -CEQ 'reconciliation')[0].resultSchema)"
+$nativeSynthesisResult = @{
+    schemaVersion = 4; stage = 'reconciliation'; phase = 'synthesis'
+    groups = @(@{
+        title = 'Captured validation'; semanticSummary = 'Validate captured input'; synthesisRationale = 'Preserves supplied meaning'
+        wording = 'Validate captured input before use.'; selectionFactors = @{ severity = 3 }; selectionRationale = 'Direct source evidence'
+        reviewState = 'recommended'; needsReview = $false; relatedCoverage = @()
+        members = @(@{ assessmentResultId = 1; role = 'primary'; coverageRationale = 'Preserves captured validation' })
+        operations = @(@{
+            role = 'primary'; action = 'add'; targetRuleVersionId = $null; surfaceCode = 'implementation'; sectionHeading = 'Validation'
+            rationale = 'Proposed outcome'; relationship = $null; provenanceCodes = @(); evidenceCodes = @(); applicabilityCodes = @()
+        })
+        continuity = @{
+            kind = 'new'; priorGroupVersionIds = @(); retainedGroupVersionId = $null; confidence = 'high'
+            rationale = 'No prior evidence'; memberMatches = @()
+        }
+    })
+    dispositions = @(@{ assessmentResultId = 1; code = 'grouped'; rationale = 'Preserved in proposed wording' })
+}
+$nativeSynthesisValid = Test-JsonInstance -Value $nativeSynthesisResult -SchemaPath $nativeSynthesisSchema
+$nativeSynthesisWithoutContinuity = Copy-JsonValue $nativeSynthesisResult
+$nativeSynthesisWithoutContinuity.groups[0].PSObject.Properties.Remove('continuity')
+$nativeSynthesisUnknownContinuity = Copy-JsonValue $nativeSynthesisResult
+$nativeSynthesisUnknownContinuity.groups[0].continuity.kind = 'inferred'
+Add-TestResult -Name 'native-synthesis-continuity-contract' -Passed ($nativeSynthesisValid -and
+    -not (Test-JsonInstance -Value $nativeSynthesisWithoutContinuity -SchemaPath $nativeSynthesisSchema) -and
+    -not (Test-JsonInstance -Value $nativeSynthesisUnknownContinuity -SchemaPath $nativeSynthesisSchema)) -Detail 'The registered synthesis schema accepts explicit continuity and rejects missing or unsupported classifications.'
+
+$nativeSynthesisWithCoverage = Copy-JsonValue $nativeSynthesisResult
+$nativeSynthesisWithCoverage.groups[0].relatedCoverage = @([pscustomobject]@{
+    target = @{ kind = 'rule'; id = 2 }; relationship = 'partial-overlap'; rationale = 'Provisional common obligation'
+    evidence = @(
+        @{ assessmentResultId = 1; sourceQuote = 'Captured validation'; targetQuote = 'Validate captured inputs' },
+        @{ assessmentResultId = 3; sourceQuote = 'Supporting validation'; targetQuote = 'Validate captured inputs' }
+    )
+})
+$nativeSynthesisWithCoverage.groups[0].members += [pscustomobject]@{
+    assessmentResultId = 3; role = 'supporting'; coverageRationale = 'Preserves supporting validation'
+}
+$nativeSynthesisWithCoverage.dispositions += [pscustomobject]@{ assessmentResultId = 3; code = 'grouped'; rationale = 'Preserved in proposed wording' }
+$nativeSynthesisWithoutCoverage = Copy-JsonValue $nativeSynthesisResult
+$nativeSynthesisWithoutCoverage.groups[0].PSObject.Properties.Remove('relatedCoverage')
+$nativeSynthesisForeignTargetKind = Copy-JsonValue $nativeSynthesisWithCoverage
+$nativeSynthesisForeignTargetKind.groups[0].relatedCoverage[0].target.kind = 'inferred-group'
+$nativeSynthesisEmptyEvidence = Copy-JsonValue $nativeSynthesisWithCoverage
+$nativeSynthesisEmptyEvidence.groups[0].relatedCoverage[0].evidence = @()
+$nativeSynthesisSingularEvidence = Copy-JsonValue $nativeSynthesisWithCoverage
+$nativeSynthesisSingularEvidence.groups[0].relatedCoverage[0].PSObject.Properties.Remove('evidence')
+$nativeSynthesisSingularEvidence.groups[0].relatedCoverage[0] | Add-Member -NotePropertyName assessmentResultId -NotePropertyValue 1
+$nativeSynthesisMissingQuote = Copy-JsonValue $nativeSynthesisWithCoverage
+$nativeSynthesisMissingQuote.groups[0].relatedCoverage[0].evidence[1].PSObject.Properties.Remove('sourceQuote')
+Add-TestResult -Name 'native-synthesis-provisional-relationship-contract' -Passed (
+    (Test-JsonInstance -Value $nativeSynthesisWithCoverage -SchemaPath $nativeSynthesisSchema) -and
+    -not (Test-JsonInstance -Value $nativeSynthesisWithoutCoverage -SchemaPath $nativeSynthesisSchema) -and
+    -not (Test-JsonInstance -Value $nativeSynthesisForeignTargetKind -SchemaPath $nativeSynthesisSchema) -and
+    -not (Test-JsonInstance -Value $nativeSynthesisEmptyEvidence -SchemaPath $nativeSynthesisSchema) -and
+    -not (Test-JsonInstance -Value $nativeSynthesisSingularEvidence -SchemaPath $nativeSynthesisSchema) -and
+    -not (Test-JsonInstance -Value $nativeSynthesisMissingQuote -SchemaPath $nativeSynthesisSchema)
+) -Detail 'One typed relationship preserves multiple members with complete quoted evidence; empty evidence, missing quotes, singular evidence, and foreign target kinds are rejected.'
+
+$nativeAdjudicationSchema = Join-Path $PSScriptRoot "../../$(@($nativeStageRegistry.stages | Where-Object code -CEQ 'adjudication')[0].resultSchema)"
+$nativeGroupedResult = @{
+    schemaVersion = 4; stage = 'adjudication'; phase = 'components'
+    relationshipDecisions = @(@{
+        relationshipId = 1; disposition = 'issue'; relationship = 'partial-overlap'; title = 'Validation overlap'
+        rationale = 'One common obligation'; leftQuote = 'Validate inputs'; rightQuote = 'Check inputs'
+    })
+    issues = @(@{
+        anchor = @{ kind = 'group'; id = 1 }; classification = 'overlap'; title = 'One grouped validation decision'
+        blocking = $false; assessmentSummary = 'Consider complete member obligations together'; relationshipIds = @(1)
+        members = @(@{ subject = @{ kind = 'group'; id = 1 }; disposition = 'review' }, @{ subject = @{ kind = 'group'; id = 2 }; disposition = 'review' })
+        wording = @{ status = 'unresolved'; source = $null; text = $null; rationale = 'Requires a complete wording decision' }
+        recommendedMaintainerAction = @{ summary = 'Review the complete group'; operations = @() }
+    })
+}
+$nativeGroupedWithoutMembers = Copy-JsonValue $nativeGroupedResult
+$nativeGroupedWithoutMembers.issues[0].PSObject.Properties.Remove('members')
+$nativeIndependentWithMaterialLabel = Copy-JsonValue $nativeGroupedResult
+$nativeIndependentWithMaterialLabel.relationshipDecisions[0].disposition = 'independent'
+$nativePairOnlyResult = @{ schemaVersion = 4; stage = 'adjudication'; phase = 'relationships'; comparisons = @() }
+Add-TestResult -Name 'native-grouped-adjudication-contract' -Passed (
+    (Test-JsonInstance -Value $nativeGroupedResult -SchemaPath $nativeAdjudicationSchema) -and
+    -not (Test-JsonInstance -Value $nativeGroupedWithoutMembers -SchemaPath $nativeAdjudicationSchema) -and
+    -not (Test-JsonInstance -Value $nativeIndependentWithMaterialLabel -SchemaPath $nativeAdjudicationSchema) -and
+    -not (Test-JsonInstance -Value $nativePairOnlyResult -SchemaPath $nativeAdjudicationSchema)
+) -Detail 'The registered adjudication schema requires grouped issues and complete typed member/wording/action shapes, and rejects pair-only or inconsistent decisions.'
 
 Write-TestProgress -Name 'native-evaluator-launch' -Detail 'Executing the actual native launch expression without starting the CLI'
 $nativeEvaluatorTokens = $null
@@ -585,6 +1002,111 @@ Add-TestResult -Name 'native-evaluator-supported-tool-free-cli-arguments' -Passe
     $nativeLaunchArguments[$nativeEffortIndex + 1] -ceq 'high' -and '--effort' -cnotin $nativeLaunchArguments -and
     '--deny-tool' -cnotin $nativeLaunchArguments -and '--no-custom-instructions' -cin $nativeLaunchArguments -and
     '--disable-builtin-mcps' -cin $nativeLaunchArguments -and '--no-auto-update' -cin $nativeLaunchArguments) -Detail 'Native inference uses the supported reasoning-effort flag and an empty tool list, matching the working worker without an invalid view/wildcard-deny combination.'
+
+Write-TestProgress -Name 'native-evaluator-utf8-transport' -Detail 'Round-tripping synthetic Unicode through Node, the actual evaluator, and an isolated offline CLI'
+$nativeTransportRoot = Join-Path $PSScriptRoot ('native-transport-' + [guid]::NewGuid().ToString('N'))
+$null = New-Item -ItemType Directory -Path $nativeTransportRoot
+try {
+    $nativeTransportCli = @'
+$ErrorActionPreference = 'Stop'
+$utf8 = [Text.UTF8Encoding]::new($false, $true)
+$fixture = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'fixture.json'), $utf8) | ConvertFrom-Json -Depth 100
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'started'), 'synthetic', $utf8)
+$reader = [IO.StreamReader]::new([Console]::OpenStandardInput(), $utf8, $false)
+$prompt = $reader.ReadToEnd()
+$reader.Dispose()
+if ($prompt -cne $fixture.expectedPrompt -or $utf8.GetByteCount($prompt) -ne $fixture.expectedPromptBytes) {
+    throw 'Synthetic CLI received changed prompt content or bytes'
+}
+$modelIndex = [Array]::IndexOf($args, '--model')
+if ($modelIndex -lt 0 -or $args[$modelIndex + 1] -cne 'fixture-native-model') { throw 'Synthetic CLI model changed' }
+if ($fixture.mode -in @('invalid-stdout', 'invalid-stderr')) {
+    $stream = if ($fixture.mode -ceq 'invalid-stdout') { [Console]::OpenStandardOutput() } else { [Console]::OpenStandardError() }
+    $stream.Write([byte[]]@(0xc3, 0x28))
+    $stream.Flush()
+    return
+}
+$event = @{ type = 'assistant.message'; data = @{ model = 'fixture-native-model'; content = ($fixture.result | ConvertTo-Json -Depth 100 -Compress) } }
+$writer = [IO.StreamWriter]::new([Console]::OpenStandardOutput(), $utf8)
+$writer.WriteLine(($event | ConvertTo-Json -Depth 100 -Compress))
+$writer.Dispose()
+'@
+    [IO.File]::WriteAllText((Join-Path $nativeTransportRoot 'copilot.ps1'), $nativeTransportCli, [Text.UTF8Encoding]::new($false))
+    $nativeTransportConfig = @{
+        root = $nativeTransportRoot
+        evaluator = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../internal/workbench/Invoke-NativeEvaluation.ps1'))
+        prompt = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../$(@($nativeStageRegistry.stages | Where-Object code -CEQ 'reconciliation')[0].prompt)"))
+        schema = [IO.Path]::GetFullPath($nativeSynthesisSchema)
+        result = $nativeSynthesisResult
+    } | ConvertTo-Json -Depth 100 -Compress
+    $nativeTransportOutput = $nativeTransportConfig | & node --input-type=module -e @'
+import assert from 'node:assert/strict';
+import {execFile} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {readFileSync, writeFileSync, existsSync, rmSync, mkdirSync} from 'node:fs';
+import {join} from 'node:path';
+const config = JSON.parse(readFileSync(0, 'utf8'));
+const sample = 'Before \u2192 after \ud83d\ude00 caf\u00e9 \u6771\u4eac "quoted"\nsecond line\r\nthird line';
+const request = JSON.stringify({stage: 'reconciliation', phase: 'synthesis', text: sample});
+const prompt = readFileSync(config.prompt, 'utf8');
+const schema = readFileSync(config.schema, 'utf8');
+const expectedPrompt = `${prompt}\n\n## Output Contract\n${schema}\n\n## Untrusted Quoted Input\n${request}`;
+config.result.groups[0].title = sample;
+config.result.groups[0].wording = sample;
+const fixture = {expectedPrompt, expectedPromptBytes: Buffer.byteLength(expectedPrompt), result: config.result, mode: 'valid'};
+const fixturePath = join(config.root, 'fixture.json');
+const startedPath = join(config.root, 'started');
+const runtime = join(config.root, 'runtime');
+mkdirSync(runtime);
+const digest = value => createHash('sha256').update(value).digest('hex');
+const args = ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', config.evaluator,
+  '-Stage', 'reconciliation', '-Model', 'fixture-native-model', '-ReasoningEffort', 'high',
+  '-ExpectedPromptSha256', digest(prompt), '-ExpectedSchemaSha256', digest(schema),
+  '-EvaluatorCommand', join(config.root, 'copilot.ps1'), '-TimeoutSeconds', '30',
+  '-StagePayloadBudgetBytes', String(Buffer.byteLength(request)),
+  '-EvaluatorPayloadBudgetBytes', String(Buffer.byteLength(expectedPrompt))];
+const execute = (input, callArgs = args) => new Promise(resolve => {
+  const child = execFile('pwsh', callArgs, {encoding: 'utf8', timeout: 60000,
+    env: {...process.env, TEMP: runtime, TMP: runtime, TMPDIR: runtime}}, (error, stdout, stderr) => resolve({error, stdout, stderr}));
+  child.stdin.on('error', () => {});
+  child.stdin.end(input);
+});
+writeFileSync(fixturePath, JSON.stringify(fixture), 'utf8');
+const valid = await execute(Buffer.from(request, 'utf8'));
+assert.equal(valid.error, null, 'Actual evaluator must accept an exact-budget UTF-8 request');
+assert.equal(valid.stderr, '', 'Successful JSON transport must not emit diagnostics');
+assert.deepEqual(JSON.parse(valid.stdout), config.result, 'Unicode, quotes, and newlines must survive both native boundaries');
+assert.ok(Buffer.from(valid.stdout, 'utf8').includes(Buffer.from(sample.split('\n')[0].replaceAll('"', '\\"'), 'utf8')),
+  'Returned JSON must contain the original UTF-8 non-ASCII bytes without a BOM or code-page substitution');
+assert.notEqual(valid.stdout.charCodeAt(0), 0xfeff, 'Evaluator stdout must not start with a BOM');
+rmSync(startedPath);
+const invalidInput = await execute(Buffer.concat([Buffer.from(request.slice(0, -1) + ',"invalid":"'), Buffer.from([0xc3, 0x28]), Buffer.from('"}')]));
+assert.ok(invalidInput.error && !existsSync(startedPath), 'Invalid UTF-8 must fail before inference');
+assert.match(invalidInput.stderr, /input is not valid UTF-8; content omitted/);
+const smallerBudget = [...args];
+smallerBudget[smallerBudget.indexOf('-StagePayloadBudgetBytes') + 1] = String(Buffer.byteLength(request) - 1);
+const oversized = await execute(Buffer.from(request, 'utf8'), smallerBudget);
+assert.ok(oversized.error && !existsSync(startedPath), 'Original UTF-8 request bytes must enforce the stage budget before inference');
+assert.match(oversized.stderr, /oversized unplanned request/);
+for (const mode of ['invalid-stdout', 'invalid-stderr']) {
+  fixture.mode = mode;
+  writeFileSync(fixturePath, JSON.stringify(fixture), 'utf8');
+  const invalidOutput = await execute(Buffer.from(request, 'utf8'));
+  assert.ok(invalidOutput.error && existsSync(startedPath), `${mode} must fail after the synthetic CLI runs`);
+  assert.match(invalidOutput.stderr, /CLI output is not valid UTF-8; content omitted/);
+  assert.equal(invalidOutput.stdout, '', 'Invalid UTF-8 must not produce a result');
+  rmSync(startedPath);
+}
+console.log(JSON.stringify({passed: true, cases: 5}));
+'@
+    $nativeTransportExitCode = $LASTEXITCODE
+    $nativeTransportResult = ($nativeTransportOutput | Out-String) | ConvertFrom-Json
+    Add-TestResult -Name 'native-evaluator-utf8-byte-stream-round-trip-and-rejection' -Passed (
+        $nativeTransportExitCode -eq 0 -and $nativeTransportResult.passed -and $nativeTransportResult.cases -eq 5
+    ) -Detail 'The production Node execFile/pwsh boundary preserves arrows, emoji, non-ASCII text, quotes, and newlines at exact byte budgets; malformed request, stdout, and stderr bytes fail closed before returning a result.'
+} finally {
+    Remove-Item -LiteralPath $nativeTransportRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 Write-TestProgress -Name 'native-analysis-availability' -Detail 'Executing the native command preflight with offline CLI and analysis boundaries'
 Import-Module (Join-Path $PSScriptRoot '../modules/shared/HostedToolkit.Helpers.psm1') -Force
@@ -661,9 +1183,11 @@ $expectedAssignments = @($masterLlmConfiguration.assignments | ForEach-Object {
         providerCode = $model.providerCode; model = $model.modelCode; adapterCode = $assignment.adapterCode; reasoningEffort = $assignment.reasoningEffort }
 })
 function Invoke-NativeAvailabilityFixture {
-    param([string]$Body, [switch]$UnavailableRuleProfile, [int]$ResumeRunId = 0, [switch]$Force, [int]$ContinueRunId = 0)
+    param([string]$Body, [switch]$UnavailableRuleProfile, [int]$ResumeRunId = 0, [switch]$Force, [int]$ContinueRunId = 0,
+        [int]$StagePayloadBudgetBytes = 262144, [int]$EvaluatorPayloadBudgetBytes = 393216, [switch]$AdjudicationOnly)
     & {
-        param([string]$Body, [bool]$UnavailableRuleProfile, [int]$ResumeRunId, [bool]$Force, [int]$ContinueRunId)
+        param([string]$Body, [bool]$UnavailableRuleProfile, [int]$ResumeRunId, [bool]$Force, [int]$ContinueRunId,
+            [int]$StagePayloadBudgetBytes, [int]$EvaluatorPayloadBudgetBytes, [bool]$AdjudicationOnly)
         $EvaluatorCommand = 'fixture-copilot'
         $MaxParallelBatches = 3
         $DatabaseGuid = '12345678-1234-4234-8234-123456789abc'
@@ -698,8 +1222,17 @@ function Invoke-NativeAvailabilityFixture {
                     $script:nativeAnalysisRequest = $InputObject | ConvertFrom-Json
                     foreach ($phase in @('routing', 'consolidation', 'synthesis', 'adjudication')) {
                         Write-Host ('OFFLINE PREPARATION START: ' + $phase)
-                        @{ kind = 'downstream-progress'; state = 'plan'; phase = $phase; runId = $ContinueRunId; batchCount = 1;
-                            recoveredBatchCount = 0; workerCount = 1; pendingPayloadBytes = 12000; estimatedMilliseconds = 1000 } | ConvertTo-Json -Compress
+                        if ($script:nativeAnalysisRequest.adjudicationOnly -and $phase -cne 'adjudication') {
+                            @{ kind = 'downstream-progress'; state = 'plan'; phase = $phase; runId = $ContinueRunId; batchCount = 0;
+                                recoveredBatchCount = 1; workerCount = 0; pendingPayloadBytes = 0; estimatedMilliseconds = 0 } | ConvertTo-Json -Compress
+                            @{ kind = 'downstream-progress'; state = 'phase-complete'; phase = $phase; runId = $ContinueRunId; batchCount = 1;
+                                evaluatedBatchCount = 0; recoveredBatchCount = 1; totalElapsedMilliseconds = 0 } | ConvertTo-Json -Compress
+                            continue
+                        }
+                        $phasePlan = @{ kind = 'downstream-progress'; state = 'plan'; phase = $phase; runId = $ContinueRunId; batchCount = 1;
+                            recoveredBatchCount = 0; workerCount = 1; pendingPayloadBytes = 12000; estimatedMilliseconds = 1000 }
+                        if ($phase -ceq 'adjudication') { $phasePlan.comparisonCount = 1; $phasePlan.componentCount = 1 }
+                        $phasePlan | ConvertTo-Json -Compress
                         @{ kind = 'downstream-progress'; state = 'running'; phase = $phase; runId = $ContinueRunId; evaluationId = 1; batchNumber = 1; batchCount = 1 } | ConvertTo-Json -Compress
                         @{ kind = 'downstream-progress'; state = 'passed'; phase = $phase; runId = $ContinueRunId; evaluationId = 1; batchNumber = 1; batchCount = 1;
                             completedBatchCount = 1; resultCount = 2; batchElapsedMilliseconds = 1000; totalElapsedMilliseconds = 1000; remainingMilliseconds = 0 } | ConvertTo-Json -Compress
@@ -741,7 +1274,7 @@ function Invoke-NativeAvailabilityFixture {
         $rendered = @(& ([scriptblock]::Create($Body)) 6>&1 | ForEach-Object { [string]$_ })
         [pscustomobject]@{ profiles = $script:nativeSelectedProfiles; request = $script:nativeAnalysisRequest;
             started = $script:nativeAnalysisStarted; rendered = $rendered -join "`n" }
-    } $Body ([bool]$UnavailableRuleProfile) $ResumeRunId ([bool]$Force) $ContinueRunId
+    } $Body ([bool]$UnavailableRuleProfile) $ResumeRunId ([bool]$Force) $ContinueRunId $StagePayloadBudgetBytes $EvaluatorPayloadBudgetBytes ([bool]$AdjudicationOnly)
 }
 $nativeAvailable = Invoke-NativeAvailabilityFixture -Body $nativeBody
 $mismatchedAssignments = @($expectedAssignments | Where-Object { -not $nativeAvailable.profiles.Contains($_.taskCode) -or
@@ -804,6 +1337,23 @@ catch { $nativeForceResumeRejected = $_.Exception.Message -like '*cannot be comb
 Add-TestResult -Name 'native-analysis-force-resume-conflict-rejected' -Passed $nativeForceResumeRejected -Detail 'Force and same-run continuation have distinct authority and cannot be combined.'
 
 $nativeContinued = Invoke-NativeAvailabilityFixture -Body $nativeBody -ContinueRunId 5
+Add-TestResult -Name 'native-adjudication-relationship-component-summary' -Passed (
+    $nativeContinued.rendered -match 'Relationships\s+: 1 recorded \| 1 complete components' -and
+    $nativeContinued.rendered -notmatch 'comparison ceiling'
+) -Detail 'The production adjudication workload summary reports recorded relationships and complete components rather than a Cartesian comparison ceiling.'
+$adjudicationOnlyContinuation = Invoke-NativeAvailabilityFixture -Body $nativeBody -ContinueRunId 5 -AdjudicationOnly
+$adjudicationOnlyWithoutRunRejected = $false
+try { $null = Invoke-NativeAvailabilityFixture -Body $nativeBody -AdjudicationOnly }
+catch { $adjudicationOnlyWithoutRunRejected = $_.Exception.Message -like '*AdjudicationOnly requires ContinueRunId*' }
+Add-TestResult -Name 'native-adjudication-only-requires-continuation-and-preserves-recovered-phase-output' -Passed (
+    $adjudicationOnlyWithoutRunRejected -and $adjudicationOnlyContinuation.request.adjudicationOnly -eq $true -and
+    $adjudicationOnlyContinuation.rendered -match '0 pending \| 1 recovered' -and
+    $nativeContinued.request.adjudicationOnly -eq $false
+) -Detail 'Adjudication-only is an explicit continuation option; recovered earlier phases report zero dispatch and ordinary continuation does not enable it.'
+$boundedContinuation = Invoke-NativeAvailabilityFixture -Body $nativeBody -ContinueRunId 5 -StagePayloadBudgetBytes 30000 -EvaluatorPayloadBudgetBytes 40000
+Add-TestResult -Name 'native-downstream-forwards-configured-byte-budgets' -Passed ($boundedContinuation.started -and
+    $boundedContinuation.request.budgets.stagePayloadBudgetBytes -eq 30000 -and $boundedContinuation.request.budgets.evaluatorPayloadBudgetBytes -eq 40000 -and
+    $nativeContinued.request.budgets.stagePayloadBudgetBytes -eq 262144 -and $nativeContinued.request.budgets.evaluatorPayloadBudgetBytes -eq 393216) -Detail 'The public continuation command passes both configured limits rather than silently reverting to planner defaults.'
 $completionFunctions = @($nativeAst.FindAll({ param($node)
     $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Complete-NativeCommandTextOutput'
 }, $true))
@@ -876,11 +1426,13 @@ $nativeHelpersPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../modules
 $nativeActivityPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../modules/workbench/Workbench.Activity.psm1'))
 $busyOutputValid = $true
 $settledFailureOutputValid = $true
+$detailedFailureOutputValid = $false
 $prematureFailureRejected = $false
 $outputCases = @(
     @{ continueId = 0; mode = 'busy' }
     @{ continueId = 5; mode = 'busy' }
     @{ continueId = 5; mode = 'settled-failure' }
+    @{ continueId = 5; mode = 'detailed-failure' }
     @{ continueId = 5; mode = 'premature-failure' }
 )
 foreach ($outputCase in $outputCases) {
@@ -895,8 +1447,11 @@ Import-Module '$($nativeActivityPath.Replace("'", "''"))' -Force
 `$UnavailableRuleProfile = `$false
 `$ResumeRunId = 0
 `$ContinueRunId = $continueId
+`$AdjudicationOnly = `$false
 `$Force = `$false
 `$MaxParallelBatches = 3
+`$StagePayloadBudgetBytes = 262144
+`$EvaluatorPayloadBudgetBytes = 393216
 `$DatabaseGuid = '12345678-1234-4234-8234-123456789abc'
 `$DatabasePath = Join-Path ([IO.Path]::GetTempPath()) 'not-created-native-busy-output.sqlite'
 `$EvaluatorCommand = 'fixture-copilot'
@@ -909,15 +1464,22 @@ function node {
     process {
         if ('llm-runtime' -in `$Arguments) {
             @{ assignments = `$expectedAssignments } | ConvertTo-Json -Depth 100 -Compress
-        } elseif (`$failureMode -in @('settled-failure', 'premature-failure')) {
+        } elseif (`$failureMode -in @('settled-failure', 'detailed-failure', 'premature-failure')) {
             @{ kind = 'downstream-progress'; state = 'plan'; phase = 'routing'; runId = 5; batchCount = 6;
                 recoveredBatchCount = 0; workerCount = 3; pendingPayloadBytes = 12000; estimatedMilliseconds = 1000 } | ConvertTo-Json -Compress
             foreach (`$batch in 1..3) {
                 @{ kind = 'downstream-progress'; state = 'running'; phase = 'routing'; runId = 5; evaluationId = `$batch; batchNumber = `$batch; batchCount = 6 } | ConvertTo-Json -Compress
             }
-            @{ kind = 'downstream-progress'; state = 'failed'; phase = 'routing'; runId = 5; batchNumber = 2; batchCount = 6;
-                failureCode = 'evaluator-or-result-failed'; batchElapsedMilliseconds = 1000; totalElapsedMilliseconds = 1000 } | ConvertTo-Json -Compress
-            if (`$failureMode -ceq 'settled-failure') {
+            `$failure = @{ kind = 'downstream-progress'; state = 'failed'; phase = 'routing'; runId = 5; batchNumber = 2; batchCount = 6;
+                failureCode = 'evaluator-or-result-failed'; batchElapsedMilliseconds = 1000; totalElapsedMilliseconds = 1000 }
+            if (`$failureMode -ceq 'detailed-failure') {
+                `$failure.failureCode = 'evaluator-result-contract-invalid'
+                `$failure.failureStage = 'commit'
+                `$failure.failureReason = 'Synthetic reconciliation component validation failed'
+                `$failure.failurePath = '/components/0'
+            }
+            `$failure | ConvertTo-Json -Compress
+            if (`$failureMode -in @('settled-failure', 'detailed-failure')) {
                 `$completed = 0
                 foreach (`$batch in @(3, 1)) {
                     `$completed += 1
@@ -965,7 +1527,10 @@ $nativeBody
                 [pscustomobject]@{ status = 'passed'; name = 'routing 3/6' }
                 [pscustomobject]@{ status = 'passed'; name = 'routing 1/6' }
             )
-            $expectedFailures = @('  - routing 2/6 failed; committed results retained; unresolved work requires recovery')
+            $failureDetail = if ($outputCase.mode -ceq 'detailed-failure') {
+                'commit: Synthetic reconciliation component validation failed at /components/0'
+            } else { 'Evaluation failed; the original reason is unavailable in safe diagnostics' }
+            $expectedFailures = @('  - routing 2/6 ' + $failureDetail + '; committed results retained; unresolved work requires recovery')
         }
         $summary = @(Write-ValidationSectionHeader -Title 'Native Analysis Summary') +
             @(Write-ValidationSummary -Fields ([ordered]@{ Status = 'FAILED'; Checks = $expectedRows.Count; Passed = @($expectedRows | Where-Object status -CEQ 'passed').Count; Failed = 1 })) +
@@ -977,13 +1542,16 @@ $nativeBody
             $busyOutputValid = $busyOutputValid -and $process.ExitCode -eq 1 -and [string]::IsNullOrWhiteSpace($errors) -and
                 $normalized.Contains(($summary -join "`n")) -and $rendered -match '\[FAILED\]\s+execution-guard\s+:' -and
                 $rendered -notmatch 'did not complete|Reason\s+:|Action\s+:'
-        } elseif ($outputCase.mode -ceq 'settled-failure') {
+        } elseif ($outputCase.mode -in @('settled-failure', 'detailed-failure')) {
             $lastSettledPosition = $rendered.IndexOf('[PASSED]   routing 1/6', [StringComparison]::Ordinal)
             $summaryPosition = $rendered.IndexOf('NATIVE ANALYSIS SUMMARY', [StringComparison]::Ordinal)
-            $settledFailureOutputValid = $process.ExitCode -eq 1 -and [string]::IsNullOrWhiteSpace($errors) -and
+            $casePassed = $process.ExitCode -eq 1 -and [string]::IsNullOrWhiteSpace($errors) -and
                 $normalized.Contains(($summary -join "`n")) -and $lastSettledPosition -ge 0 -and $summaryPosition -gt $lastSettledPosition -and
-                $rendered -match '(?m)^\[FAILED\]\s+routing 2/6\s+: Total Elapsed .+ : \[Batch: .+\]\r?$' -and
+                $rendered -match '(?m)^\[FAILED\]\s+routing 2/6\s+: Total Elapsed .+ : \[Batch: .+\]' -and
                 $rendered -notmatch 'routing 4/6|CONSOLIDATION|did not complete'
+            if ($outputCase.mode -ceq 'detailed-failure') {
+                $detailedFailureOutputValid = $casePassed -and $rendered.Contains($failureDetail)
+            } else { $settledFailureOutputValid = $casePassed }
         } else {
             $prematureFailureRejected = $process.ExitCode -eq 1 -and $errors -match 'failure does not match settled failed work' -and
                 $rendered -notmatch 'NATIVE ANALYSIS SUMMARY'
@@ -992,6 +1560,7 @@ $nativeBody
 }
 Add-TestResult -Name 'native-analysis-busy-command-preserves-checks-and-clean-failure-summary' -Passed $busyOutputValid -Detail 'Actual source/downstream command bodies exit one with the aligned failure, current availability counts, results table and failure bullet; no raw exception or fabricated previous-run passes.'
 Add-TestResult -Name 'native-analysis-failed-phase-reports-retained-success-after-workers-settle' -Passed $settledFailureOutputValid -Detail 'Matching failed/passed batch rows settle before the failed summary, retained successes remain counted, exit is nonzero and no later phase starts.'
+Add-TestResult -Name 'native-analysis-failure-shows-safe-stage-reason-and-location' -Passed $detailedFailureOutputValid -Detail 'A real command render preserves elapsed/batch timings and retained successes while showing the safe validation reason and schema-owned location in its failure summary.'
 Add-TestResult -Name 'native-analysis-rejects-failure-summary-before-workers-settle' -Passed $prematureFailureRejected -Detail 'A failed execution event cannot falsely claim completion while tracked workers remain active.'
 
 Write-TestProgress -Name 'native-activity' -Detail 'Checking the activity renderer, quiet transport, and owned-process cancellation without models or a database'
@@ -1006,7 +1575,7 @@ try {
     $activity.Interactive = $true
     foreach ($frame in 0..7) {
         if ($frame -gt 0) { $activity.NextFrameMilliseconds = 0 }
-        & $activityModule { param($Activity) Write-WorkbenchActivityFrame -Activity $Activity -Force } $activity
+        & $activityModule { param($Activity) Write-WorkbenchActivityFrame -Activity $Activity -Force -WindowWidth 80 } $activity
     }
     Update-WorkbenchActivity -Activity $activity -Name 'Processing Synthesis'
     $activityFramesValid = [object]::ReferenceEquals($clock, $activity.Clock) -and $clock.IsRunning -and $activity.Name -ceq 'Processing Synthesis'
@@ -1019,7 +1588,7 @@ try {
     try { Stop-WorkbenchActivity -Activity $activity }
     finally { [Console]::SetOut($consoleOutput); $capture.Dispose() }
 }
-Add-TestResult -Name 'native-activity-four-frames-total-clock-and-terminal-cleanup' -Passed $activityFramesValid -Detail 'The actual yellow renderer repeats dot/double/triple/blank frames, preserves its clock across phase changes, and restores cursor/color without a progress bar.'
+Add-TestResult -Name 'native-activity-four-frames-total-clock-and-terminal-cleanup' -Passed $activityFramesValid -Detail 'The actual yellow renderer uses an injected terminal width to repeat every animated frame under captured output, preserves its clock across phase changes, and restores cursor/color without a progress bar.'
 
 $activityTransportValid = $false
 $activity = Start-WorkbenchActivity -Name 'Preparing Routing'
@@ -1042,6 +1611,90 @@ try {
         $activity.StderrCharacters -eq 10000 -and -not $activity.Active -and -not $activity.CursorHidden
 } finally { Stop-WorkbenchActivity -Activity $activity }
 Add-TestResult -Name 'native-activity-quiet-process-preserves-json-stderr-and-exit' -Passed $activityTransportValid -Detail 'The actual native reader preserves UTF-8 stdin and structured stdout across silence, drains more than one stderr buffer without mixing diagnostics, and retains a nonzero exit.'
+
+Write-TestProgress -Name 'workbench-new-cancellation' -Detail 'Cancelling the actual launcher wait and checking its owned-process cleanup without a browser or database'
+$launcherTokens = $null
+$launcherErrors = $null
+$launcherAst = [Management.Automation.Language.Parser]::ParseFile($newLauncherPath, [ref]$launcherTokens, [ref]$launcherErrors)
+$launcherTry = @($launcherAst.FindAll({ param($node)
+    $node -is [Management.Automation.Language.TryStatementAst] -and $node.Body.Extent.Text.Contains('$readyLine =')
+}, $true))
+$launcherWait = @(if ($launcherTry.Count -eq 1) { @($launcherTry[0].Body.Statements | Where-Object {
+    $_.Extent.Text -ceq '$process.WaitForExit()' -or $_.Extent.Text.StartsWith('if (-not $process.HasExited) { Wait-Process')
+}) } else { @() })
+$launcherCancelled = $false
+$launcherCancellationTypes = [Collections.Generic.List[string]]::new()
+$launcherPipeline = $null
+$launcherSignal = [Threading.ManualResetEventSlim]::new($false)
+$launcherRecord = [hashtable]::Synchronized(@{})
+try {
+    if ($launcherErrors.Count -gt 0 -or $launcherTry.Count -ne 1 -or $launcherWait.Count -ne 1) { throw 'Launcher lifecycle boundary is ambiguous' }
+    $launcherProgram = @'
+import {spawn} from 'node:child_process';
+import {createServer} from 'node:http';
+const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});
+const server=createServer((request,response)=>response.end());
+server.listen(0,'127.0.0.1',()=>process.stdout.write(JSON.stringify({parent:process.pid,child:child.pid,port:server.address().port})+'\n'));
+'@
+    $launcherFixture = @'
+param([string]$NodePath,[string]$Program,[string]$WaitCode,[string]$CleanupCode,[object]$Ready,[hashtable]$Record)
+$ErrorActionPreference = 'Stop'
+$process = [Diagnostics.Process]::new()
+$process.StartInfo.FileName = $NodePath
+$process.StartInfo.UseShellExecute = $false
+$process.StartInfo.CreateNoWindow = $true
+$process.StartInfo.RedirectStandardOutput = $true
+$process.StartInfo.ArgumentList.Add('--input-type=module')
+$process.StartInfo.ArgumentList.Add('-e')
+$process.StartInfo.ArgumentList.Add($Program)
+$started = $false
+try {
+    if (-not $process.Start()) { throw 'Synthetic launcher child could not start' }
+    $started = $true
+    $packet = $process.StandardOutput.ReadLine() | ConvertFrom-Json
+    $Record.parent = [int]$packet.parent
+    $Record.child = [int]$packet.child
+    $Record.port = [int]$packet.port
+    $Ready.Set()
+    & ([scriptblock]::Create($WaitCode))
+} finally { & ([scriptblock]::Create($CleanupCode)) }
+'@
+    $launcherPipeline = [powershell]::Create()
+    $cleanupCode = (@($launcherTry[0].Finally.Statements | ForEach-Object { $_.Extent.Text }) -join "`n")
+    $null = $launcherPipeline.AddScript($launcherFixture).AddArgument((Get-Command node -CommandType Application).Source).
+        AddArgument($launcherProgram).AddArgument($launcherWait[0].Extent.Text).AddArgument($cleanupCode).
+        AddArgument($launcherSignal).AddArgument($launcherRecord)
+    $launcherInvocation = $launcherPipeline.BeginInvoke()
+    if (-not $launcherSignal.Wait(5000)) { throw 'Synthetic launcher did not reach its server wait' }
+    $launcherStop = $launcherPipeline.StopAsync($null, $null)
+    $launcherCancelled = $launcherStop.Wait(5000) -and
+        $launcherPipeline.InvocationStateInfo.State -eq [Management.Automation.PSInvocationState]::Stopped
+    foreach ($ownedId in @($launcherRecord.parent, $launcherRecord.child)) {
+        try {
+            $owned = [Diagnostics.Process]::GetProcessById($ownedId)
+            try { if (-not $owned.HasExited) { $launcherCancelled = $false } }
+            finally { $owned.Dispose() }
+        } catch [ArgumentException] { }
+    }
+    $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $launcherRecord.port)
+    try { $portProbe.Start() }
+    finally { $portProbe.Stop() }
+} catch {
+    $launcherCancellationTypes.Add($_.Exception.GetType().Name)
+    $launcherCancelled = $false
+} finally {
+    foreach ($key in @('parent', 'child')) {
+        if (-not $launcherRecord.ContainsKey($key)) { continue }
+        try {
+            $owned = [Diagnostics.Process]::GetProcessById($launcherRecord[$key])
+            try { if (-not $owned.HasExited) { $owned.Kill($true); $null = $owned.WaitForExit(5000) } }
+            finally { $owned.Dispose() }
+        } catch [ArgumentException] { }
+    }
+    if ($null -ne $launcherPipeline) { $launcherPipeline.Stop(); $launcherPipeline.Dispose() }
+    $launcherSignal.Dispose()
+}
+Add-TestResult -Name 'workbench-new-pipeline-cancellation-stops-owned-server-tree' -Passed $launcherCancelled -Detail ('The actual launcher wait is interruptible and its finally block removes its Node process tree and releases its loopback port. No browser or database is used. Diagnostic types: ' + ($launcherCancellationTypes -join ', '))
 
 $ownedProcessCode = @'
 import {spawn} from 'node:child_process';

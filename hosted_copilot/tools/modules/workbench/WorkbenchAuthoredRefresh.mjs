@@ -2,14 +2,16 @@ import { requireSourceObject, requireSourceText, normalizeCapturedSourceFiles } 
 import { ingestSourceCollection, readSourceCollection } from './WorkbenchSourceIngestion.mjs';
 import { ingestProtectedCapture, readProtectedSnapshot } from './WorkbenchProtectedSnapshots.mjs';
 import { readCurrentProtectedSnapshot, advanceCurrentProtectedSnapshot } from './WorkbenchWorkspace.mjs';
+import { registerWorkbenchAuditDefinitions } from './WorkbenchAudit.mjs';
 
 const auditTargets = {
   change_revision_id: 'change_revisions', resolution_id: 'issue_resolutions', plan_version_id: 'plan_versions',
   approval_id: 'approvals', catalog_application_id: 'catalog_applications', deployment_id: 'deployments',
-  backup_id: 'database_backups', codeowner_refresh_id: 'codeowner_refreshes', evaluation_id: 'evaluations',
+  backup_id: 'database_backups', evaluation_id: 'evaluations', analysis_run_id: 'analysis_runs',
   source_collection_id: 'source_collections', protected_snapshot_id: 'protected_snapshots', source_rule_id: 'source_rules', rule_version_id: 'rule_versions',
 };
 
+// Isolate refresh writes with a savepoint and distinguish rollback failure from a safely reverted operation.
 function transaction(connection, operation) {
   connection.exec('SAVEPOINT workbench_authored_refresh');
   try {
@@ -23,10 +25,22 @@ function transaction(connection, operation) {
   }
 }
 
+// Require each audit target to identify exactly one supported relational entity.
+function createAuditTargets(connection, targets) {
+  connection.exec(`
+      CREATE TABLE audit_targets (
+        id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL REFERENCES audit_events(id), target_role TEXT NOT NULL CHECK(target_role IN ('subject', 'before', 'after')),
+        ${Object.entries(targets).map(([field, table]) => `${field} INTEGER REFERENCES ${table}(id)`).join(', ')},
+        CHECK(${Object.keys(targets).map(field => `(${field} IS NOT NULL)`).join(' + ')} = 1)
+      ) STRICT;
+  `);
+}
+
+// Verify domain dependencies before creating append-only, startup-scoped audit events and typed targets.
 export function createAuthoredAuditSchema(connection) {
   for (const [table, columns] of Object.entries({
     actors: ['id', 'actor_kind', 'provider_code', 'provider_actor_id', 'display_name'],
-    guidance_surfaces: ['id', 'code', 'label'], codeowner_snapshots: ['id', 'repository_context_id', 'source_relative_path', 'captured_text', 'content_sha256', 'parser_version', 'captured_at'],
+    guidance_surfaces: ['id', 'code', 'label'],
     repository_contexts: ['id', 'repository_id', 'branch_ref', 'commit_oid', 'observed_at'],
     ...Object.fromEntries(Object.values(auditTargets).map(table => [table, ['id']])),
   })) {
@@ -36,31 +50,60 @@ export function createAuthoredAuditSchema(connection) {
   transaction(connection, () => {
     connection.exec(`
       CREATE UNIQUE INDEX actors_one_system ON actors(actor_kind) WHERE actor_kind = 'system';
+      CREATE TABLE audit_actions (
+        id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, label TEXT NOT NULL, UNIQUE(id, code)
+      ) STRICT;
+      CREATE TABLE audit_categories (
+        id INTEGER PRIMARY KEY, code TEXT NOT NULL UNIQUE, label TEXT NOT NULL
+      ) STRICT;
+      CREATE TABLE audit_correlations (
+        id INTEGER PRIMARY KEY, correlation_guid TEXT NOT NULL UNIQUE,
+        action_id INTEGER NOT NULL REFERENCES audit_actions(id),
+        initiated_by_actor_id INTEGER NOT NULL REFERENCES actors(id),
+        repository_context_id INTEGER NOT NULL REFERENCES repository_contexts(id), started_at TEXT NOT NULL,
+        UNIQUE(id, action_id),
+        CHECK(length(correlation_guid) = 36 AND substr(correlation_guid, 9, 1) = '-' AND substr(correlation_guid, 14, 1) = '-'
+          AND substr(correlation_guid, 19, 1) = '-' AND substr(correlation_guid, 24, 1) = '-'
+          AND length(replace(correlation_guid, '-', '')) = 32 AND replace(correlation_guid, '-', '') NOT GLOB '*[^0-9a-f]*')
+      ) STRICT;
       CREATE TABLE audit_events (
         id INTEGER PRIMARY KEY, actor_id INTEGER NOT NULL REFERENCES actors(id), initiated_by_actor_id INTEGER REFERENCES actors(id),
-        permission_snapshot_id INTEGER REFERENCES codeowner_snapshots(id), repository_context_id INTEGER REFERENCES repository_contexts(id),
+        repository_context_id INTEGER REFERENCES repository_contexts(id),
         startup_attempt_guid TEXT, severity TEXT NOT NULL CHECK(severity IN ('info', 'warning', 'error')),
         authored_collection_code TEXT CHECK(authored_collection_code IN ('proposals', 'protected')),
         authored_surface_id INTEGER REFERENCES guidance_surfaces(id), authored_relative_path TEXT,
         action_code TEXT NOT NULL, outcome TEXT NOT NULL, occurred_at TEXT NOT NULL, safe_summary TEXT NOT NULL,
+        correlation_id INTEGER, action_id INTEGER, category_id INTEGER REFERENCES audit_categories(id),
+        requested_port INTEGER CHECK(requested_port BETWEEN 0 AND 65535),
+        listener_port INTEGER CHECK(listener_port BETWEEN 1 AND 65535),
+        elapsed_ms INTEGER CHECK(elapsed_ms >= 0),
+        item_count INTEGER CHECK(item_count >= 0), failure_count INTEGER CHECK(failure_count >= 0),
+        state_save_outcome TEXT CHECK(state_save_outcome IN ('saved', 'nothing-pending', 'failed', 'unknown')),
+        FOREIGN KEY(correlation_id) REFERENCES audit_correlations(id),
+        FOREIGN KEY(action_id, action_code) REFERENCES audit_actions(id, code),
+        CHECK((correlation_id IS NULL AND action_id IS NULL AND category_id IS NULL) OR
+          (correlation_id IS NOT NULL AND action_id IS NOT NULL AND category_id IS NOT NULL
+            AND outcome IN ('started', 'succeeded', 'failed', 'refused', 'cancelled', 'reused'))),
         CHECK(authored_collection_code IS NULL OR (startup_attempt_guid IS NOT NULL AND authored_relative_path IS NOT NULL)),
         CHECK(authored_surface_id IS NULL OR authored_collection_code IS NOT NULL),
         CHECK(authored_relative_path IS NULL OR authored_collection_code IS NOT NULL),
         CHECK(startup_attempt_guid IS NULL OR authored_collection_code IS NOT NULL)
       ) STRICT;
       CREATE INDEX audit_startup_attempt ON audit_events(startup_attempt_guid, id);
-      CREATE TABLE audit_targets (
-        id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL REFERENCES audit_events(id), target_role TEXT NOT NULL CHECK(target_role IN ('subject', 'before', 'after')),
-        ${Object.entries(auditTargets).map(([field, table]) => `${field} INTEGER REFERENCES ${table}(id)`).join(', ')},
-        CHECK(${Object.keys(auditTargets).map(field => `(${field} IS NOT NULL)`).join(' + ')} = 1)
-      ) STRICT;
+      CREATE UNIQUE INDEX audit_operational_outcome ON audit_events(correlation_id, action_id, outcome)
+        WHERE correlation_id IS NOT NULL;
+      CREATE INDEX audit_correlation_events ON audit_events(correlation_id, id);
     `);
-    for (const table of ['audit_events', 'audit_targets']) for (const operation of ['UPDATE', 'DELETE']) {
+    registerWorkbenchAuditDefinitions(connection);
+    createAuditTargets(connection, auditTargets);
+    connection.exec('CREATE INDEX audit_target_events ON audit_targets(event_id)');
+    for (const table of ['audit_events', 'audit_targets', 'audit_correlations', 'audit_actions', 'audit_categories']) for (const operation of ['UPDATE', 'DELETE']) {
       connection.exec(`CREATE TRIGGER ${table}_${operation} BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT, 'Audit history is append-only'); END`);
     }
   });
 }
 
+// Resolve a validated startup attempt, repository, non-overlapping authored roots, surfaces, and system actor.
 function scope(connection, request) {
   const { databaseGuid, repositoryId, repositoryContextId, startupAttemptGuid, profile } = request;
   if (typeof startupAttemptGuid !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(startupAttemptGuid)) throw new Error('A canonical startup attempt GUID is required');
@@ -80,6 +123,7 @@ function scope(connection, request) {
   return { databaseGuid, repositoryId, repositoryContextId, startupAttemptGuid, profile, surfaces, actorId: actor.id };
 }
 
+// Derive the registered collection or surface path instead of accepting arbitrary audit file locations.
 function fileScope(context, collection, surfaceCode = null) {
   const root = context.profile[collection === 'proposals' ? 'proposalsRoot' : 'protectedRoot'];
   const surface = surfaceCode === null ? null : context.surfaces.find(item => item.code === surfaceCode);
@@ -87,6 +131,7 @@ function fileScope(context, collection, surfaceCode = null) {
   return { surfaceId: surface?.id ?? null, path: surface ? `${root}/${surface.code}.rules.md` : root };
 }
 
+// Attach safe startup diagnostics and validated before/after references to one authored scope.
 function event(connection, context, collection, surfaceCode, action, outcome, severity, summary, targets = []) {
   const selected = fileScope(context, collection, surfaceCode);
   const eventId = Number(connection.run(`INSERT INTO audit_events(actor_id, repository_context_id, startup_attempt_guid, severity,
@@ -99,6 +144,7 @@ function event(connection, context, collection, surfaceCode, action, outcome, se
   }
 }
 
+// Return only the selected startup attempt's events, with their typed evidence targets.
 export function readAuthoredStartupAudit(connection, request) {
   const context = scope(connection, request);
   return connection.all('SELECT * FROM audit_events WHERE startup_attempt_guid = ? AND repository_context_id = ? ORDER BY id', [context.startupAttemptGuid, context.repositoryContextId]).map(row => ({
@@ -106,12 +152,14 @@ export function readAuthoredStartupAudit(connection, request) {
   }));
 }
 
+// Persist failure diagnostics separately after a refresh has been safely rolled back.
 function failure(connection, context, failures) {
   transaction(connection, () => {
     for (const item of failures) event(connection, context, item.collection, item.surfaceCode ?? null, 'input-check', item.code, 'error', 'Authored inputs were not refreshed; correct the input and restart');
   });
 }
 
+// Record validated checks and actual input failures without falsely reporting a successful collection refresh.
 export function recordAuthoredStartupFailure(connection, request) {
   const fields = ['databaseGuid', 'repositoryId', 'repositoryContextId', 'startupAttemptGuid', 'profile', 'failures'];
   requireSourceObject(request, [...fields, 'validatedChecks'], fields, 'Authored startup failure');
@@ -142,6 +190,7 @@ export function recordAuthoredStartupFailure(connection, request) {
   return readAuthoredStartupAudit(connection, request);
 }
 
+// Refresh complete proposal/protected captures and their audit trail atomically, recording failure only after rollback.
 export function refreshAuthoredInputs(connection, request) {
   const fields = ['databaseGuid', 'repositoryId', 'repositoryContextId', 'startupAttemptGuid', 'profile', 'proposals', 'protectedCapture', 'expectedProtectedSnapshotId'];
   requireSourceObject(request, fields, fields, 'Authored refresh');

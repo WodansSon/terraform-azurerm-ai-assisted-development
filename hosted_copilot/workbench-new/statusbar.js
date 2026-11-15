@@ -1,0 +1,355 @@
+"use strict";
+
+const STATUS_BAR_ENTRY_KINDS = ["standard", "success", "warning", "error"];
+
+const STATUS_BAR_ENTRIES = Object.freeze([
+  {
+    key: "target",
+    alignment: "left",
+    element: "span",
+    id: "target-chip",
+    valueId: "status-target",
+    value: "Resolving target",
+    icon: "git-branch-compact",
+    iconFamily: "codicon",
+    tooltip: "Promotion Target",
+    classes: ["target-chip"],
+    truncationOwner: true
+  },
+  {
+    key: "validationIssues",
+    alignment: "left",
+    id: "validation-issues-status",
+    tooltip: "No Problems",
+    ariaLabel: "Validation Issues: No Problems",
+    navigation: "validation-issues",
+    classes: ["validation-issues-status"],
+    segments: [
+      { key: "errors", valueId: "validation-error-count", value: "0", icon: "error", iconFamily: "codicon" },
+      { key: "warnings", valueId: "validation-warning-count", value: "0", icon: "warning-compact", iconFamily: "codicon" }
+    ]
+  },
+  {
+    key: "save",
+    alignment: "left",
+    element: "span",
+    valueId: "save-indicator",
+    value: "Draft not loaded",
+    icon: "check-compact",
+    iconFamily: "codicon",
+    tooltip: "Draft Autosave State",
+    classes: ["save-indicator"]
+  },
+  {
+    key: "ruleIssues",
+    alignment: "right",
+    id: "rule-issues-status",
+    valueId: "rule-issues-status-count",
+    value: "0",
+    icon: "collection-issues-compact",
+    iconFamily: "custom",
+    tooltip: "Rule Issues",
+    ariaLabel: "Open rule issues",
+    navigation: "issues",
+    classes: ["rule-issues-status"],
+    hidden: true
+  },
+  {
+    key: "eligible",
+    alignment: "right",
+    valueId: "catalog-count",
+    value: "0",
+    icon: "collection",
+    iconFamily: "codicon",
+    tooltip: "Eligible Candidates",
+    ariaLabel: "Show eligible candidates",
+    navigation: "eligible"
+  },
+  {
+    key: "excluded",
+    alignment: "right",
+    valueId: "status-excluded",
+    value: "0",
+    icon: "circle-slash-compact",
+    iconFamily: "codicon",
+    tooltip: "Excluded Assessments",
+    ariaLabel: "Show excluded assessments",
+    navigation: "excluded"
+  },
+  {
+    key: "mapped",
+    alignment: "right",
+    valueId: "status-mapped",
+    value: "0",
+    icon: "link-multiple-16-filled",
+    iconFamily: "fluent",
+    tooltip: "Mapped Hosted Rules",
+    ariaLabel: "Show mapped Hosted rules",
+    navigation: "mapped"
+  },
+  {
+    key: "unmapped",
+    alignment: "right",
+    valueId: "status-unmapped",
+    value: "0",
+    icon: "link-dismiss-16-filled",
+    iconFamily: "fluent",
+    tooltip: "Not Mapped",
+    ariaLabel: "Show not mapped candidates",
+    navigation: "unmapped"
+  },
+  {
+    key: "plan",
+    alignment: "right",
+    valueId: "plan-count",
+    value: "0",
+    icon: "new-session",
+    iconFamily: "codicon",
+    tooltip: "Promotion Plan Items",
+    ariaLabel: "Open Promotion Plan",
+    navigation: "plan"
+  },
+  {
+    key: "capacity",
+    alignment: "right",
+    valueId: "status-headroom",
+    value: "0",
+    icon: "gauge-16-regular",
+    iconFamily: "fluent",
+    tooltip: "Hosted Guidance Headroom",
+    ariaLabel: "Show Hosted guidance headroom",
+    navigation: "capacity"
+  },
+  {
+    key: "promotionApproval",
+    alignment: "right",
+    valueId: "preview-status",
+    value: "Draft",
+    icon: "shield-compact",
+    iconFamily: "codicon",
+    tooltip: "Promotion Approval Status",
+    ariaLabel: "Open Promotion Preview",
+    navigation: "preview",
+    classes: ["promotion-approval-status"],
+    kind: "warning"
+  }
+]);
+
+let workbenchIconSymbols = null;
+let workbenchIconObserver;
+
+function updateWorkbenchIconFallbacks(root = document) {
+  if (!workbenchIconSymbols) return;
+  const uses = root.matches?.("svg use") ? [root] : [...root.querySelectorAll("svg use")];
+  for (const use of uses) {
+    const reference = new URL(use.getAttribute("href") || "", document.baseURI);
+    const sprite = new URL("sprite/sprite.svg", document.baseURI);
+    if (reference.origin !== sprite.origin || reference.pathname !== sprite.pathname) continue;
+    const svg = use.closest("svg");
+    const symbol = reference.hash.slice(1);
+    const missing = !workbenchIconSymbols.has(symbol);
+    svg.classList.toggle("icon-not-found", missing);
+    if (missing) {
+      svg.dataset.missingIcon = symbol;
+      svg.dataset.workbenchTooltip = `Icon not found: ${symbol}`;
+    } else if (svg.dataset.missingIcon) {
+      delete svg.dataset.missingIcon;
+      delete svg.dataset.workbenchTooltip;
+    }
+  }
+}
+
+function registerWorkbenchIconSymbols(sprite) {
+  workbenchIconSymbols = new Set([...sprite.getElementsByTagNameNS("http://www.w3.org/2000/svg", "symbol")].map(symbol => symbol.id));
+  updateWorkbenchIconFallbacks();
+  if (workbenchIconObserver) return;
+  workbenchIconObserver = new MutationObserver(records => {
+    for (const record of records) {
+      if (record.type === "attributes") updateWorkbenchIconFallbacks(record.target);
+      else for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) updateWorkbenchIconFallbacks(node);
+    }
+  });
+  workbenchIconObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["href"] });
+}
+
+function createStatusBarIcon(name, family) {
+  if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid status bar icon name: ${name}`);
+  if (!["codicon", "fluent", "custom"].includes(family)) throw new Error(`Unsupported status bar icon family: ${family}`);
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add(family === "fluent" ? "fluent-icon" : "codicon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", family === "fluent"
+    ? `sprite/sprite.svg#fluent-${name}`
+    : family === "custom" ? `sprite/sprite.svg#custom-${name}`
+      : `sprite/sprite.svg#codicon-${name}`);
+  svg.appendChild(use);
+  updateWorkbenchIconFallbacks(svg);
+  return svg;
+}
+
+class WorkbenchStatusBarService {
+  constructor(entries) {
+    this.entries = entries;
+    this.nodes = new Map();
+  }
+
+  render() {
+    const containers = {
+      left: document.querySelector(".status-left"),
+      right: document.querySelector(".status-right")
+    };
+    if (!containers.left || !containers.right) throw new Error("Workbench status bar containers are unavailable");
+    containers.left.replaceChildren();
+    containers.right.replaceChildren();
+    this.nodes.clear();
+
+    for (const entry of this.entries) {
+      if (this.nodes.has(entry.key)) throw new Error(`Duplicate Workbench status bar entry: ${entry.key}`);
+      const node = document.createElement(entry.element || "button");
+      if (node instanceof HTMLButtonElement) node.type = "button";
+      node.classList.add("status-item", ...(entry.classes || []));
+      if (node instanceof HTMLButtonElement) node.classList.add("clickable");
+      if (entry.id) node.id = entry.id;
+      if (entry.tooltip) node.dataset.workbenchTooltip = entry.tooltip;
+      if (entry.ariaLabel) node.setAttribute("aria-label", entry.ariaLabel);
+      if (entry.navigation) node.dataset.statusNavigation = entry.navigation;
+      if (entry.truncationOwner) node.dataset.truncationOwner = "";
+      node.hidden = Boolean(entry.hidden);
+      if (entry.segments) {
+        for (const segment of entry.segments) {
+          const container = document.createElement("span");
+          container.classList.add("status-item-segment");
+          container.setAttribute("aria-hidden", "true");
+          this.renderValue(container, segment);
+          node.appendChild(container);
+        }
+      } else this.renderValue(node, entry);
+      containers[entry.alignment].appendChild(node);
+      this.nodes.set(entry.key, node);
+      this.update(entry.key, { kind: entry.kind || "standard" });
+    }
+    this.bindTooltips();
+  }
+
+  bindTooltips() {
+    if (this.tooltipsBound) return;
+    const tooltip = document.getElementById("status-surface-tooltip");
+    if (!tooltip) throw new Error("Workbench tooltip surface is unavailable");
+    this.tooltipsBound = true;
+    let owner = null;
+    let suppressedOwner = null;
+    let showTimer = 0;
+    let hideTimer = 0;
+    const eligible = node => node?.closest?.("[data-workbench-tooltip]");
+    const enabled = node => node?.isConnected && !node.closest(":disabled, [aria-disabled='true'], .disabled");
+    const hide = () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+      owner = null;
+      tooltip.classList.remove("visible");
+      tooltip.setAttribute("aria-hidden", "true");
+    };
+    const show = (node, anchorX) => {
+      if (!enabled(node) || suppressedOwner === node || !node.matches(":hover, :focus-within")) { hide(); return; }
+      const metrics = getComputedStyle(document.documentElement);
+      const inset = Number.parseFloat(metrics.getPropertyValue("--tooltip-viewport-inset"));
+      const gap = Number.parseFloat(metrics.getPropertyValue("--tooltip-gap"));
+      if (!(inset > 0 && gap > 0)) throw new Error("Workbench tooltip metrics are invalid");
+      tooltip.textContent = node.dataset.workbenchTooltip;
+      tooltip.classList.add("visible");
+      tooltip.setAttribute("aria-hidden", "false");
+      const anchor = node.getBoundingClientRect();
+      const bounds = tooltip.getBoundingClientRect();
+      const preferredTop = anchor.bottom + gap + bounds.height + inset <= innerHeight ? anchor.bottom + gap : anchor.top - bounds.height - gap;
+      tooltip.style.left = `${Math.floor(Math.max(inset, Math.min(anchorX - bounds.width / 2, innerWidth - bounds.width - inset)))}px`;
+      tooltip.style.top = `${Math.floor(Math.max(inset, Math.min(preferredTop, innerHeight - bounds.height - inset)))}px`;
+    };
+    const enter = (node, anchorX) => {
+      if (!enabled(node) || suppressedOwner === node) return;
+      clearTimeout(hideTimer);
+      if (owner === node) return;
+      hide();
+      owner = node;
+      node.removeAttribute("title");
+      showTimer = setTimeout(() => { if (owner === node) show(node, anchorX); }, 500);
+    };
+    const leave = event => {
+      if (owner?.contains(event.relatedTarget) || tooltip.contains(event.relatedTarget)) return;
+      suppressedOwner = null;
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => {
+        if (enabled(owner) && owner.matches(":hover, :focus-within") || tooltip.matches(":hover")) return;
+        hide();
+      }, 150);
+    };
+    document.addEventListener("pointerover", event => {
+      if (tooltip.contains(event.target)) { clearTimeout(hideTimer); return; }
+      const node = eligible(event.target);
+      if (node) enter(node, event.clientX);
+    });
+    document.addEventListener("pointerout", leave);
+    document.addEventListener("focusin", event => {
+      const node = eligible(event.target);
+      if (node) { const bounds = node.getBoundingClientRect(); enter(node, bounds.left + bounds.width / 2); }
+    });
+    document.addEventListener("focusout", leave);
+    document.addEventListener("pointerdown", event => { suppressedOwner = eligible(event.target); hide(); });
+    document.addEventListener("keydown", event => { if (event.key === "Escape") { suppressedOwner = owner; hide(); } });
+    document.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+  }
+
+  renderValue(node, definition) {
+    node.appendChild(createStatusBarIcon(definition.icon, definition.iconFamily));
+    const value = document.createElement("span");
+    value.id = definition.valueId;
+    value.textContent = definition.value;
+    node.appendChild(value);
+  }
+
+  update(key, update) {
+    const node = this.nodes.get(key);
+    if (!node) throw new Error(`Unknown Workbench status bar entry: ${key}`);
+    const definition = this.entries.find((entry) => entry.key === key);
+    this.updateValue(node, definition, update);
+    if (update.segments) {
+      for (const [segmentKey, segmentUpdate] of Object.entries(update.segments)) {
+        const segment = definition.segments?.find((item) => item.key === segmentKey);
+        if (!segment) throw new Error(`Unknown Workbench status bar segment: ${key}.${segmentKey}`);
+        this.updateValue(node.querySelector(`#${segment.valueId}`).parentElement, segment, segmentUpdate);
+      }
+    }
+    if (Object.hasOwn(update, "tooltip")) {
+      if (update.tooltip) node.dataset.workbenchTooltip = String(update.tooltip);
+      else delete node.dataset.workbenchTooltip;
+    }
+    if (Object.hasOwn(update, "ariaLabel")) {
+      if (update.ariaLabel) node.setAttribute("aria-label", String(update.ariaLabel));
+      else node.removeAttribute("aria-label");
+    }
+    if (Object.hasOwn(update, "hidden")) node.hidden = Boolean(update.hidden);
+    return node;
+  }
+
+  updateValue(node, definition, update) {
+    if (Object.hasOwn(update, "text")) {
+      if (!definition.valueId) throw new Error("A grouped status bar entry requires segment updates");
+      node.querySelector(`#${definition.valueId}`).textContent = String(update.text);
+    }
+    if (Object.hasOwn(update, "icon")) {
+      node.querySelector(":scope > svg").replaceWith(createStatusBarIcon(update.icon, definition.iconFamily));
+    }
+    if (Object.hasOwn(update, "kind")) {
+      if (!STATUS_BAR_ENTRY_KINDS.includes(update.kind)) throw new Error(`Unsupported Workbench status bar entry kind: ${update.kind}`);
+      for (const kind of STATUS_BAR_ENTRY_KINDS) node.classList.remove(`${kind}-kind`);
+      if (update.kind !== "standard") node.classList.add(`${update.kind}-kind`);
+    }
+  }
+
+  getEntry(key) {
+    return this.nodes.get(key);
+  }
+}
+
+const workbenchStatusBar = new WorkbenchStatusBarService(STATUS_BAR_ENTRIES);

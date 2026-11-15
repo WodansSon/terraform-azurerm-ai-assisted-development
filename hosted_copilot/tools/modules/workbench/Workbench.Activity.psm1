@@ -39,7 +39,11 @@ function Clear-WorkbenchActivity {
 }
 
 function Write-WorkbenchActivityFrame {
-    param([Parameter(Mandatory)][object]$Activity, [switch]$Force)
+    param(
+        [Parameter(Mandatory)][object]$Activity,
+        [switch]$Force,
+        [ValidateRange(0, [int]::MaxValue)][Nullable[int]]$WindowWidth
+    )
 
     if (-not $Activity.Active -or -not $Activity.Interactive) { return }
     $elapsed = $Activity.Clock.Elapsed
@@ -55,7 +59,8 @@ function Write-WorkbenchActivityFrame {
     $dots = @('.', '..', '...', '')[$Activity.Frame]
     $duration = '{0:00}:{1:00}:{2:00}' -f [int][Math]::Floor($elapsed.TotalHours), $elapsed.Minutes, $elapsed.Seconds
     $line = '{0}: {1,-3} [Elapsed: {2}]' -f $Activity.Name, $dots, $duration
-    $width = [Math]::Max(1, [Console]::WindowWidth - 1)
+    if ($null -eq $WindowWidth) { $WindowWidth = [Console]::WindowWidth }
+    $width = [Math]::Max(1, $WindowWidth - 1)
     if ($line.Length -gt $width) { $line = '{0} {1,-3} {2}' -f $Activity.Name, $dots, $duration }
     if ($line.Length -gt $width) { $line = $line.Substring(0, $width) }
     [Console]::Write("`r" + $PSStyle.Foreground.Yellow + $line + $PSStyle.Reset + "$([char]27)[K")

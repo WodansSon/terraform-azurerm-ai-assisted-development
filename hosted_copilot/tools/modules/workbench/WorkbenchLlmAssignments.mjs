@@ -1,6 +1,7 @@
 import { requireSourceObject, requireSourceText } from './WorkbenchSourceRecords.mjs';
 import { readSelectedCapacityConfiguration } from './WorkbenchWorkspace.mjs';
 
+// Roll back configuration changes independently without committing an enclosing caller transaction.
 function scopedTransaction(connection, operation) {
   connection.exec('SAVEPOINT workbench_llm_configuration');
   try {
@@ -13,6 +14,7 @@ function scopedTransaction(connection, operation) {
   }
 }
 
+// Version changed task/model assignments and move current heads without rewriting historical evaluator identities.
 export function configureProfileLlms(connection, teamProfileId, configuration) {
   requireSourceObject(configuration, ['models', 'assignments'], ['models', 'assignments'], 'Master-profile LLM configuration');
   if (!Number.isSafeInteger(teamProfileId) || teamProfileId < 1 || !connection.get('SELECT id FROM team_profiles WHERE id = ?', [teamProfileId])) {
@@ -65,6 +67,7 @@ export function configureProfileLlms(connection, teamProfileId, configuration) {
   });
 }
 
+// Resolve the bound workspace's current task assignments rather than inferring models from global slots.
 export function readWorkspaceLlmAssignments(connection, binding) {
   readSelectedCapacityConfiguration(connection, binding);
   const assignments = connection.all(`SELECT assignment.id AS assignmentId, assignment.team_profile_id AS teamProfileId,

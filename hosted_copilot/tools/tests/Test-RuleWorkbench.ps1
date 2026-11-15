@@ -1116,6 +1116,7 @@ $dependencyOutput = @()
         if (-not (Test-PngFile -Path (Join-Path $runtime.Directory 'preview.png'))) { $iconManifestIssues.Add("$($runtime.Configuration.familyName): missing PNG inventory") }
     }
     $codiconContractValid = $codiconRuntimeNames.Count -eq [regex]::Matches($generatedSpriteContent, '<symbol id="codicon-').Count
+    $codiconContractValid = $codiconContractValid -and $codiconRuntimeNames -ccontains 'ruby'
     $codiconContractValid = $codiconContractValid -and $spriteContent -match '1c47ab36a4bb845c437866405c2fa67b8ca0fe36' -and $attributionContent -match 'Creative Commons Attribution 4\.0 International'
     $codiconContractValid = $codiconContractValid -and $iconGeneratorContent -match 'New-WorkbenchSprite -IconRoot \$IconRoot' -and $iconGeneratorContent -notmatch 'Invoke-WebRequest|Invoke-RestMethod|https://raw'
     $codiconContractValid = $codiconContractValid -and (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $codiconRoot 'warning-compact.svg')).Hash -ceq 'D007D0454B990CEA5CA463B5FFA60B8BCD475636B72C654311B09193C1A1E0CD'
@@ -1267,6 +1268,22 @@ $dependencyOutput = @()
                     (Get-FileHash -LiteralPath (Join-Path $runtime.Directory $legalFile)).Hash -ceq
                     (Get-FileHash -LiteralPath (Join-Path $generatedSpriteRoot "$familyName/legal/$legalFile")).Hash
             }
+        }
+        $defaultGenerationRoot = Join-Path $tempRoot 'default-icon-generation'
+        $defaultGeneratorDirectory = Join-Path $defaultGenerationRoot 'tools/internal/icons'
+        $defaultSchemaDirectory = Join-Path $defaultGenerationRoot 'contracts/workbench'
+        $null = New-Item -ItemType Directory -Path $defaultGeneratorDirectory, $defaultSchemaDirectory -Force
+        foreach ($fileName in @('New-WorkbenchSprite.ps1', 'WorkbenchIconAssets.ps1', 'WorkbenchIconPreview.ps1', 'Render-WorkbenchIconPreview.cjs')) {
+            Copy-Item -LiteralPath (Join-Path $iconRoot $fileName) -Destination $defaultGeneratorDirectory
+        }
+        Copy-Item -LiteralPath (Join-Path $iconRoot '../../../contracts/workbench/icon-runtime.schema.json') -Destination $defaultSchemaDirectory
+        $defaultGenerationOutput = @(& pwsh -NoProfile -File (Join-Path $defaultGeneratorDirectory 'New-WorkbenchSprite.ps1') -IconRoot $iconGenerationRoot -SkipPreviews 2>&1)
+        $portableIconGenerationValid = $portableIconGenerationValid -and $LASTEXITCODE -eq 0
+        foreach ($uiName in @('workbench', 'workbench-new')) {
+            $defaultSpritePath = Join-Path $defaultGenerationRoot "$uiName/sprite/sprite.svg"
+            $portableIconGenerationValid = $portableIconGenerationValid -and
+                (Test-Path -LiteralPath $defaultSpritePath -PathType Leaf) -and
+                (Get-Content -LiteralPath $defaultSpritePath -Raw) -ceq $generatedSpriteContent
         }
         Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'LICENSE.txt') -Force
         $missingLlmLicenseOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconRoot $iconGenerationRoot -Destination $generatedSpriteRoot -SkipPreviews 2>&1)

@@ -14,6 +14,7 @@ const detailTables = {
   sourceIds: ['source_observation_references', 'external_key'],
 };
 
+// Keep a source command atomic inside its own savepoint, including when a larger refresh owns the transaction.
 function transaction(connection, operation) {
   connection.exec('SAVEPOINT workbench_source_command');
   try {
@@ -31,6 +32,7 @@ function positiveInteger(value, label) {
   if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${label} must be a positive safe integer`);
 }
 
+// Validate source-relative locations, permitting glob syntax only for explicitly configured selection patterns.
 function relativePath(value, pattern = false) {
   requireSourceText(value, 'Source path');
   if (!(pattern ? /^[A-Za-z0-9._*/-]+$/ : /^[A-Za-z0-9._/-]+$/).test(value) || value.startsWith('/') || value.split('/').includes('..')) {
@@ -38,6 +40,7 @@ function relativePath(value, pattern = false) {
   }
 }
 
+// Separate stable source identities, captured text, metadata observations, and collection membership into guarded history.
 export function createSourceIngestionSchema(connection) {
   for (const [table, columns] of Object.entries({
     repositories: ['id', 'provider_code', 'provider_repository_id', 'canonical_name'],
@@ -180,6 +183,7 @@ export function createSourceIngestionSchema(connection) {
   });
 }
 
+// Reuse an identical finalized configuration or append a definition revision with its parser and capture policy pinned.
 export function registerSourceDefinition(connection, profile) {
   requireSourceObject(profile, profileFields, profileFields, 'Source definition');
   requireSourceObject(profile.lane, ['code', 'label', 'displayOrder'], ['code', 'label', 'displayOrder'], 'Source lane');
@@ -218,6 +222,7 @@ export function registerSourceDefinition(connection, profile) {
   });
 }
 
+// Verify collector bytes, definition, parser, configuration, and expected revision before accepting the normalized capture.
 export function ingestSourceInventory(connection, request) {
   const fields = ['profile', 'inventoryJson', 'captureSha256', 'inventoryConfigurationSha256', 'expectedRevision', 'expectedCollectionId', 'repositoryContextId'];
   requireSourceObject(request, fields, fields, 'Source inventory handoff');
@@ -253,6 +258,7 @@ export function ingestSourceInventory(connection, request) {
   });
 }
 
+// Require the revision shape appropriate to a local worktree or a configured remote commit.
 function normalizeRevision(revision, definition) {
   const worktree = definition.root_kind === 'repository';
   const fields = worktree ? ['kind', 'resolvedCommit', 'worktreeDirty', 'worktreeSha256'] : ['kind', 'resolvedCommit', 'configuredRef', 'overrideUsed'];
@@ -268,10 +274,12 @@ function normalizeRevision(revision, definition) {
   return Object.fromEntries(fields.map(field => [field, revision[field]]));
 }
 
+// Separate observation metadata from captured text and presence so each kind of evidence can be versioned independently.
 function metadata(record) {
   return { ...Object.fromEntries(observationFields.map(field => [field, record[field]])), ...Object.fromEntries([...Object.keys(detailTables), 'applicabilityCodes', 'replacementIds'].map(field => [field, record[field]])) };
 }
 
+// Reconstruct normalized evidence from a definition's current head or an explicitly selected completed collection.
 export function readSourceCollection(connection, definitionCode, collectionId) {
   requireSourceText(definitionCode, 'Definition code');
   if (collectionId !== undefined) positiveInteger(collectionId, 'Collection identity');
@@ -291,6 +299,7 @@ export function readSourceCollection(connection, definitionCode, collectionId) {
   return { collectionId: collection.id, definitionVersionId: collection.definition_version_id, inventorySha256: collection.inventory_sha256, records };
 }
 
+// Commit a complete capture against its expected head, retaining absent sources as immutable last-known evidence.
 export function ingestSourceCollection(connection, request) {
   const fields = ['definitionVersionId', 'expectedCollectionId', 'repositoryContextId', 'collectorVersion', 'revision', 'complete', 'records'];
   requireSourceObject(request, [...fields, 'files'], fields, 'Source collection');

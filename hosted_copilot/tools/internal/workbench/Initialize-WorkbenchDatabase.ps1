@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-Creates a new branch database from current configured source captures.
+Creates a new branch database from a published catalog or initial rules JSON.
 .DESCRIPTION
-Collects and parses current sources into a new database. Does not load legacy displays, cached assessments, saved inventory ledgers, or accepted catalog results. Source collection is not assessment/reconciliation readiness.
+Uses the published catalog when present, otherwise imports initial-rules.json as the first baseline without approval or publication. Collects the configured source and protected captures, verifies the database after reopening, and never replaces an existing database. New assessment/reconciliation is still required.
 .PARAMETER DatabasePath
 Explicit new local destination with an existing parent directory. Existing files are never replaced.
 .PARAMETER SkipUpstream
@@ -29,6 +29,24 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot capture the current repository identity
 $sourceSetPath = Join-Path $hostedRoot 'copilot-rule-catalog/source-definitions/source-definition-set.json'
 $sourceSet = Get-Content -LiteralPath $sourceSetPath -Raw | ConvertFrom-Json
 $profile = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../config/workbench-terraform-profile.json') -Raw | ConvertFrom-Json -Depth 100
+$baselineProbe = @'
+import { readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+const moduleUrl = pathToFileURL(process.argv[1]);
+const { readInitialCatalogSource } = await import(moduleUrl);
+const { parseInitialRulesJson } = await import(new URL('./WorkbenchInitialCatalog.mjs', moduleUrl));
+const profile = JSON.parse(await readFile(process.argv[2], 'utf8'));
+const source = await readInitialCatalogSource({ root: process.argv[3] });
+if (source.format === 'initial-rules-json') parseInitialRulesJson(source, profile);
+console.log(JSON.stringify(source));
+'@
+$baselineCaptureText = [string](& node --input-type=module --eval $baselineProbe (Join-Path $PSScriptRoot '../../modules/workbench/WorkbenchPublishedGuidance.mjs') (Join-Path $PSScriptRoot '../../config/workbench-terraform-profile.json') $hostedRoot)
+if ($LASTEXITCODE -ne 0) { throw 'Initial catalog input is invalid; no database was created' }
+$baseline = $baselineCaptureText | ConvertFrom-Json -Depth 100
+if ($baseline.format -ceq 'published-catalog' -and -not (Test-Json -Json $baseline.content -SchemaFile (Join-Path $hostedRoot 'contracts/catalog/instruction-catalog.schema.json') -ErrorAction Stop)) {
+    throw 'Published catalog does not satisfy its schema; the initial rules fallback was not selected'
+}
+Write-Host "[PASSED]   baseline-capture : Selected $($baseline.format) from $($baseline.relativePath)"
 $captureRoot = Join-Path ([IO.Path]::GetTempPath()) ('hosted-native-capture-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $captureRoot
 try {
@@ -65,10 +83,16 @@ try {
         protectedCapture = [ordered]@{ parserContractSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot '../../modules/source-parsers/ProtectedRules.psm1') -Algorithm SHA256).Hash.ToLowerInvariant();
             requiredFiles = @($protected.Files.relativePath); files = @($protected.Files); blocks = $blocks }
     }
+    if ($baseline.format -ceq 'published-catalog') { $request.catalogJson = $baseline.content }
+    else { $request.initialRulesCapture = $baseline }
+    $currentBaselineText = [string](& node --input-type=module --eval $baselineProbe (Join-Path $PSScriptRoot '../../modules/workbench/WorkbenchPublishedGuidance.mjs') (Join-Path $PSScriptRoot '../../config/workbench-terraform-profile.json') $hostedRoot)
+    if ($LASTEXITCODE -ne 0 -or $currentBaselineText -cne $baselineCaptureText) { throw 'Initial catalog input changed during source capture; retry initialization' }
     Write-Host '[RUNNING]  database-create : Persisting fresh captured facts'
     $result = ($request | ConvertTo-Json -Depth 100 -Compress) | & node (Join-Path $PSScriptRoot '../../modules/workbench/WorkbenchDatabase.mjs') create $resolvedDatabasePath
     if ($LASTEXITCODE -ne 0) { throw 'Fresh database creation failed without replacing existing state' }
-    Write-Host '[PASSED]   database-create : Source facts persisted; new analysis is still required'
+    Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/Workbench.DatabaseLocation.psm1') -Force
+    Set-WorkbenchDatabaseLocation -RepositoryRoot $repositoryRoot -BranchRef $branch.Trim() -DatabasePath $resolvedDatabasePath
+    Write-Host '[PASSED]   database-create : Initial baseline and source facts verified after reopening; no new approval or fork publication was recorded and analysis is still required'
     $result
 } finally {
     Remove-Item -LiteralPath $captureRoot -Recurse -Force -ErrorAction SilentlyContinue

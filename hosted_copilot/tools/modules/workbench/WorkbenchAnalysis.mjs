@@ -8,50 +8,67 @@ import { beginAnalysisRun, registerEvaluatorProfile, readAssessmentRecoveryPlan 
 import { readWorkspaceLlmAssignments } from './WorkbenchLlmAssignments.mjs';
 import { executeAssessmentBatches } from './WorkbenchAssessmentExecution.mjs';
 import { executeNativeDownstream } from './WorkbenchDownstreamExecution.mjs';
-import { readSelectedCapacityConfiguration } from './WorkbenchWorkspace.mjs';
+import { readSelectedCapacityConfiguration, readWorkingCatalogId } from './WorkbenchWorkspace.mjs';
+import { readWorkbenchBudgets } from './WorkbenchSharding.mjs';
 
 const executeFile = promisify(execFile);
 const hostedRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const repositoryRoot = resolve(hostedRoot, '..');
 const runnerPath = resolve(hostedRoot, 'tools/internal/workbench/Invoke-NativeEvaluation.ps1');
 
+// Run the native evaluator with bounded output and execution time, delivering quoted input through stdin.
 export function invokeNativeProcess(argumentsList, serializedInput) {
   const execution = executeFile('pwsh', argumentsList, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 620000 });
   execution.child.stdin.end(serializedInput);
   return execution;
 }
 
-export function readNativeLlmRuntime(connection, databaseGuid) {
+// Bind configured task models to the current local repository, branch, database, and finalized catalog baseline.
+export function readNativeWorkspaceBinding(connection, databaseGuid = null) {
   const branchRef = execFileSync('git', ['-C', repositoryRoot, 'symbolic-ref', '--quiet', 'HEAD'], { encoding: 'utf8' }).trim();
   const workspace = connection.get(`SELECT workspace.database_guid, origin.repository_id, repository.canonical_name
     FROM workspace_identity workspace JOIN repository_contexts origin ON origin.id = workspace.origin_context_id
     JOIN repositories repository ON repository.id = origin.repository_id WHERE workspace.id = 1`);
-  if (!workspace || workspace.database_guid !== databaseGuid || workspace.canonical_name !== `local:${sourceTextHash(repositoryRoot)}`) {
+  if (!workspace || (databaseGuid !== null && workspace.database_guid !== databaseGuid) || workspace.canonical_name !== `local:${sourceTextHash(repositoryRoot)}`) {
     throw new Error('Analysis database does not match the explicitly selected local workspace');
   }
-  const binding = { databaseGuid, repositoryId: workspace.repository_id, branchRef };
+  const binding = { databaseGuid: workspace.database_guid, repositoryId: workspace.repository_id, branchRef };
+  return binding;
+}
+
+export function readNativeLlmRuntime(connection, databaseGuid) {
+  if (typeof databaseGuid !== 'string' || databaseGuid.length === 0) throw new Error('Analysis requires the explicitly selected database GUID');
+  const binding = readNativeWorkspaceBinding(connection, databaseGuid);
+  if (readWorkingCatalogId(connection) === null) {
+    throw new Error('Native analysis requires a finalized current published catalog or staged bootstrap');
+  }
   return { binding, assignments: readWorkspaceLlmAssignments(connection, binding) };
 }
 
+// Include implementation bytes and CLI version in the identity used to accept or refuse assessment recovery.
 export function readNativeAssessmentBehaviorHash(cliVersion) {
   return sourceTextHash(JSON.stringify([
     readFileSync(fileURLToPath(import.meta.url), 'utf8'),
     readFileSync(fileURLToPath(new URL('./WorkbenchAssessmentExecution.mjs', import.meta.url)), 'utf8'),
     readFileSync(fileURLToPath(new URL('./WorkbenchEvaluations.mjs', import.meta.url)), 'utf8'),
+    readFileSync(fileURLToPath(new URL('./WorkbenchEvaluationFailures.mjs', import.meta.url)), 'utf8'),
     readFileSync(runnerPath, 'utf8'), cliVersion,
   ]));
 }
 
-export async function runNativeDownstream(connection, request, report = () => {}) {
+// Continue reconciliation and adjudication only with compatible pinned evidence, task models, and evaluator identities.
+export async function runNativeDownstream(connection, request, report = () => {}, audit = null) {
   const fields = ['databaseGuid', 'runId', 'evaluatorCommand', 'cliVersion', 'llmAssignmentIds', 'maxParallelBatches'];
-  requireSourceObject(request, fields, fields, 'Native downstream request');
+  requireSourceObject(request, [...fields, 'budgets', 'adjudicationOnly'], fields, 'Native downstream request');
+  if (request.adjudicationOnly !== undefined && typeof request.adjudicationOnly !== 'boolean') throw new Error('Adjudication-only continuation must be explicit');
+  const budgets = readWorkbenchBudgets(request.budgets);
   for (const field of ['evaluatorCommand', 'cliVersion']) requireSourceText(request[field], field);
   const { binding, assignments } = readNativeLlmRuntime(connection, request.databaseGuid);
   const capacity = readSelectedCapacityConfiguration(connection, binding);
   const context = connection.get(`SELECT context.*, run.outcome FROM analysis_run_contexts context JOIN analysis_runs run ON run.id = context.run_id
     WHERE context.run_id = ?`, [request.runId]);
   const workspace = connection.get('SELECT team_profile_id, current_protected_snapshot_id FROM workspace_identity WHERE id = 1');
-  const catalogId = connection.get('SELECT current_catalog_id FROM workspace_publication WHERE workspace_id = 1')?.current_catalog_id ?? null;
+  const catalogId = readWorkingCatalogId(connection);
   const pinned = connection.all('SELECT task_code, assignment_id FROM analysis_run_llm_assignments WHERE run_id = ?', [request.runId]);
   if (!context || context.outcome !== 'running' || context.team_profile_id !== workspace.team_profile_id ||
     context.protected_snapshot_id !== workspace.current_protected_snapshot_id || context.capacity_policy_id !== capacity.policy.policyId || context.base_catalog_id !== catalogId ||
@@ -69,7 +86,8 @@ export async function runNativeDownstream(connection, request, report = () => {}
   }
   const registry = JSON.parse(readFileSync(resolve(hostedRoot, 'contracts/workbench/native-evaluation-stages-v4.json'), 'utf8'));
   const behaviorFiles = ['WorkbenchAnalysis.mjs', 'WorkbenchAssessmentExecution.mjs', 'WorkbenchDownstreamExecution.mjs', 'WorkbenchReconciliationResults.mjs', 'WorkbenchAdjudication.mjs',
-    'WorkbenchAnalysisCompletion.mjs', 'WorkbenchEvaluations.mjs', 'WorkbenchWorkspace.mjs', 'WorkbenchLlmAssignments.mjs', 'WorkbenchSourceRecords.mjs'];
+    'WorkbenchAnalysisCompletion.mjs', 'WorkbenchEvaluations.mjs', 'WorkbenchWorkspace.mjs', 'WorkbenchLlmAssignments.mjs', 'WorkbenchSourceRecords.mjs',
+    'WorkbenchSharding.mjs', 'WorkbenchConsolidation.mjs', 'WorkbenchGroupContinuity.mjs', 'WorkbenchRelationshipComponents.mjs', 'WorkbenchEvaluationFailures.mjs'];
   const behaviorHash = sourceTextHash(JSON.stringify([behaviorFiles.map(file => readFileSync(resolve(hostedRoot, 'tools/modules/workbench', file), 'utf8')),
     readFileSync(runnerPath, 'utf8'), readFileSync(resolve(hostedRoot, 'tools/modules/shared/HostedCli.psm1'), 'utf8'), request.cliVersion]));
   const evaluatorInputs = {};
@@ -85,26 +103,42 @@ export async function runNativeDownstream(connection, request, report = () => {}
     const input = { prompt: readFileSync(resolve(hostedRoot, stages[0].prompt), 'utf8'), schema: readFileSync(resolve(hostedRoot, stages[0].resultSchema), 'utf8') };
     const prior = connection.all(`SELECT DISTINCT profile.* FROM evaluator_profiles profile JOIN evaluations evaluation ON evaluation.evaluator_profile_id = profile.id
       JOIN run_evaluations used ON used.evaluation_id = evaluation.id WHERE used.run_id = ? AND profile.task_code = ?`, [request.runId, task]);
-    if (prior.length > 1 || prior.some(profile => profile.llm_assignment_id !== selected[0].assignmentId || profile.prompt_sha256 !== sourceTextHash(input.prompt) ||
-      profile.result_contract_sha256 !== sourceTextHash(input.schema) || profile.behavior_sha256 !== behaviorHash)) {
+    if (prior.some(profile => profile.llm_assignment_id !== selected[0].assignmentId || profile.prompt_sha256 !== sourceTextHash(input.prompt) ||
+      profile.result_contract_sha256 !== sourceTextHash(input.schema))) {
       throw new Error('Native downstream recovery refuses changed prompt, result contract, or evaluator behavior');
+    }
+    let reusable;
+    if (request.adjudicationOnly && task === 'reconciliation') {
+      if (prior.length !== 1) throw new Error('Adjudication-only continuation requires one recorded reconciliation profile');
+      reusable = prior[0];
+    } else {
+      const incompatible = prior.filter(profile => profile.behavior_sha256 !== behaviorHash);
+      if (incompatible.some(profile => !request.adjudicationOnly || connection.get(`SELECT evaluation.id FROM evaluations evaluation
+        JOIN run_evaluations used ON used.evaluation_id = evaluation.id WHERE used.run_id = ? AND evaluation.evaluator_profile_id = ? AND evaluation.outcome IN ('complete', 'running') LIMIT 1`,
+      [request.runId, profile.id]))) throw new Error('Native downstream recovery refuses changed evaluator behavior for completed or active results');
+      const matching = prior.filter(profile => profile.behavior_sha256 === behaviorHash);
+      if (matching.length > 1) throw new Error('Native downstream recovery requires one compatible evaluator profile');
+      reusable = matching[0];
     }
     evaluatorInputs[task] = input;
     models[task] = selected[0];
-    profiles[task] = prior[0]?.id ?? registerEvaluatorProfile(connection, { code: `native-${task}-v4`, taskCode: task, llmAssignmentId: selected[0].assignmentId,
+    profiles[task] = reusable?.id ?? registerEvaluatorProfile(connection, { code: `native-${task}-v4`, taskCode: task, llmAssignmentId: selected[0].assignmentId,
       promptSha256: sourceTextHash(input.prompt), behaviorSha256: behaviorHash, resultContractSha256: sourceTextHash(input.schema) });
   }
   const expectedHeadRunId = connection.get('SELECT run_id FROM workspace_analysis_head WHERE workspace_id = 1')?.run_id ?? null;
   return executeNativeDownstream(connection, { binding, runId: request.runId, sourceProfileId: sourceProfiles[0].id,
-    reconciliationProfileId: profiles.reconciliation, adjudicationProfileId: profiles.adjudication, expectedHeadRunId }, evaluatorInputs, async (recorded, { phase }) => {
+    reconciliationProfileId: profiles.reconciliation, adjudicationProfileId: profiles.adjudication, expectedHeadRunId, budgets,
+    adjudicationOnly: request.adjudicationOnly ?? false }, evaluatorInputs, async (recorded, { phase }) => {
     const task = phase === 'adjudication' ? 'adjudication' : 'reconciliation';
     const { stdout } = await invokeNativeProcess(['-NoProfile', '-NonInteractive', '-File', runnerPath, '-Stage', task,
       '-Model', models[task].model, '-ReasoningEffort', models[task].reasoningEffort, '-ExpectedPromptSha256', sourceTextHash(evaluatorInputs[task].prompt),
-      '-ExpectedSchemaSha256', sourceTextHash(evaluatorInputs[task].schema), '-EvaluatorCommand', request.evaluatorCommand], recorded.serializedInput);
+      '-ExpectedSchemaSha256', sourceTextHash(evaluatorInputs[task].schema), '-EvaluatorCommand', request.evaluatorCommand,
+      '-StagePayloadBudgetBytes', String(budgets.stagePayloadBudgetBytes), '-EvaluatorPayloadBudgetBytes', String(budgets.evaluatorPayloadBudgetBytes)], recorded.serializedInput);
     return JSON.parse(stdout);
-  }, report, request.maxParallelBatches);
+  }, report, request.maxParallelBatches, audit);
 }
 
+// Start a source-assessment run with pinned models and contracts, retaining committed evidence if execution fails.
 export async function runNativeAssessments(connection, request, report = () => {}) {
   const fields = ['databaseGuid', 'evaluatorCommand', 'cliVersion', 'force', 'llmAssignmentIds', 'maxParallelBatches'];
   requireSourceObject(request, fields, fields, 'Native analysis request');

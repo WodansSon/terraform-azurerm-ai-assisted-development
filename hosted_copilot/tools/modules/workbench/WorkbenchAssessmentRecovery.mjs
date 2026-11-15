@@ -4,13 +4,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requireSourceObject, sourceTextHash } from './WorkbenchSourceRecords.mjs';
-import { readSelectedCapacityConfiguration } from './WorkbenchWorkspace.mjs';
+import { readSelectedCapacityConfiguration, readWorkingCatalogId } from './WorkbenchWorkspace.mjs';
 import { readNativeLlmRuntime, invokeNativeProcess, readNativeAssessmentBehaviorHash } from './WorkbenchAnalysis.mjs';
 import { executeAssessmentBatches } from './WorkbenchAssessmentExecution.mjs';
 
 const hostedRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const executionGuardPath = resolve(hostedRoot, 'tools/internal/workbench/Invoke-WorkbenchExecutionGuard.ps1');
 
+// Ask the process-ownership guard to manage a claim without assuming stale locks are safe to take over.
 function invokeExecutionGuard(action, owner) {
   let result;
   try {
@@ -27,6 +28,7 @@ function invokeExecutionGuard(action, owner) {
   return result;
 }
 
+// Own one database execution, propagate cancellation to owned children, and release the claim during cleanup.
 export async function withAssessmentExecutionLock(databasePath, operation) {
   const owner = { databasePath, pid: process.pid, nonce: randomBytes(16).toString('hex') };
   const claimed = invokeExecutionGuard('claim', owner);
@@ -37,7 +39,8 @@ export async function withAssessmentExecutionLock(databasePath, operation) {
     recoveredLock: claimed.recovered,
     get cancelled() { return cancelled; },
     throwIfCancelled() {
-      if (cancelled) throw new Error('Execution cancelled; committed results were retained and unfinished requests require recovery');
+      if (cancelled) throw Object.assign(new Error('Execution cancelled; committed results were retained and unfinished requests require recovery'),
+        { code: 'workbench-execution-cancelled' });
     },
   };
   const cancel = () => {
@@ -63,6 +66,7 @@ export async function withAssessmentExecutionLock(databasePath, operation) {
   }
 }
 
+// Block further writes after cancellation while still allowing an active transaction to roll back.
 export function withExecutionCancellation(connection, control) {
   return Object.freeze({ ...connection,
     get isTransaction() { return connection.isTransaction; },
@@ -78,6 +82,7 @@ export async function continueAssessmentRun(connection, request, evaluatorInput,
   return executeAssessmentBatches(connection, request, evaluatorInput, evaluate, report, maxParallelBatches);
 }
 
+// Resume unresolved sources only when workspace authorities, model assignments, prompts, and behavior match the run.
 export async function resumeNativeAssessments(connection, request, report = () => {}) {
   const fields = ['databaseGuid', 'runId', 'evaluatorCommand', 'cliVersion', 'llmAssignmentIds', 'maxParallelBatches'];
   requireSourceObject(request, fields, fields, 'Assessment resume request');
@@ -85,9 +90,9 @@ export async function resumeNativeAssessments(connection, request, report = () =
   const capacity = readSelectedCapacityConfiguration(connection, binding);
   const context = connection.get('SELECT * FROM analysis_run_contexts WHERE run_id = ?', [request.runId]);
   const current = connection.get('SELECT current_protected_snapshot_id, team_profile_id FROM workspace_identity WHERE id = 1');
-  const catalog = connection.get('SELECT current_catalog_id FROM workspace_publication WHERE workspace_id = 1');
+  const catalogId = readWorkingCatalogId(connection);
   if (!context || context.team_profile_id !== current.team_profile_id || context.protected_snapshot_id !== current.current_protected_snapshot_id ||
-    context.capacity_policy_id !== capacity.policy.policyId || context.base_catalog_id !== (catalog?.current_catalog_id ?? null)) {
+    context.capacity_policy_id !== capacity.policy.policyId || context.base_catalog_id !== catalogId) {
     throw new Error('Assessment resume refuses changed workspace context');
   }
   const pinned = connection.all('SELECT task_code, assignment_id FROM analysis_run_llm_assignments WHERE run_id = ?', [request.runId]);

@@ -6,6 +6,8 @@ param(
     [Parameter(Mandatory)][string]$ExpectedPromptSha256,
     [Parameter(Mandatory)][string]$ExpectedSchemaSha256,
     [string]$EvaluatorCommand = 'copilot',
+    [ValidateRange(0, 2147483647)][int]$StagePayloadBudgetBytes = 0,
+    [ValidateRange(1, 2147483647)][int]$EvaluatorPayloadBudgetBytes = 393216,
     [ValidateRange(1, 1800)][int]$TimeoutSeconds = 600
 )
 
@@ -22,12 +24,22 @@ if ((Get-FileHash -LiteralPath $promptPath -Algorithm SHA256).Hash.ToLowerInvari
     (Get-FileHash -LiteralPath $schemaPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $ExpectedSchemaSha256) {
     throw 'Native evaluator prompt or result contract changed after request registration'
 }
-$inputText = [Console]::In.ReadToEnd()
+$utf8 = [Text.UTF8Encoding]::new($false, $true)
+$inputReader = [IO.StreamReader]::new([Console]::OpenStandardInput(), $utf8, $false, 4096, $true)
+try { $inputText = $inputReader.ReadToEnd() }
+catch { throw 'Native evaluator input is not valid UTF-8; content omitted' }
+finally { $inputReader.Dispose() }
+$outputWriter = [IO.StreamWriter]::new([Console]::OpenStandardOutput(), $utf8, 4096, $true)
+$errorWriter = [IO.StreamWriter]::new([Console]::OpenStandardError(), $utf8, 4096, $true)
 $inputData = $inputText | ConvertFrom-Json -Depth 100 -DateKind String
 if ($inputData.stage -cne $Stage) { throw 'Native input does not match the requested stage' }
 $promptText = Get-Content -LiteralPath $promptPath -Raw
 $schemaText = Get-Content -LiteralPath $schemaPath -Raw
 $inlinePrompt = "$promptText`n`n## Output Contract`n$schemaText`n`n## Untrusted Quoted Input`n$inputText"
+if (($StagePayloadBudgetBytes -gt 0 -and [Text.Encoding]::UTF8.GetByteCount($inputText) -gt $StagePayloadBudgetBytes) -or
+    [Text.Encoding]::UTF8.GetByteCount($inlinePrompt) -gt $EvaluatorPayloadBudgetBytes) {
+    throw 'Native evaluator refuses an oversized unplanned request before starting inference'
+}
 $launch = Resolve-HostedCliLaunch -EvaluatorCommand $EvaluatorCommand
 $workingDirectory = Join-Path ([IO.Path]::GetTempPath()) ('hosted-native-evaluation-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $workingDirectory
@@ -39,6 +51,9 @@ try {
         '--disable-builtin-mcps', '--no-auto-update', '--disallow-temp-dir', '--no-remote-export',
         '--model', $Model, '--reasoning-effort', $ReasoningEffort, '--available-tools', '--output-format', 'json'
     )
+    $process.StartInfo.StandardInputEncoding = $utf8
+    $process.StartInfo.StandardOutputEncoding = $utf8
+    $process.StartInfo.StandardErrorEncoding = $utf8
     $started = $process.Start()
     if (-not $started) { throw 'Native evaluator process did not start' }
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
@@ -50,8 +65,10 @@ try {
         $process.WaitForExit()
         throw 'Native evaluator exceeded its bounded timeout'
     }
-    $stdout = $stdoutTask.GetAwaiter().GetResult()
-    $stderr = $stderrTask.GetAwaiter().GetResult()
+    try {
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+    } catch { throw 'Native evaluator CLI output is not valid UTF-8; content omitted' }
     if ($process.ExitCode -ne 0) {
         $failureCategory = 'cli-exit'
         $failurePatterns = [ordered]@{
@@ -65,8 +82,9 @@ try {
         foreach ($candidate in $failurePatterns.GetEnumerator()) {
             if ($stderr -match $candidate.Value) { $failureCategory = $candidate.Key; break }
         }
-        [Console]::Error.WriteLine((@{ kind = 'native-cli-exit'; category = $failureCategory; exitCode = $process.ExitCode;
+        $errorWriter.WriteLine((@{ kind = 'native-cli-exit'; category = $failureCategory; exitCode = $process.ExitCode;
             stdoutBytes = [Text.Encoding]::UTF8.GetByteCount($stdout); stderrBytes = [Text.Encoding]::UTF8.GetByteCount($stderr) } | ConvertTo-Json -Compress))
+        $errorWriter.Flush()
         throw "Native evaluator failed with code $($process.ExitCode); stderr byte count $([Text.Encoding]::UTF8.GetByteCount($stderr)); response content omitted"
     }
     $messages = [Collections.Generic.List[object]]::new()
@@ -82,9 +100,12 @@ try {
         if (-not ($content | Test-Json -SchemaFile $schemaPath -ErrorAction Stop)) { throw 'Invalid result' }
         $result = $content | ConvertFrom-Json -Depth 100 -DateKind String
     } catch { throw 'Native evaluator response failed its result contract; content omitted' }
-    $result | ConvertTo-Json -Depth 100 -Compress
+    $outputWriter.WriteLine(($result | ConvertTo-Json -Depth 100 -Compress))
+    $outputWriter.Flush()
 } finally {
     if ($started -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
     $process.Dispose()
+    $outputWriter.Dispose()
+    $errorWriter.Dispose()
     Remove-Item -LiteralPath $workingDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }

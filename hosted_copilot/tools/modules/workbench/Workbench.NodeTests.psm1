@@ -3,6 +3,29 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module -Name (Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1')
 
+function ConvertTo-WorkbenchNodePublicText {
+    param([AllowEmptyString()][string]$Text)
+
+    $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..')).TrimEnd([char[]]'\/')
+    $prefixes = @(
+        ([Uri]::new($root + [IO.Path]::DirectorySeparatorChar)).AbsoluteUri
+        $root.Replace('\', '/') + '/'
+        $root.Replace('/', '\') + '\'
+    ) | Sort-Object -Unique | Sort-Object -Property Length -Descending
+    foreach ($prefix in $prefixes) {
+        $Text = [regex]::Replace($Text, [regex]::Escape($prefix), '', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    }
+    $external = [Text.RegularExpressions.MatchEvaluator]{ param($match)
+        $location = [regex]::Match($match.Value, ':\d+(?::\d+)?$').Value
+        '[external-path]' + $location
+    }
+    $Text = [regex]::Replace($Text, '(?i)\bfile://[^\s''"<>)]*', $external)
+    $Text = [regex]::Replace($Text, '(?<quote>["''])(?:[A-Za-z]:[\\/]|\\\\|/)(?:(?!\k<quote>)[^\r\n])*\k<quote>', '${quote}[external-path]${quote}')
+    $Text = [regex]::Replace($Text, '(?i)(?<!\w)(?:[A-Za-z]:[\\/]|\\\\)[^\r\n"''<>|)]*', $external)
+    $Text = [regex]::Replace($Text, '(?<![\w:/])/(?:[^/\s"''<>|()]+/)+[^\s"''<>|()]*', $external)
+    return $Text
+}
+
 function ConvertFrom-WorkbenchNodeTestReport {
     [CmdletBinding()]
     param(
@@ -78,6 +101,11 @@ function ConvertFrom-WorkbenchNodeTestReport {
     if (($ExitCode -ne 0 -and $issues.Count -eq 0) -or $ExitCode -notin @(0, 1)) { $issues.Add("Test runner exited with code $ExitCode.") }
     $failed = @($results | Where-Object { $_.status -eq 'failed' }).Count
     $skipped = @($results | Where-Object { $_.status -eq 'skipped' }).Count
+    foreach ($test in $results) {
+        foreach ($field in @('name', 'shortName', 'description', 'detail')) {
+            $test.$field = ConvertTo-WorkbenchNodePublicText -Text $test.$field
+        }
+    }
     return [pscustomobject][ordered]@{
         status = if ($issues.Count -eq 0) { 'passed' } else { 'failed' }
         testCount = $results.Count
@@ -87,8 +115,8 @@ function ConvertFrom-WorkbenchNodeTestReport {
         issueCount = $issues.Count
         exitCode = if ($ExitCode -gt 0) { $ExitCode } elseif ($issues.Count -gt 0) { 1 } else { 0 }
         tests = $results.ToArray()
-        issues = $issues.ToArray()
-        diagnostics = $Diagnostics.Trim()
+        issues = @($issues | ForEach-Object { ConvertTo-WorkbenchNodePublicText -Text $_ })
+        diagnostics = ConvertTo-WorkbenchNodePublicText -Text $Diagnostics.Trim()
         nativeExitCode = $ExitCode
     }
 }
@@ -98,6 +126,7 @@ function Invoke-WorkbenchNodeTests {
     param(
         [Parameter(Mandatory)][string]$TestPath,
         [Parameter(Mandatory)][string]$Title,
+        [AllowEmptyString()][string]$TestNamePattern = '',
         [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text'
     )
 
@@ -121,7 +150,9 @@ function Invoke-WorkbenchNodeTests {
         $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
         $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
         $start.WorkingDirectory = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($TestPath))
-        foreach ($argument in @('--test', '--test-reporter=junit', [IO.Path]::GetFullPath($TestPath))) { $start.ArgumentList.Add($argument) }
+        foreach ($argument in @('--test', '--test-reporter=junit')) { $start.ArgumentList.Add($argument) }
+        if ($TestNamePattern) { $start.ArgumentList.Add('--test-name-pattern=' + $TestNamePattern) }
+        $start.ArgumentList.Add([IO.Path]::GetFullPath($TestPath))
         $process = [Diagnostics.Process]::new()
         $process.StartInfo = $start
         try {

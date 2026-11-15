@@ -5,17 +5,19 @@ import { createProtectedSnapshotSchema } from './WorkbenchProtectedSnapshots.mjs
 import { createWorkspaceIdentitySchema } from './WorkbenchWorkspace.mjs';
 import { createAuthoredAuditSchema } from './WorkbenchAuthoredRefresh.mjs';
 
-export const workbenchSchemaVersion = 3;
+export const workbenchSchemaVersion = 13;
 
-function findingParticipantsDdl(includeRuleVersions) {
+// Give each finding participant exactly one typed subject reference and a stable display order.
+function findingParticipantsDdl() {
   return `CREATE TABLE finding_participants (
     id INTEGER PRIMARY KEY, finding_id INTEGER NOT NULL REFERENCES findings(id), participant_role TEXT NOT NULL, ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
     review_subject_id INTEGER REFERENCES review_subjects(id), assessment_result_id INTEGER REFERENCES assessment_results(id), group_version_id INTEGER REFERENCES group_versions(id),
-    evidence_quote TEXT${includeRuleVersions ? ', rule_version_id INTEGER REFERENCES rule_versions(id)' : ''}, CHECK((review_subject_id IS NOT NULL) + (assessment_result_id IS NOT NULL) + (group_version_id IS NOT NULL)${includeRuleVersions ? ' + (rule_version_id IS NOT NULL)' : ''} = 1), UNIQUE(finding_id, ordinal)
+    evidence_quote TEXT, rule_version_id INTEGER REFERENCES rule_versions(id), CHECK((review_subject_id IS NOT NULL) + (assessment_result_id IS NOT NULL) + (group_version_id IS NOT NULL) + (rule_version_id IS NOT NULL) = 1), UNIQUE(finding_id, ordinal)
   ) STRICT`;
 }
 
-const applicationDdl = schemaVersion => `
+// Define the core relational model; dependent ingestion, workspace, and audit schemas are composed separately.
+const applicationDdl = () => `
   CREATE TABLE application_migrations (
     version INTEGER PRIMARY KEY CHECK(version > 0), applied_at TEXT NOT NULL
   ) STRICT;
@@ -99,6 +101,9 @@ const applicationDdl = schemaVersion => `
   CREATE TABLE evaluations (
     id INTEGER PRIMARY KEY, evaluator_profile_id INTEGER NOT NULL REFERENCES evaluator_profiles(id), input_fingerprint TEXT NOT NULL,
     requested_at TEXT NOT NULL, completed_at TEXT, outcome TEXT NOT NULL CHECK(outcome IN ('running', 'complete', 'failed', 'cancelled')), failure_code TEXT,
+    failure_stage TEXT CHECK(failure_stage IN ('request', 'evaluate', 'commit')),
+    failure_reason TEXT CHECK(length(failure_reason) BETWEEN 1 AND 512),
+    failure_path TEXT CHECK(length(failure_path) BETWEEN 1 AND 256),
     CHECK((outcome = 'running') = (completed_at IS NULL)), CHECK(outcome <> 'complete' OR failure_code IS NULL)
   ) STRICT;
   CREATE TABLE analysis_run_contexts (
@@ -160,10 +165,13 @@ const applicationDdl = schemaVersion => `
   ) STRICT;
   CREATE TABLE catalog_versions (
     id INTEGER PRIMARY KEY, parent_catalog_id INTEGER REFERENCES catalog_versions(id), protected_snapshot_id INTEGER NOT NULL REFERENCES protected_snapshots(id),
-    revision INTEGER NOT NULL UNIQUE CHECK(revision > 0), input_schema_version INTEGER NOT NULL CHECK(input_schema_version > 0), last_semantic_review TEXT NOT NULL,
-    upstream_repository_id INTEGER NOT NULL REFERENCES repositories(id), upstream_baseline_commit TEXT NOT NULL, upstream_current_ref TEXT NOT NULL,
+    capture_kind TEXT NOT NULL DEFAULT 'managed-catalog' CHECK(capture_kind IN ('managed-catalog', 'manual-guidance', 'initial-rules')),
+    revision INTEGER NOT NULL UNIQUE CHECK(revision > 0), input_schema_version INTEGER NOT NULL CHECK(input_schema_version > 0), last_semantic_review TEXT,
+    upstream_repository_id INTEGER REFERENCES repositories(id), upstream_baseline_commit TEXT, upstream_current_ref TEXT,
     default_requirement_level TEXT NOT NULL, default_enforcement_method TEXT NOT NULL, default_documentation_gap INTEGER NOT NULL CHECK(default_documentation_gap IN (0, 1)),
-    content_fingerprint TEXT NOT NULL, created_at TEXT NOT NULL, finalized_at TEXT, UNIQUE(id, parent_catalog_id), CHECK(parent_catalog_id IS NULL OR parent_catalog_id <> id)
+    content_fingerprint TEXT NOT NULL, created_at TEXT NOT NULL, finalized_at TEXT, UNIQUE(id, parent_catalog_id), CHECK(parent_catalog_id IS NULL OR parent_catalog_id <> id),
+    CHECK((capture_kind IN ('manual-guidance', 'initial-rules') AND last_semantic_review IS NULL AND upstream_repository_id IS NULL AND upstream_baseline_commit IS NULL AND upstream_current_ref IS NULL)
+      OR (capture_kind = 'managed-catalog' AND last_semantic_review IS NOT NULL AND upstream_repository_id IS NOT NULL AND upstream_baseline_commit IS NOT NULL AND upstream_current_ref IS NOT NULL))
   ) STRICT;
   CREATE TABLE catalog_members (
     catalog_id INTEGER NOT NULL REFERENCES catalog_versions(id), rule_id INTEGER NOT NULL REFERENCES rules(id), rule_version_id INTEGER NOT NULL,
@@ -204,6 +212,21 @@ const applicationDdl = schemaVersion => `
   CREATE TABLE workspace_publication (
     workspace_id INTEGER PRIMARY KEY REFERENCES workspace_identity(id) CHECK(workspace_id = 1), current_catalog_id INTEGER NOT NULL REFERENCES catalog_versions(id)
   ) STRICT;
+  CREATE TABLE workspace_staging (
+    workspace_id INTEGER PRIMARY KEY REFERENCES workspace_identity(id) CHECK(workspace_id = 1), current_catalog_id INTEGER NOT NULL REFERENCES catalog_versions(id)
+  ) STRICT;
+  CREATE TABLE catalog_guidance_files (
+    catalog_id INTEGER NOT NULL REFERENCES catalog_versions(id), relative_path TEXT NOT NULL, role_code TEXT NOT NULL CHECK(role_code IN ('instructions', 'repository', 'skill', 'baseline')),
+    surface_id INTEGER REFERENCES guidance_surfaces(id), content_sha256 TEXT NOT NULL, content TEXT NOT NULL,
+    PRIMARY KEY(catalog_id, relative_path), CHECK((role_code = 'instructions') = (surface_id IS NOT NULL))
+  ) STRICT;
+  CREATE TABLE catalog_rule_guidance (
+    catalog_id INTEGER NOT NULL, rule_id INTEGER NOT NULL, relative_path TEXT NOT NULL, source_line INTEGER CHECK(source_line > 0),
+    source_pointer TEXT CHECK(length(source_pointer) > 0 AND substr(source_pointer, 1, 1) = '/'),
+    CHECK((source_line IS NOT NULL) + (source_pointer IS NOT NULL) = 1),
+    PRIMARY KEY(catalog_id, rule_id), FOREIGN KEY(catalog_id, rule_id) REFERENCES catalog_members(catalog_id, rule_id),
+    FOREIGN KEY(catalog_id, relative_path) REFERENCES catalog_guidance_files(catalog_id, relative_path)
+  ) STRICT;
   CREATE TABLE workspace_analysis_head (
     workspace_id INTEGER PRIMARY KEY REFERENCES workspace_identity(id) CHECK(workspace_id = 1), run_id INTEGER NOT NULL REFERENCES analysis_runs(id)
   ) STRICT;
@@ -231,10 +254,15 @@ const applicationDdl = schemaVersion => `
   ) STRICT;
   CREATE TABLE semantic_groups (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL) STRICT;
   CREATE TABLE group_versions (
-    id INTEGER PRIMARY KEY, group_id INTEGER NOT NULL REFERENCES semantic_groups(id), revision INTEGER NOT NULL CHECK(revision > 0),
+    id INTEGER PRIMARY KEY, group_id INTEGER REFERENCES semantic_groups(id), revision INTEGER NOT NULL CHECK(revision > 0),
     synthesis_evaluation_id INTEGER NOT NULL REFERENCES evaluations(id), suggested_wording_id INTEGER NOT NULL REFERENCES wording_versions(id),
     scorecard_id INTEGER NOT NULL REFERENCES scorecards(id), title TEXT NOT NULL, semantic_summary TEXT NOT NULL, synthesis_rationale TEXT NOT NULL,
-    review_state TEXT NOT NULL CHECK(review_state IN ('recommended', 'excluded', 'deferred')), needs_review INTEGER NOT NULL CHECK(needs_review IN (0, 1)), UNIQUE(group_id, revision)
+    review_state TEXT NOT NULL CHECK(review_state IN ('recommended', 'excluded', 'deferred')), needs_review INTEGER NOT NULL CHECK(needs_review IN (0, 1)),
+    continuity_kind TEXT NOT NULL CHECK(continuity_kind IN ('new', 'equivalent', 'material-change', 'split', 'merge', 'unresolved')),
+    continuity_confidence TEXT NOT NULL CHECK(continuity_confidence IN ('high', 'medium', 'low')), continuity_rationale TEXT NOT NULL,
+    CHECK((continuity_kind = 'unresolved') = (group_id IS NULL)),
+    CHECK(group_id IS NOT NULL OR (review_state = 'deferred' AND needs_review = 1)),
+    CHECK(continuity_kind IN ('new', 'unresolved') OR continuity_confidence = 'high'), UNIQUE(group_id, revision)
   ) STRICT;
   CREATE TABLE group_members (
     group_version_id INTEGER NOT NULL REFERENCES group_versions(id), assessment_result_id INTEGER NOT NULL REFERENCES assessment_results(id),
@@ -244,11 +272,38 @@ const applicationDdl = schemaVersion => `
     group_version_id INTEGER NOT NULL REFERENCES group_versions(id), rule_version_id INTEGER NOT NULL REFERENCES rule_versions(id),
     relationship_code TEXT NOT NULL, rationale TEXT NOT NULL, suggested_wording_id INTEGER REFERENCES wording_versions(id), PRIMARY KEY(group_version_id, rule_version_id)
   ) STRICT;
+  CREATE TABLE group_relationships (
+    id INTEGER PRIMARY KEY, group_version_id INTEGER NOT NULL REFERENCES group_versions(id),
+    target_assessment_id INTEGER REFERENCES assessment_results(id), target_rule_version_id INTEGER REFERENCES rule_versions(id),
+    relationship_code TEXT NOT NULL CHECK(relationship_code IN ('equivalent', 'partial-overlap', 'left-extends-right', 'left-narrows-right', 'conflicts')),
+    rationale TEXT NOT NULL,
+    evidence_origin TEXT NOT NULL CHECK(evidence_origin = 'reconciliation'),
+    CHECK((target_assessment_id IS NOT NULL) + (target_rule_version_id IS NOT NULL) = 1)
+  ) STRICT;
+  CREATE UNIQUE INDEX group_relationship_assessment ON group_relationships(group_version_id, target_assessment_id) WHERE target_assessment_id IS NOT NULL;
+  CREATE UNIQUE INDEX group_relationship_rule ON group_relationships(group_version_id, target_rule_version_id) WHERE target_rule_version_id IS NOT NULL;
+  CREATE TABLE group_relationship_evidence (
+    relationship_id INTEGER NOT NULL REFERENCES group_relationships(id),
+    ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+    source_assessment_id INTEGER NOT NULL REFERENCES assessment_results(id),
+    source_quote TEXT NOT NULL CHECK(length(trim(source_quote)) > 0 AND length(source_quote) <= 2000),
+    target_quote TEXT NOT NULL CHECK(length(trim(target_quote)) > 0 AND length(target_quote) <= 2000),
+    PRIMARY KEY(relationship_id, ordinal), UNIQUE(relationship_id, source_assessment_id)
+  ) STRICT;
   CREATE TABLE group_correspondences (
     id INTEGER PRIMARY KEY, prior_group_version_id INTEGER NOT NULL REFERENCES group_versions(id), next_group_version_id INTEGER NOT NULL REFERENCES group_versions(id),
-    correspondence_kind TEXT NOT NULL CHECK(correspondence_kind IN ('equivalent', 'split', 'merge', 'material-change')), rationale TEXT NOT NULL,
+    correspondence_kind TEXT NOT NULL CHECK(correspondence_kind IN ('equivalent', 'split', 'merge', 'material-change', 'unresolved')), rationale TEXT NOT NULL,
     evaluation_id INTEGER REFERENCES evaluations(id), recorded_by_actor_id INTEGER REFERENCES actors(id), recorded_at TEXT NOT NULL,
-    CHECK(prior_group_version_id <> next_group_version_id), CHECK(evaluation_id IS NOT NULL OR recorded_by_actor_id IS NOT NULL)
+    confidence_level TEXT CHECK(confidence_level IN ('high', 'medium', 'low')),
+    CHECK(prior_group_version_id <> next_group_version_id), CHECK(evaluation_id IS NOT NULL OR recorded_by_actor_id IS NOT NULL),
+    CHECK(evaluation_id IS NULL OR confidence_level IS NOT NULL)
+  ) STRICT;
+  CREATE TABLE group_correspondence_members (
+    correspondence_id INTEGER NOT NULL REFERENCES group_correspondences(id),
+    assessment_result_id INTEGER NOT NULL REFERENCES assessment_results(id),
+    prior_assessment_result_id INTEGER NOT NULL REFERENCES assessment_results(id),
+    current_evidence_quote TEXT NOT NULL, prior_evidence_quote TEXT NOT NULL, rationale TEXT NOT NULL,
+    PRIMARY KEY(correspondence_id, assessment_result_id, prior_assessment_result_id)
   ) STRICT;
   CREATE TABLE recommended_changes (
     id INTEGER PRIMARY KEY, group_version_id INTEGER NOT NULL REFERENCES group_versions(id), ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
@@ -368,11 +423,44 @@ const applicationDdl = schemaVersion => `
     id INTEGER PRIMARY KEY, evaluation_id INTEGER NOT NULL REFERENCES evaluations(id), review_id INTEGER REFERENCES relationship_reviews(id),
     finding_kind TEXT NOT NULL, title TEXT NOT NULL, rationale TEXT NOT NULL
   ) STRICT;
-  ${findingParticipantsDdl(schemaVersion >= 2)};
+  ${findingParticipantsDdl()};
   CREATE TABLE issues (id INTEGER PRIMARY KEY, display_key TEXT NOT NULL UNIQUE, title TEXT NOT NULL, created_at TEXT NOT NULL) STRICT;
   CREATE TABLE issue_findings (
     issue_id INTEGER NOT NULL REFERENCES issues(id), finding_id INTEGER NOT NULL REFERENCES findings(id), correspondence_rationale TEXT NOT NULL,
     matched_by_evaluation_id INTEGER REFERENCES evaluations(id), matched_by_actor_id INTEGER REFERENCES actors(id), PRIMARY KEY(issue_id, finding_id)
+  ) STRICT;
+  CREATE TABLE adjudication_relationship_decisions (
+    evaluation_id INTEGER NOT NULL REFERENCES evaluations(id), relationship_id INTEGER NOT NULL REFERENCES group_relationships(id),
+    finding_id INTEGER NOT NULL UNIQUE REFERENCES findings(id), disposition TEXT NOT NULL CHECK(disposition IN ('issue', 'independent')),
+    PRIMARY KEY(evaluation_id, relationship_id)
+  ) STRICT;
+  CREATE TABLE adjudicated_issues (
+    issue_id INTEGER PRIMARY KEY REFERENCES issues(id), evaluation_id INTEGER NOT NULL REFERENCES evaluations(id),
+    anchor_group_version_id INTEGER REFERENCES group_versions(id), anchor_rule_version_id INTEGER REFERENCES rule_versions(id),
+    classification TEXT NOT NULL CHECK(classification IN ('protected-integrity', 'protected-conflict', 'protected-coverage', 'contradiction', 'duplicate', 'overlap')),
+    blocking INTEGER NOT NULL CHECK(blocking IN (0, 1)), assessment_summary TEXT NOT NULL,
+    wording_status TEXT NOT NULL CHECK(wording_status IN ('canonical', 'selected', 'unresolved')),
+    wording_group_version_id INTEGER REFERENCES group_versions(id), wording_rule_version_id INTEGER REFERENCES rule_versions(id),
+    wording_version_id INTEGER REFERENCES wording_versions(id), wording_rationale TEXT NOT NULL, action_summary TEXT NOT NULL,
+    CHECK((anchor_group_version_id IS NOT NULL) + (anchor_rule_version_id IS NOT NULL) = 1),
+    CHECK((wording_status = 'unresolved' AND wording_version_id IS NULL AND wording_group_version_id IS NULL AND wording_rule_version_id IS NULL)
+      OR (wording_status <> 'unresolved' AND wording_version_id IS NOT NULL
+        AND (wording_group_version_id IS NOT NULL) + (wording_rule_version_id IS NOT NULL) = 1))
+  ) STRICT;
+  CREATE TABLE adjudicated_issue_members (
+    issue_id INTEGER NOT NULL REFERENCES adjudicated_issues(issue_id), ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+    group_version_id INTEGER REFERENCES group_versions(id), rule_version_id INTEGER REFERENCES rule_versions(id),
+    disposition TEXT NOT NULL CHECK(disposition IN ('keep', 'promote', 'replace', 'retire', 'exclude', 'defer', 'review')),
+    PRIMARY KEY(issue_id, ordinal), CHECK((group_version_id IS NOT NULL) + (rule_version_id IS NOT NULL) = 1)
+  ) STRICT;
+  CREATE TABLE adjudicated_issue_operations (
+    id INTEGER PRIMARY KEY, issue_id INTEGER NOT NULL REFERENCES adjudicated_issues(issue_id), ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+    group_version_id INTEGER NOT NULL REFERENCES group_versions(id), action_code TEXT NOT NULL,
+    wording_version_id INTEGER NOT NULL REFERENCES wording_versions(id), UNIQUE(issue_id, ordinal), UNIQUE(issue_id, group_version_id)
+  ) STRICT;
+  CREATE TABLE adjudicated_operation_retirements (
+    operation_id INTEGER NOT NULL REFERENCES adjudicated_issue_operations(id), rule_version_id INTEGER NOT NULL REFERENCES rule_versions(id),
+    PRIMARY KEY(operation_id, rule_version_id)
   ) STRICT;
   CREATE TABLE issue_resolutions (
     id INTEGER PRIMARY KEY, decision_code TEXT NOT NULL, rationale TEXT NOT NULL, recorded_by_actor_id INTEGER NOT NULL REFERENCES actors(id), recorded_at TEXT NOT NULL
@@ -385,27 +473,6 @@ const applicationDdl = schemaVersion => `
   ) STRICT;
   CREATE TABLE resolution_changes (
     resolution_id INTEGER NOT NULL REFERENCES issue_resolutions(id), change_revision_id INTEGER NOT NULL REFERENCES change_revisions(id), PRIMARY KEY(resolution_id, change_revision_id)
-  ) STRICT;
-  CREATE TABLE codeowner_snapshots (
-    id INTEGER PRIMARY KEY, repository_context_id INTEGER NOT NULL REFERENCES repository_contexts(id), source_relative_path TEXT NOT NULL,
-    captured_text TEXT NOT NULL, content_sha256 TEXT NOT NULL, parser_version TEXT NOT NULL, captured_at TEXT NOT NULL
-  ) STRICT;
-  CREATE TABLE codeowner_entries (
-    id INTEGER PRIMARY KEY, snapshot_id INTEGER NOT NULL REFERENCES codeowner_snapshots(id), ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
-    path_pattern TEXT NOT NULL, UNIQUE(snapshot_id, ordinal)
-  ) STRICT;
-  CREATE TABLE codeowner_entry_actors (
-    entry_id INTEGER NOT NULL REFERENCES codeowner_entries(id), actor_id INTEGER NOT NULL REFERENCES actors(id), PRIMARY KEY(entry_id, actor_id)
-  ) STRICT;
-  CREATE TABLE codeowner_memberships (
-    repository_id INTEGER NOT NULL REFERENCES repositories(id), actor_id INTEGER NOT NULL REFERENCES actors(id),
-    last_snapshot_id INTEGER NOT NULL REFERENCES codeowner_snapshots(id), active INTEGER NOT NULL CHECK(active IN (0, 1)), PRIMARY KEY(repository_id, actor_id)
-  ) STRICT;
-  CREATE TABLE codeowner_refreshes (
-    id INTEGER PRIMARY KEY, repository_context_id INTEGER NOT NULL REFERENCES repository_contexts(id), successful_snapshot_id INTEGER REFERENCES codeowner_snapshots(id),
-    initiated_by_actor_id INTEGER REFERENCES actors(id), attempted_at TEXT NOT NULL, observed_sha256 TEXT,
-    outcome TEXT NOT NULL CHECK(outcome IN ('changed', 'unchanged', 'failed')), failure_code TEXT,
-    CHECK((outcome = 'failed') = (successful_snapshot_id IS NULL)), CHECK(outcome = 'failed' OR failure_code IS NULL)
   ) STRICT;
   CREATE TABLE capacity_policies (
     id INTEGER PRIMARY KEY, code TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision > 0), estimator_code TEXT NOT NULL, estimator_version TEXT NOT NULL,
@@ -441,8 +508,7 @@ const applicationDdl = schemaVersion => `
   ) STRICT;
   CREATE TABLE approvals (
     id INTEGER PRIMARY KEY, plan_version_id INTEGER NOT NULL REFERENCES plan_versions(id), catalog_id INTEGER NOT NULL REFERENCES catalog_versions(id),
-    artifact_id INTEGER NOT NULL, approved_by_actor_id INTEGER NOT NULL REFERENCES actors(id), permission_snapshot_id INTEGER NOT NULL REFERENCES codeowner_snapshots(id),
-    approved_at TEXT NOT NULL, UNIQUE(id, catalog_id),
+    artifact_id INTEGER NOT NULL, approved_by_actor_id INTEGER NOT NULL REFERENCES actors(id), approved_at TEXT NOT NULL, UNIQUE(id, catalog_id),
     FOREIGN KEY(artifact_id, plan_version_id, catalog_id) REFERENCES rendered_artifacts(id, plan_version_id, catalog_id)
   ) STRICT;
   CREATE TABLE approval_reviews (
@@ -450,7 +516,7 @@ const applicationDdl = schemaVersion => `
   ) STRICT;
   CREATE TABLE catalog_applications (
     id INTEGER PRIMARY KEY, operation_key TEXT NOT NULL UNIQUE, approval_id INTEGER NOT NULL, base_catalog_id INTEGER NOT NULL, resulting_catalog_id INTEGER NOT NULL,
-    requested_by_actor_id INTEGER NOT NULL REFERENCES actors(id), permission_snapshot_id INTEGER NOT NULL REFERENCES codeowner_snapshots(id), created_at TEXT NOT NULL,
+    requested_by_actor_id INTEGER NOT NULL REFERENCES actors(id), created_at TEXT NOT NULL,
     started_at TEXT, completed_at TEXT, outcome TEXT NOT NULL CHECK(outcome IN ('pending', 'running', 'complete', 'failed')),
     FOREIGN KEY(approval_id, resulting_catalog_id) REFERENCES approvals(id, catalog_id),
     FOREIGN KEY(resulting_catalog_id, base_catalog_id) REFERENCES catalog_versions(id, parent_catalog_id),
@@ -458,8 +524,7 @@ const applicationDdl = schemaVersion => `
   ) STRICT;
   CREATE TABLE deployments (
     id INTEGER PRIMARY KEY, application_id INTEGER NOT NULL REFERENCES catalog_applications(id), target_context_id INTEGER NOT NULL REFERENCES repository_contexts(id),
-    deployed_by_actor_id INTEGER NOT NULL REFERENCES actors(id), permission_snapshot_id INTEGER NOT NULL REFERENCES codeowner_snapshots(id),
-    started_at TEXT NOT NULL, completed_at TEXT, outcome TEXT NOT NULL CHECK(outcome IN ('running', 'complete', 'failed'))
+    deployed_by_actor_id INTEGER NOT NULL REFERENCES actors(id), started_at TEXT NOT NULL, completed_at TEXT, outcome TEXT NOT NULL CHECK(outcome IN ('running', 'complete', 'failed'))
   ) STRICT;
   CREATE TABLE deployment_files (
     deployment_id INTEGER NOT NULL REFERENCES deployments(id), artifact_file_id INTEGER NOT NULL REFERENCES artifact_files(id), observed_before_sha256 TEXT, observed_after_sha256 TEXT,
@@ -467,8 +532,9 @@ const applicationDdl = schemaVersion => `
   ) STRICT;
 `;
 
-function createApplicationObjects(connection, schemaVersion) {
-  connection.exec(applicationDdl(schemaVersion));
+// Create schema domains in dependency order before installing cross-domain constraints and history guards.
+function createApplicationObjects(connection) {
+  connection.exec(applicationDdl());
   createSourceIngestionSchema(connection);
   createProtectedSnapshotSchema(connection);
   createWorkspaceIdentitySchema(connection);
@@ -483,13 +549,14 @@ function createApplicationObjects(connection, schemaVersion) {
       CHECK(prior_version_id <> current_version_id)
     ) STRICT;
   `);
-  if (schemaVersion >= 2) createReconciliationComponents(connection);
-  if (schemaVersion >= 3) createConsolidationMerges(connection);
-  createEvaluationInputs(connection, schemaVersion >= 2, schemaVersion >= 3);
-  if (schemaVersion >= 2) createReconciliationComponentGuards(connection);
+  createReconciliationComponents(connection);
+  createConsolidationMerges(connection);
+  createEvaluationInputs(connection, true, true);
+  createReconciliationComponentGuards(connection);
   createApplicationGuards(connection);
 }
 
+// Preserve merged component membership together with the completed shard evaluations that justify it.
 function createConsolidationMerges(connection) {
   connection.exec(`
     CREATE TABLE consolidation_merges (
@@ -508,6 +575,10 @@ function createConsolidationMerges(connection) {
       component_id INTEGER NOT NULL REFERENCES consolidated_components(id), assessment_result_id INTEGER NOT NULL REFERENCES assessment_results(id),
       PRIMARY KEY(component_id, assessment_result_id)
     ) STRICT;
+    CREATE TABLE consolidated_component_rules (
+      component_id INTEGER NOT NULL REFERENCES consolidated_components(id), rule_version_id INTEGER NOT NULL REFERENCES rule_versions(id),
+      PRIMARY KEY(component_id, rule_version_id)
+    ) STRICT;
     CREATE TRIGGER consolidation_merge_scope_INSERT BEFORE INSERT ON consolidation_merges
       WHEN NOT EXISTS(SELECT 1 FROM analysis_runs run JOIN analysis_run_llm_assignments assigned ON assigned.run_id = run.id
         JOIN evaluator_profiles profile ON profile.llm_assignment_id = assigned.assignment_id AND profile.task_code = assigned.task_code
@@ -525,13 +596,22 @@ function createConsolidationMerges(connection) {
         JOIN evaluation_inputs input ON input.evaluation_id = lineage.evaluation_id
         WHERE component.id = NEW.component_id AND input.role_code = 'assessment-result' AND input.assessment_result_id = NEW.assessment_result_id)
       BEGIN SELECT RAISE(ABORT, 'Consolidated member requires exact completed shard evidence'); END;
+    CREATE TRIGGER consolidated_component_rule_scope_INSERT BEFORE INSERT ON consolidated_component_rules
+      WHEN NOT EXISTS(SELECT 1 FROM consolidated_components component JOIN consolidation_merges merge ON merge.id = component.merge_id
+        JOIN analysis_runs run ON run.id = merge.run_id JOIN consolidation_merge_evaluations lineage ON lineage.merge_id = component.merge_id
+        JOIN evaluation_inputs input ON input.evaluation_id = lineage.evaluation_id
+        WHERE component.id = NEW.component_id AND run.outcome = 'running'
+          AND input.role_code = 'reconciliation-rule' AND input.rule_version_id = NEW.rule_version_id)
+      OR EXISTS(SELECT 1 FROM evaluation_inputs WHERE consolidated_component_id = NEW.component_id)
+      BEGIN SELECT RAISE(ABORT, 'Consolidated rule requires exact unused completed shard evidence'); END;
   `);
-  for (const table of ['consolidation_merges', 'consolidation_merge_evaluations', 'consolidated_components', 'consolidated_component_members']) {
+  for (const table of ['consolidation_merges', 'consolidation_merge_evaluations', 'consolidated_components', 'consolidated_component_members', 'consolidated_component_rules']) {
     for (const operation of ['UPDATE', 'DELETE']) connection.exec(`CREATE TRIGGER application_${table}_${operation} BEFORE ${operation} ON ${table}
       BEGIN SELECT RAISE(ABORT, 'Consolidation merge history is immutable'); END`);
   }
 }
 
+// Store routing and consolidation scopes with separate typed assessment and baseline-rule membership.
 function createReconciliationComponents(connection) {
   connection.exec(`
     CREATE TABLE reconciliation_components (
@@ -545,9 +625,15 @@ function createReconciliationComponents(connection) {
       assessment_result_id INTEGER NOT NULL REFERENCES assessment_results(id),
       PRIMARY KEY(component_id, assessment_result_id)
     ) STRICT;
+    CREATE TABLE reconciliation_component_rules (
+      component_id INTEGER NOT NULL REFERENCES reconciliation_components(id),
+      rule_version_id INTEGER NOT NULL REFERENCES rule_versions(id),
+      PRIMARY KEY(component_id, rule_version_id)
+    ) STRICT;
   `);
 }
 
+// Restrict component writes to their running evaluation's supplied assessments, then make the history immutable.
 function createReconciliationComponentGuards(connection) {
   connection.exec(`
     CREATE TRIGGER reconciliation_component_scope_INSERT BEFORE INSERT ON reconciliation_components
@@ -560,18 +646,26 @@ function createReconciliationComponentGuards(connection) {
         WHERE component.id = NEW.component_id AND evaluation.outcome = 'running'
           AND input.role_code = 'assessment-result' AND input.assessment_result_id = NEW.assessment_result_id)
       BEGIN SELECT RAISE(ABORT, 'Component member must belong to its exact evaluation inputs'); END;
+    CREATE TRIGGER reconciliation_component_rule_scope_INSERT BEFORE INSERT ON reconciliation_component_rules
+      WHEN NOT EXISTS(SELECT 1 FROM reconciliation_components component JOIN evaluations evaluation ON evaluation.id = component.evaluation_id
+        JOIN evaluation_inputs input ON input.evaluation_id = evaluation.id
+        WHERE component.id = NEW.component_id AND evaluation.outcome = 'running'
+          AND input.role_code = 'reconciliation-rule' AND input.rule_version_id = NEW.rule_version_id)
+      BEGIN SELECT RAISE(ABORT, 'Component rule must belong to its exact evaluation inputs'); END;
   `);
-  for (const table of ['reconciliation_components', 'reconciliation_component_members']) {
+  for (const table of ['reconciliation_components', 'reconciliation_component_members', 'reconciliation_component_rules']) {
     for (const operation of ['UPDATE', 'DELETE']) connection.exec(`CREATE TRIGGER application_${table}_${operation} BEFORE ${operation} ON ${table}
       BEGIN SELECT RAISE(ABORT, 'Reconciliation component history is immutable'); END`);
   }
 }
 
+// Record one typed evidence reference per input, enabling later reconstruction of the exact evaluator scope.
 function createEvaluationInputs(connection, includeAssessmentResults = false, includeConsolidatedComponents = false) {
   const inputs = {
     source_version_id: 'source_versions', source_observation_id: 'source_observations', group_version_id: 'group_versions', wording_version_id: 'wording_versions',
     rule_version_id: 'rule_versions', catalog_version_id: 'catalog_versions', protected_snapshot_id: 'protected_snapshots', plan_version_id: 'plan_versions',
     scoring_policy_id: 'scoring_policies', capacity_policy_id: 'capacity_policies',
+    group_relationship_id: 'group_relationships',
   };
   if (includeAssessmentResults) {
     inputs.assessment_result_id = 'assessment_results';
@@ -589,6 +683,7 @@ function createEvaluationInputs(connection, includeAssessmentResults = false, in
   for (const field of Object.keys(inputs)) connection.exec(`CREATE UNIQUE INDEX evaluation_input_${field} ON evaluation_inputs(evaluation_id, role_code, ${field}) WHERE ${field} IS NOT NULL`);
 }
 
+// Enforce cross-table policy, ownership, active-evaluation scope, and immutable history at the database boundary.
 function createApplicationGuards(connection) {
   for (const operation of ['INSERT', 'UPDATE']) {
     connection.exec(`
@@ -627,6 +722,9 @@ function createApplicationGuards(connection) {
       CREATE TRIGGER published_catalog_finalized_${operation} BEFORE ${operation} ON workspace_publication
         WHEN NOT EXISTS(SELECT 1 FROM catalog_versions WHERE id = NEW.current_catalog_id AND finalized_at IS NOT NULL)
         BEGIN SELECT RAISE(ABORT, 'Published catalog must be finalized'); END;
+      CREATE TRIGGER staged_catalog_finalized_${operation} BEFORE ${operation} ON workspace_staging
+        WHEN NOT EXISTS(SELECT 1 FROM catalog_versions WHERE id = NEW.current_catalog_id AND finalized_at IS NOT NULL)
+        BEGIN SELECT RAISE(ABORT, 'Staged catalog must be finalized'); END;
       CREATE TRIGGER artifact_catalog_finalized_${operation} BEFORE ${operation} ON rendered_artifacts
         WHEN NOT EXISTS(SELECT 1 FROM catalog_versions WHERE id = NEW.catalog_id AND finalized_at IS NOT NULL AND protected_snapshot_id = NEW.protected_snapshot_id)
         BEGIN SELECT RAISE(ABORT, 'Artifact requires finalized matching protection'); END;
@@ -636,16 +734,140 @@ function createApplicationGuards(connection) {
         BEGIN SELECT RAISE(ABORT, 'Resolution finding must belong to a linked issue'); END;
     `);
   }
+  connection.exec(`
+    CREATE TRIGGER group_version_scope_INSERT BEFORE INSERT ON group_versions
+      WHEN NOT EXISTS(SELECT 1 FROM evaluations evaluation JOIN evaluator_profiles profile ON profile.id = evaluation.evaluator_profile_id
+        JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+        WHERE evaluation.id = NEW.synthesis_evaluation_id AND evaluation.outcome = 'running' AND run.outcome = 'running' AND profile.task_code = 'reconciliation'
+          AND EXISTS(SELECT 1 FROM evaluation_inputs input LEFT JOIN reconciliation_components component ON component.id = input.reconciliation_component_id
+            WHERE input.evaluation_id = evaluation.id AND ((input.role_code = 'component' AND component.phase_code = 'consolidation')
+              OR input.role_code = 'merged-component')))
+      BEGIN SELECT RAISE(ABORT, 'Group version requires a running reconciliation evaluation'); END;
+    CREATE TRIGGER group_member_scope_INSERT BEFORE INSERT ON group_members
+      WHEN NOT EXISTS(SELECT 1 FROM group_versions version JOIN evaluations evaluation ON evaluation.id = version.synthesis_evaluation_id
+        JOIN evaluation_inputs input ON input.evaluation_id = evaluation.id
+        JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+        WHERE version.id = NEW.group_version_id AND evaluation.outcome = 'running' AND run.outcome = 'running'
+          AND input.role_code = 'assessment-result' AND input.assessment_result_id = NEW.assessment_result_id)
+      BEGIN SELECT RAISE(ABORT, 'Group member requires exact running synthesis inputs'); END;
+    CREATE TRIGGER group_anchor_scope_INSERT BEFORE INSERT ON group_catalog_anchors
+      WHEN NOT EXISTS(SELECT 1 FROM group_versions version JOIN evaluations evaluation ON evaluation.id = version.synthesis_evaluation_id
+        JOIN run_evaluations used ON used.evaluation_id = evaluation.id
+        JOIN analysis_run_contexts context ON context.run_id = used.run_id
+        JOIN analysis_runs run ON run.id = used.run_id
+        WHERE version.id = NEW.group_version_id AND evaluation.outcome = 'running' AND run.outcome = 'running'
+          AND (EXISTS(SELECT 1 FROM catalog_members WHERE catalog_id = context.base_catalog_id AND rule_version_id = NEW.rule_version_id)
+            OR EXISTS(SELECT 1 FROM protected_members WHERE snapshot_id = context.protected_snapshot_id AND rule_version_id = NEW.rule_version_id)))
+      BEGIN SELECT RAISE(ABORT, 'Group anchor requires pinned running synthesis context'); END;
+    CREATE TRIGGER group_relationship_scope_INSERT BEFORE INSERT ON group_relationships
+      WHEN NOT EXISTS(SELECT 1 FROM group_versions version JOIN evaluations evaluation ON evaluation.id = version.synthesis_evaluation_id
+        JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+        JOIN analysis_run_contexts context ON context.run_id = run.id
+        WHERE version.id = NEW.group_version_id AND evaluation.outcome = 'running' AND run.outcome = 'running'
+          AND ((NEW.target_assessment_id IS NOT NULL
+            AND NOT EXISTS(SELECT 1 FROM group_members WHERE group_version_id = version.id AND assessment_result_id = NEW.target_assessment_id)
+            AND EXISTS(SELECT 1 FROM evaluation_inputs input JOIN assessment_results target ON target.id = input.assessment_result_id
+              WHERE input.evaluation_id = evaluation.id AND input.role_code = 'assessment-result'
+                AND target.id = NEW.target_assessment_id))
+            OR (NEW.target_rule_version_id IS NOT NULL
+              AND (EXISTS(SELECT 1 FROM catalog_members WHERE catalog_id = context.base_catalog_id AND rule_version_id = NEW.target_rule_version_id)
+                OR EXISTS(SELECT 1 FROM protected_members WHERE snapshot_id = context.protected_snapshot_id AND rule_version_id = NEW.target_rule_version_id)))))
+      BEGIN SELECT RAISE(ABORT, 'Group relationship requires exact pinned synthesis evidence'); END;
+    CREATE TRIGGER group_relationship_evidence_scope_INSERT BEFORE INSERT ON group_relationship_evidence
+      WHEN NOT EXISTS(SELECT 1 FROM group_relationships relation
+        JOIN group_versions version ON version.id = relation.group_version_id
+        JOIN evaluations evaluation ON evaluation.id = version.synthesis_evaluation_id
+        JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+        JOIN group_members member ON member.group_version_id = version.id AND member.assessment_result_id = NEW.source_assessment_id
+        JOIN assessment_results source ON source.id = member.assessment_result_id
+        WHERE relation.id = NEW.relationship_id AND evaluation.outcome = 'running' AND run.outcome = 'running'
+          AND instr(source.source_meaning, NEW.source_quote) > 0
+          AND ((relation.target_assessment_id IS NOT NULL AND EXISTS(SELECT 1 FROM assessment_results target
+              WHERE target.id = relation.target_assessment_id AND instr(target.source_meaning, NEW.target_quote) > 0))
+            OR (relation.target_rule_version_id IS NOT NULL AND EXISTS(SELECT 1 FROM rule_versions rule
+              JOIN wording_versions wording ON wording.id = rule.wording_version_id
+              WHERE rule.id = relation.target_rule_version_id AND instr(wording.text, NEW.target_quote) > 0))))
+      BEGIN SELECT RAISE(ABORT, 'Group relationship evidence requires exact running member and target quotes'); END;
+    CREATE TRIGGER group_relationship_evidence_complete_UPDATE BEFORE UPDATE OF outcome ON evaluations
+      WHEN NEW.outcome = 'complete' AND EXISTS(SELECT 1 FROM group_relationships relation
+        JOIN group_versions version ON version.id = relation.group_version_id
+        WHERE version.synthesis_evaluation_id = NEW.id
+          AND NOT EXISTS(SELECT 1 FROM group_relationship_evidence evidence WHERE evidence.relationship_id = relation.id))
+      BEGIN SELECT RAISE(ABORT, 'Completed synthesis requires evidence for every relationship'); END;
+    CREATE TRIGGER group_correspondence_scope_INSERT BEFORE INSERT ON group_correspondences
+      WHEN NOT EXISTS(SELECT 1 FROM group_versions next JOIN evaluations evaluation ON evaluation.id = next.synthesis_evaluation_id
+        JOIN evaluation_inputs input ON input.evaluation_id = evaluation.id
+        JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+        JOIN analysis_run_contexts context ON context.run_id = run.id
+        WHERE next.id = NEW.next_group_version_id AND evaluation.id = NEW.evaluation_id AND evaluation.outcome = 'running' AND run.outcome = 'running'
+          AND input.role_code = 'prior-group' AND input.group_version_id = NEW.prior_group_version_id
+          AND NEW.correspondence_kind = next.continuity_kind AND NEW.confidence_level = next.continuity_confidence
+          AND EXISTS(SELECT 1 FROM accepted_group_evidence WHERE catalog_id = context.base_catalog_id AND group_version_id = NEW.prior_group_version_id)
+          AND ((NEW.correspondence_kind = 'unresolved' AND next.group_id IS NULL)
+            OR (NEW.correspondence_kind <> 'unresolved' AND next.group_id IS NOT NULL)))
+      BEGIN SELECT RAISE(ABORT, 'Group correspondence requires pinned prior evidence and its running successor'); END;
+    CREATE TRIGGER group_correspondence_member_scope_INSERT BEFORE INSERT ON group_correspondence_members
+      WHEN NOT EXISTS(SELECT 1 FROM group_correspondences correspondence
+        JOIN evaluations evaluation ON evaluation.id = correspondence.evaluation_id
+        JOIN group_members current ON current.group_version_id = correspondence.next_group_version_id
+        JOIN group_members prior ON prior.group_version_id = correspondence.prior_group_version_id
+        JOIN assessment_results current_assessment ON current_assessment.id = current.assessment_result_id
+        JOIN assessment_results prior_assessment ON prior_assessment.id = prior.assessment_result_id
+        JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+        WHERE correspondence.id = NEW.correspondence_id AND evaluation.outcome = 'running' AND run.outcome = 'running'
+          AND current.assessment_result_id = NEW.assessment_result_id AND prior.assessment_result_id = NEW.prior_assessment_result_id
+          AND length(trim(NEW.current_evidence_quote)) > 0 AND length(trim(NEW.prior_evidence_quote)) > 0
+          AND instr(current_assessment.source_meaning, NEW.current_evidence_quote) > 0
+          AND instr(prior_assessment.source_meaning, NEW.prior_evidence_quote) > 0)
+      BEGIN SELECT RAISE(ABORT, 'Group correspondence member requires exact predecessor and successor membership'); END;
+    CREATE TRIGGER accepted_group_established_INSERT BEFORE INSERT ON accepted_group_evidence
+      WHEN NOT EXISTS(SELECT 1 FROM group_versions version JOIN evaluations evaluation ON evaluation.id = version.synthesis_evaluation_id
+        WHERE version.id = NEW.group_version_id AND version.group_id IS NOT NULL AND evaluation.outcome = 'complete')
+      BEGIN SELECT RAISE(ABORT, 'Catalog group evidence requires a completed established group version'); END;
+  `);
+  for (const [table, scope] of [
+    ['adjudication_relationship_decisions', `SELECT evaluation.id FROM evaluations evaluation
+      JOIN evaluator_profiles profile ON profile.id = evaluation.evaluator_profile_id
+      JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+      JOIN evaluation_inputs input ON input.evaluation_id = evaluation.id JOIN findings finding ON finding.evaluation_id = evaluation.id
+      WHERE evaluation.id = NEW.evaluation_id AND profile.task_code = 'adjudication' AND evaluation.outcome = 'running' AND run.outcome = 'running'
+        AND input.role_code = 'relationship' AND input.group_relationship_id = NEW.relationship_id AND finding.id = NEW.finding_id`],
+    ['adjudicated_issues', `SELECT evaluation.id FROM evaluations evaluation JOIN evaluator_profiles profile ON profile.id = evaluation.evaluator_profile_id
+      JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+      JOIN evaluation_inputs input ON input.evaluation_id = evaluation.id WHERE evaluation.id = NEW.evaluation_id
+        AND profile.task_code = 'adjudication' AND evaluation.outcome = 'running' AND run.outcome = 'running'
+        AND ((input.role_code = 'group' AND input.group_version_id = NEW.anchor_group_version_id)
+          OR (input.role_code IN ('managed-rule', 'protected-rule') AND input.rule_version_id = NEW.anchor_rule_version_id))`],
+    ['adjudicated_issue_members', `SELECT issue.issue_id FROM adjudicated_issues issue JOIN evaluations evaluation ON evaluation.id = issue.evaluation_id
+      JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+      JOIN evaluation_inputs input ON input.evaluation_id = evaluation.id WHERE issue.issue_id = NEW.issue_id AND evaluation.outcome = 'running' AND run.outcome = 'running'
+        AND ((input.role_code = 'group' AND input.group_version_id = NEW.group_version_id)
+          OR (input.role_code IN ('managed-rule', 'protected-rule') AND input.rule_version_id = NEW.rule_version_id))`],
+    ['adjudicated_issue_operations', `SELECT issue.issue_id FROM adjudicated_issues issue JOIN evaluations evaluation ON evaluation.id = issue.evaluation_id
+      JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+      JOIN adjudicated_issue_members member ON member.issue_id = issue.issue_id
+      WHERE issue.issue_id = NEW.issue_id AND evaluation.outcome = 'running' AND run.outcome = 'running' AND member.group_version_id = NEW.group_version_id`],
+    ['adjudicated_operation_retirements', `SELECT operation.id FROM adjudicated_issue_operations operation
+      JOIN adjudicated_issues issue ON issue.issue_id = operation.issue_id JOIN evaluations evaluation ON evaluation.id = issue.evaluation_id
+      JOIN run_evaluations used ON used.evaluation_id = evaluation.id JOIN analysis_runs run ON run.id = used.run_id
+      JOIN adjudicated_issue_members member ON member.issue_id = issue.issue_id
+      WHERE operation.id = NEW.operation_id AND evaluation.outcome = 'running' AND run.outcome = 'running' AND member.rule_version_id = NEW.rule_version_id`],
+  ]) {
+    connection.exec(`CREATE TRIGGER ${table}_scope_INSERT BEFORE INSERT ON ${table} WHEN NOT EXISTS(${scope})
+      BEGIN SELECT RAISE(ABORT, 'Adjudication output requires exact running component inputs'); END`);
+  }
   for (const table of ['application_migrations', 'proposal_versions', 'change_revisions', 'change_placements', 'change_retirements', 'change_applicabilities',
     'plan_versions', 'plan_items', 'wording_versions', 'rule_versions', 'rule_provenances', 'rule_placements', 'rule_applicabilities', 'approvals', 'approval_reviews',
-    'rendered_artifacts', 'artifact_files', 'group_correspondences', 'issue_resolutions', 'resolution_issues', 'resolution_findings', 'resolution_changes',
-    'codeowner_snapshots', 'codeowner_entries', 'codeowner_entry_actors', 'codeowner_refreshes',
+    'rendered_artifacts', 'artifact_files', 'group_versions', 'group_members', 'group_catalog_anchors', 'group_correspondences',
+    'group_correspondence_members', 'group_relationships', 'group_relationship_evidence', 'adjudication_relationship_decisions', 'adjudicated_issues',
+    'adjudicated_issue_members', 'adjudicated_issue_operations', 'adjudicated_operation_retirements',
+    'issue_resolutions', 'resolution_issues', 'resolution_findings', 'resolution_changes',
     'llm_models', 'profile_llm_assignments', 'evaluator_profiles', 'analysis_run_contexts', 'analysis_run_llm_assignments']) {
     for (const operation of ['UPDATE', 'DELETE']) connection.exec(`CREATE TRIGGER application_${table}_${operation} BEFORE ${operation} ON ${table}
       BEGIN SELECT RAISE(ABORT, 'Application history is immutable'); END`);
   }
   for (const table of ['catalog_members', 'catalog_sources', 'catalog_evidence', 'catalog_member_sources', 'catalog_member_evidence', 'accepted_group_evidence',
-    'catalog_surface_content', 'catalog_surface_sections', 'catalog_canonical_bindings']) {
+    'catalog_surface_content', 'catalog_surface_sections', 'catalog_canonical_bindings', 'catalog_guidance_files', 'catalog_rule_guidance']) {
     for (const operation of ['INSERT', 'UPDATE', 'DELETE']) {
       const tests = (operation === 'INSERT' ? ['NEW'] : operation === 'DELETE' ? ['OLD'] : ['OLD', 'NEW'])
         .map(row => `EXISTS(SELECT 1 FROM catalog_versions WHERE id = ${row}.catalog_id AND finalized_at IS NOT NULL)`);
@@ -664,13 +886,14 @@ function createApplicationGuards(connection) {
   `);
 }
 
+// Initialize and verify an empty database atomically; populated databases require a separate supported migration.
 export function migrateNewWorkbenchApplication(connection, { schemaVersion = workbenchSchemaVersion } = {}) {
   if (connection.readOnly || connection.isTransaction) throw new Error('Application initialization requires its own writable transaction');
-  if (![1, 2, workbenchSchemaVersion].includes(schemaVersion)) throw new Error('Application schema revision is not supported');
+  if (schemaVersion !== workbenchSchemaVersion) throw new Error('Application schema revision is not supported');
   if (connection.get("SELECT name FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' LIMIT 1")) throw new Error('Application initialization requires an empty database; existing schemas need an explicit supported migration');
   connection.exec('BEGIN IMMEDIATE');
   try {
-    createApplicationObjects(connection, schemaVersion);
+    createApplicationObjects(connection);
     connection.run('INSERT INTO application_migrations(version, applied_at) VALUES (?, ?)', [schemaVersion, new Date().toISOString()]);
     if (connection.all('PRAGMA foreign_key_check').length) throw new Error('Application migration failed referential verification');
     connection.exec('COMMIT');
@@ -683,11 +906,13 @@ export function migrateNewWorkbenchApplication(connection, { schemaVersion = wor
   }
 }
 
+// Fingerprint stored DDL, including indexes and triggers, rather than trusting only a schema version number.
 function schemaSignature(connection) {
   return createHash('sha256').update(JSON.stringify(connection.all("SELECT type, name, tbl_name, sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"))).digest('hex');
 }
 
 const expectedSignatures = new Map();
+// Build the authoritative schema in memory once per revision for non-mutating comparisons with existing databases.
 function expectedSchemaSignature(schemaVersion) {
   if (!expectedSignatures.has(schemaVersion)) {
     const expected = openWorkbenchSqlite({ mode: 'memory' });
@@ -700,64 +925,10 @@ function expectedSchemaSignature(schemaVersion) {
   return expectedSignatures.get(schemaVersion);
 }
 
-export function migrateWorkbenchApplication(connection, { databaseGuid, expectedSchemaVersion }) {
-  if (connection.readOnly || connection.isTransaction) throw new Error('Application upgrade requires its own writable transaction');
-  if (![1, 2].includes(expectedSchemaVersion) || typeof databaseGuid !== 'string' || databaseGuid.length === 0) {
-    throw new Error('Application upgrade requires the selected database identity and supported prior schema revision');
-  }
-  if (connection.get('SELECT database_guid FROM workspace_identity WHERE id = 1')?.database_guid !== databaseGuid) {
-    throw new Error('Application upgrade refuses a mismatched database identity');
-  }
-  const versions = connection.all('SELECT version FROM application_migrations ORDER BY version');
-  if (versions.at(-1)?.version !== expectedSchemaVersion || !validateWorkbenchApplicationSchema(connection, { schemaVersion: expectedSchemaVersion }).valid) {
-    throw new Error('Application upgrade refuses an unsupported or altered source schema');
-  }
-  if (connection.get('PRAGMA foreign_keys')?.foreign_keys !== 1 || connection.all('PRAGMA foreign_key_check').length ||
-    connection.all('PRAGMA integrity_check').some(row => row.integrity_check !== 'ok')) {
-    throw new Error('Application upgrade refuses a database that fails integrity or foreign-key checks');
-  }
-  connection.exec('BEGIN IMMEDIATE');
-  try {
-    const columns = connection.all('PRAGMA table_info(evaluation_inputs)').map(column => column.name);
-    const indexes = connection.all('PRAGMA index_list(evaluation_inputs)').filter(index => index.origin === 'c');
-    if (expectedSchemaVersion === 2) {
-      for (const name of ['reconciliation_component_scope_INSERT', 'reconciliation_component_member_scope_INSERT',
-        'application_reconciliation_components_UPDATE', 'application_reconciliation_components_DELETE',
-        'application_reconciliation_component_members_UPDATE', 'application_reconciliation_component_members_DELETE']) connection.exec(`DROP TRIGGER ${name}`);
-    }
-    connection.exec('ALTER TABLE evaluation_inputs RENAME TO evaluation_inputs_revision_one');
-    for (const index of indexes) connection.exec(`DROP INDEX "${index.name}"`);
-    if (expectedSchemaVersion === 1) createReconciliationComponents(connection);
-    createConsolidationMerges(connection);
-    createEvaluationInputs(connection, true, true);
-    connection.exec(`INSERT INTO evaluation_inputs (${columns.join(', ')}) SELECT ${columns.join(', ')} FROM evaluation_inputs_revision_one`);
-    connection.exec('DROP TABLE evaluation_inputs_revision_one');
-    createReconciliationComponentGuards(connection);
-    if (expectedSchemaVersion === 1) {
-      const participantColumns = connection.all('PRAGMA table_info(finding_participants)').map(column => column.name);
-      connection.exec('ALTER TABLE finding_participants RENAME TO finding_participants_revision_one');
-      connection.exec(findingParticipantsDdl(true));
-      connection.exec(`INSERT INTO finding_participants (${participantColumns.join(', ')}) SELECT ${participantColumns.join(', ')} FROM finding_participants_revision_one`);
-      connection.exec('DROP TABLE finding_participants_revision_one');
-    }
-    connection.run('INSERT INTO application_migrations(version, applied_at) VALUES (?, ?)', [workbenchSchemaVersion, new Date().toISOString()]);
-    if (schemaSignature(connection) !== expectedSchemaSignature(workbenchSchemaVersion) || connection.all('PRAGMA foreign_key_check').length) {
-      throw new Error('Application upgrade failed target schema or referential verification');
-    }
-    connection.exec('COMMIT');
-    return { databaseGuid, priorSchemaVersion: expectedSchemaVersion, schemaVersion: workbenchSchemaVersion };
-  } catch (error) {
-    if (connection.isTransaction) {
-      try { connection.exec('ROLLBACK'); }
-      catch (rollbackError) { throw new AggregateError([error, rollbackError], 'Application upgrade and rollback failed'); }
-    }
-    throw error;
-  }
-}
-
+// Inspect schema shape, migration history, enforcement settings, and integrity without repairing the selected database.
 export function validateWorkbenchApplicationSchema(connection, { schemaVersion = workbenchSchemaVersion } = {}) {
   const problems = [];
-  if (![1, 2, workbenchSchemaVersion].includes(schemaVersion)) return { valid: false, schemaVersion, problems: ['unsupported-schema-version'] };
+  if (schemaVersion !== workbenchSchemaVersion) return { valid: false, schemaVersion, problems: ['unsupported-schema-version'] };
   if (schemaSignature(connection) !== expectedSchemaSignature(schemaVersion)) problems.push('schema-shape-mismatch');
   try {
     const versions = connection.all('SELECT version FROM application_migrations ORDER BY version');

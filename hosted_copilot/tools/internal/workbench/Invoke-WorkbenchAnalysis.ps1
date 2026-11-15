@@ -7,6 +7,12 @@ Records evaluation identity in the database before each restricted inference cal
 Explicit existing run to continue after compatible pinned inputs and evaluator identity are verified. Completed results are retained. Cannot be combined with Force.
 .PARAMETER ContinueRunId
 Explicit source-assessed run whose reconciliation and adjudication should continue. Does not rerun source assessment. Cannot be combined with ResumeRunId or Force.
+.PARAMETER AdjudicationOnly
+Requires ContinueRunId and fully committed reconciliation. Verifies and recovers earlier phases without dispatching them; permits a repaired adjudicator when earlier attempts have no completed or active results.
+.PARAMETER StagePayloadBudgetBytes
+Maximum downstream quoted-input size. Requires ContinueRunId when explicitly configured.
+.PARAMETER EvaluatorPayloadBudgetBytes
+Maximum downstream request size including prompt and output contract. Requires ContinueRunId when explicitly configured.
 #>
 [CmdletBinding()]
 param(
@@ -14,8 +20,11 @@ param(
     [Parameter(Mandatory)][string]$DatabaseGuid,
     [string]$EvaluatorCommand = 'copilot',
     [ValidateRange(1, 16)][int]$MaxParallelBatches = 3,
+    [ValidateRange(1, 2147483647)][int]$StagePayloadBudgetBytes = 262144,
+    [ValidateRange(1, 2147483647)][int]$EvaluatorPayloadBudgetBytes = 393216,
     [ValidateRange(1, 2147483647)][int]$ResumeRunId,
     [ValidateRange(1, 2147483647)][int]$ContinueRunId,
+    [switch]$AdjudicationOnly,
     [switch]$Force
 )
 
@@ -25,11 +34,23 @@ Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedCli.psm1') -F
 Import-Module (Join-Path $PSScriptRoot '../../modules/shared/HostedToolkit.Helpers.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../../../../tools/ValidationOutput.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/Workbench.Activity.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '../../modules/workbench/Workbench.Audit.psm1') -Force
 $resolvedDatabasePath = [IO.Path]::GetFullPath($DatabasePath)
+if ($StagePayloadBudgetBytes -gt $EvaluatorPayloadBudgetBytes) { throw 'Stage payload budget cannot exceed the complete evaluator budget' }
+if ($ContinueRunId -le 0 -and ($PSBoundParameters.ContainsKey('StagePayloadBudgetBytes') -or $PSBoundParameters.ContainsKey('EvaluatorPayloadBudgetBytes'))) {
+    throw 'Explicit downstream byte budgets require ContinueRunId'
+}
 $analysisClock = [Diagnostics.Stopwatch]::StartNew()
 $commandOutput = [pscustomobject]@{ Completed = $false }
 if ($ResumeRunId -gt 0 -and $Force) { throw 'ResumeRunId cannot be combined with Force; fresh evaluation requires a new run' }
 if ($ContinueRunId -gt 0 -and ($ResumeRunId -gt 0 -or $Force)) { throw 'ContinueRunId cannot be combined with ResumeRunId or Force' }
+if ($AdjudicationOnly -and $ContinueRunId -le 0) { throw 'AdjudicationOnly requires ContinueRunId' }
+$auditAction = if ($ContinueRunId -gt 0) { if ($AdjudicationOnly) { 'adjudicate' } else { 'reconcile' } } else { 'assess' }
+$auditFacts = @{}
+if ($ResumeRunId -gt 0) { $auditFacts.runId = $ResumeRunId }
+elseif ($ContinueRunId -gt 0) { $auditFacts.runId = $ContinueRunId }
+$analysisAudit = New-WorkbenchAudit -DatabasePath $resolvedDatabasePath -DatabaseGuid $DatabaseGuid -ActionCode $auditAction -Facts $auditFacts
+try {
 $runtimeRequest = [ordered]@{ databaseGuid = $DatabaseGuid }
 $runtimeJson = ($runtimeRequest | ConvertTo-Json -Compress) | & node (Join-Path $PSScriptRoot '../../modules/workbench/WorkbenchDatabase.mjs') llm-runtime $resolvedDatabasePath
 if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve LLM assignments from the selected master-profile database' }
@@ -70,6 +91,29 @@ function Write-NativeFailureSummary {
     Write-ValidationSectionHeader -Title 'Failures' | Write-Host
     foreach ($failure in $Failures) { Write-Host ('  - ' + $failure) }
     Complete-NativeCommandTextOutput
+}
+function Format-NativeEvaluationFailure {
+    param([object]$Event)
+
+    if ($Event.failureCode -isnot [string] -or $Event.failureCode -cnotmatch '^[a-z][a-z0-9-]{0,63}$') {
+        throw 'Database evaluation emitted invalid failure metadata; raw content omitted'
+    }
+    if ($null -eq $Event.PSObject.Properties['failureStage']) {
+        if ($Event.failureCode -ceq 'evaluator-result-contract-invalid') {
+            return 'Evaluator response failed its result contract; raw response content omitted'
+        }
+        return 'Evaluation failed; the original reason is unavailable in safe diagnostics'
+    }
+    if ($Event.failureStage -cnotin @('request', 'evaluate', 'commit') -or
+        $Event.failureReason -isnot [string] -or $Event.failureReason.Length -eq 0 -or $Event.failureReason.Length -gt 512 -or
+        $Event.failureReason -cmatch '[^\x20-\x7e]' -or
+        ($null -ne $Event.failurePath -and ($Event.failurePath -isnot [string] -or $Event.failurePath.Length -gt 256 -or
+            $Event.failurePath -cnotmatch '^/(groups|components|dispositions|assessments|relationshipDecisions|issues)(/([a-z][A-Za-z]*|0|[1-9][0-9]*))*$'))) {
+        throw 'Database evaluation emitted invalid safe failure details; raw content omitted'
+    }
+    $detail = $Event.failureStage + ': ' + $Event.failureReason
+    if ($null -ne $Event.failurePath) { $detail += ' at ' + $Event.failurePath }
+    return $detail
 }
 function Write-NativeExecutionRefusal {
     param([object]$Event, [object[]]$CompletedChecks)
@@ -112,6 +156,14 @@ function Invoke-NativeDownstreamContinuation {
     Invoke-WorkbenchActivityProcess -Arguments @($BridgePath, 'continue-analysis', $SelectedDatabasePath) -InputObject ($Request | ConvertTo-Json -Compress) -Activity $activity | ForEach-Object {
         try { $event = $_ | ConvertFrom-Json -Depth 100 -DateKind String }
         catch { throw 'Database continuation emitted invalid structured progress; raw content omitted' }
+        if ($null -ne $event.PSObject.Properties['kind'] -and $event.kind -ceq 'audit-warning') {
+            Write-WorkbenchAuditWarning -Event $event
+            return
+        }
+        if ($null -ne $event.PSObject.Properties['kind'] -and $event.kind -ceq 'audit-context') {
+            Update-WorkbenchAuditContext -Audit $analysisAudit -Context $event.context
+            return
+        }
         if ($null -ne $refusal -or $null -ne $failureEvent) { throw 'Database continuation emitted output after a terminal failure' }
         if ($null -ne $event.PSObject.Properties['kind'] -and $event.kind -ceq 'execution-refused') {
             if ($phaseIndex -ne 0 -or $null -ne $plan -or $active.Count -ne 0) { throw 'Database continuation refused an already active execution' }
@@ -153,6 +205,9 @@ function Invoke-NativeDownstreamContinuation {
                 $checkRecords.Add([pscustomobject]@{ status = 'passed'; name = $event.phase + '-preparation' })
                 Write-ValidationSectionHeader -Title ('Processing Native ' + $event.phase) | Write-Host
                 $fields = [ordered]@{ Batches = "$($event.batchCount) pending | $($event.recoveredBatchCount) recovered" }
+                if ($event.phase -ceq 'adjudication' -and $null -ne $event.PSObject.Properties['comparisonCount']) {
+                    $fields.Relationships = "$($event.comparisonCount) recorded | $($event.componentCount) complete components"
+                }
                 if ($event.batchCount -eq 0) { $fields.Execution = 'No evaluation required' }
                 else {
                     $fields.Workers = $event.workerCount
@@ -204,8 +259,9 @@ function Invoke-NativeDownstreamContinuation {
                 $active.Remove($batch)
                 $null = $failedBatches.Add($batch)
                 $checkRecords.Add([pscustomobject]@{ status = 'failed'; name = $name })
-                $failureMessages.Add($name + ' failed; committed results retained; unresolved work requires recovery')
-                $detail = "Total Elapsed $(Format-ElapsedDuration -Milliseconds $event.totalElapsedMilliseconds) : [Batch: $(Format-ElapsedDuration -Milliseconds $event.batchElapsedMilliseconds)]"
+                $failureDetail = Format-NativeEvaluationFailure -Event $event
+                $failureMessages.Add($name + ' ' + $failureDetail + '; committed results retained; unresolved work requires recovery')
+                $detail = "Total Elapsed $(Format-ElapsedDuration -Milliseconds $event.totalElapsedMilliseconds) : [Batch: $(Format-ElapsedDuration -Milliseconds $event.batchElapsedMilliseconds)] : " + $failureDetail
                 Format-ValidationStatusLine -Status failed -Name $name -Detail $detail -AlignmentWidth 42 | Write-Host
             } else { throw 'Database continuation emitted an unsupported lifecycle event' }
         } elseif ($event.outcome -ceq 'complete') {
@@ -229,7 +285,10 @@ function Invoke-NativeDownstreamContinuation {
 
 if ($ContinueRunId -gt 0) {
     $downstreamRequest = [ordered]@{ databaseGuid = $DatabaseGuid; runId = $ContinueRunId; llmAssignmentIds = @($runtime.assignments.assignmentId);
-        evaluatorCommand = $launch.commandPath; cliVersion = $availability.version; maxParallelBatches = $MaxParallelBatches }
+        evaluatorCommand = $launch.commandPath; cliVersion = $availability.version; maxParallelBatches = $MaxParallelBatches;
+        budgets = [ordered]@{ stagePayloadBudgetBytes = $StagePayloadBudgetBytes; evaluatorPayloadBudgetBytes = $EvaluatorPayloadBudgetBytes } }
+    $downstreamRequest.adjudicationOnly = [bool]$AdjudicationOnly
+    $downstreamRequest.auditContext = $analysisAudit.Context
     $downstreamResult = Invoke-NativeDownstreamContinuation -Request $downstreamRequest -BridgePath (Join-Path $PSScriptRoot '../../modules/workbench/WorkbenchDatabase.mjs') -SelectedDatabasePath $resolvedDatabasePath -WorkerLimit $MaxParallelBatches -CompletedChecks $analysisChecks.ToArray()
     if ($null -ne $downstreamResult.PSObject.Properties['kind'] -and $downstreamResult.kind -in @('execution-refused', 'execution-failed')) { exit 1 }
     Write-ValidationSectionHeader -Title 'Native Analysis Summary' | Write-Host
@@ -241,7 +300,8 @@ if ($ContinueRunId -gt 0) {
 }
 
 $request = [ordered]@{ databaseGuid = $DatabaseGuid; llmAssignmentIds = @($runtime.assignments.assignmentId);
-    evaluatorCommand = $launch.commandPath; cliVersion = $availability.version; force = [bool]$Force; maxParallelBatches = $MaxParallelBatches }
+    evaluatorCommand = $launch.commandPath; cliVersion = $availability.version; force = [bool]$Force; maxParallelBatches = $MaxParallelBatches;
+    auditContext = $analysisAudit.Context }
 $operation = 'assess'
 if ($ResumeRunId -gt 0) {
     $request.Remove('force')
@@ -252,6 +312,9 @@ Write-ValidationSectionHeader -Title 'Source Assessment' | Write-Host
 $activity = Start-WorkbenchActivity -Name 'Preparing Source Assessment' -Clock $analysisClock
 $activeBatches = @{}
 $completedBatches = [Collections.Generic.HashSet[int]]::new()
+$assessmentFailures = [Collections.Generic.List[string]]::new()
+$assessmentChecks = [Collections.Generic.List[object]]::new()
+foreach ($check in $analysisChecks) { $assessmentChecks.Add($check) }
 $assessmentPlan = $null
 $completionEvent = $null
 $analysisResult = $null
@@ -259,6 +322,14 @@ $executionRefusal = $null
 Invoke-WorkbenchActivityProcess -Arguments @((Join-Path $PSScriptRoot '../../modules/workbench/WorkbenchDatabase.mjs'), $operation, $resolvedDatabasePath) -InputObject ($request | ConvertTo-Json -Compress) -Activity $activity | ForEach-Object {
     try { $event = $_ | ConvertFrom-Json -Depth 100 -DateKind String }
     catch { throw 'Database assessment emitted invalid structured progress; raw content omitted' }
+    if ($null -ne $event.PSObject.Properties['kind'] -and $event.kind -ceq 'audit-warning') {
+        Write-WorkbenchAuditWarning -Event $event
+        return
+    }
+    if ($null -ne $event.PSObject.Properties['kind'] -and $event.kind -ceq 'audit-context') {
+        Update-WorkbenchAuditContext -Audit $analysisAudit -Context $event.context
+        return
+    }
     if ($null -ne $executionRefusal) { throw 'Database assessment emitted output after an execution refusal' }
     if ($null -ne $event.PSObject.Properties['kind'] -and $event.kind -ceq 'execution-refused') {
         if ($null -ne $assessmentPlan -or $activeBatches.Count -ne 0) { throw 'Database assessment refused an already active execution' }
@@ -315,11 +386,15 @@ Invoke-WorkbenchActivityProcess -Arguments @((Join-Path $PSScriptRoot '../../mod
             if (-not $activeBatches.ContainsKey($batchNumber) -or $activeBatches[$batchNumber] -ne $event.evaluationId) { throw 'Database assessment completed an inactive batch' }
             $activeBatches.Remove($batchNumber)
             $null = $completedBatches.Add($batchNumber)
+            $assessmentChecks.Add([pscustomobject]@{ status = 'passed'; name = $name })
             $detail = "Total Elapsed $(Format-ElapsedDuration -Milliseconds $event.totalElapsedMilliseconds) : [Batch: $(Format-ElapsedDuration -Milliseconds $event.batchElapsedMilliseconds)] : [Remaining: $(Format-ElapsedDuration -Milliseconds $event.remainingMilliseconds)]"
             Format-ValidationStatusLine -Status passed -Name $name -Detail $detail -AlignmentWidth 42 | Write-Host
         } elseif ($event.state -ceq 'failed') {
             $activeBatches.Remove($batchNumber)
-            $detail = "Total Elapsed $(Format-ElapsedDuration -Milliseconds $event.totalElapsedMilliseconds) : [Batch: $(Format-ElapsedDuration -Milliseconds $event.batchElapsedMilliseconds)]"
+            $failureDetail = Format-NativeEvaluationFailure -Event $event
+            $assessmentFailures.Add($name + ' ' + $failureDetail)
+            $assessmentChecks.Add([pscustomobject]@{ status = 'failed'; name = $name })
+            $detail = "Total Elapsed $(Format-ElapsedDuration -Milliseconds $event.totalElapsedMilliseconds) : [Batch: $(Format-ElapsedDuration -Milliseconds $event.batchElapsedMilliseconds)] : " + $failureDetail
             Format-ValidationStatusLine -Status failed -Name $name -Detail $detail -AlignmentWidth 42 | Write-Host
         } else { throw 'Database assessment emitted an invalid lifecycle transition; raw content omitted' }
     } elseif ($null -ne $event.PSObject.Properties['assessmentComplete'] -and $event.assessmentComplete -eq $true) {
@@ -335,6 +410,9 @@ if ($null -ne $executionRefusal) {
 }
 if ($LASTEXITCODE -ne 0 -or $null -eq $analysisResult) {
     Format-ValidationStatusLine -Status failed -Name 'source-assessment' -Detail 'Incomplete; committed batches retained; unresolved sources require explicit recovery' -AlignmentWidth 42 | Write-Host
+    if ($assessmentFailures.Count -gt 0) {
+        Write-NativeFailureSummary -Checks $assessmentChecks.ToArray() -Failures $assessmentFailures.ToArray()
+    }
     throw 'Database source assessment did not complete; committed results were retained and the current analysis head was not changed'
 }
 Write-ValidationSectionHeader -Title 'Source Assessment Summary' | Write-Host
@@ -346,3 +424,6 @@ Write-ValidationSummary -Fields ([ordered]@{
     'Ready for UI' = $analysisResult.readyForUi
 }) | Write-Host
 Complete-NativeCommandTextOutput
+} finally {
+    if ($null -ne $analysisAudit.Context.activeActionCode) { Invoke-WorkbenchAuditTransition -Audit $analysisAudit -Transition finish -Outcome failed }
+}

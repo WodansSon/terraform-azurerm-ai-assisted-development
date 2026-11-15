@@ -1,6 +1,8 @@
 import { sourceTextHash } from './WorkbenchSourceRecords.mjs';
 import { prepareEvaluationInput, readAssessmentRecoveryPlan, recordEvaluationRequest, commitAssessmentResults, failEvaluation } from './WorkbenchEvaluations.mjs';
+import { describeEvaluationFailure } from './WorkbenchEvaluationFailures.mjs';
 
+// Measure the actual UTF-8 prompt envelope, including its output schema and quoted evidence, before dispatch.
 export function measureAssessmentInputBytes(serializedInput, evaluatorInput) {
   if (typeof serializedInput !== 'string' || typeof evaluatorInput?.prompt !== 'string' || typeof evaluatorInput?.schema !== 'string') {
     throw new Error('Assessment payload measurement requires the complete evaluator input');
@@ -9,6 +11,7 @@ export function measureAssessmentInputBytes(serializedInput, evaluatorInput) {
   return Buffer.byteLength(prompt, 'utf8');
 }
 
+// Estimate remaining work from aggregate worker throughput, using the provisional rate until samples are usable.
 export function estimateAssessmentMilliseconds(completedPayloadBytes, completedWorkerMilliseconds, remainingPayloadBytes, workerCount) {
   if (remainingPayloadBytes <= 0) return 0;
   const workers = Math.max(1, workerCount);
@@ -19,6 +22,7 @@ export function estimateAssessmentMilliseconds(completedPayloadBytes, completedW
   return Math.ceil(remainingPayloadBytes / (bytesPerMillisecondPerWorker * workers));
 }
 
+// Count durable completed evidence rather than treating dispatched or returned model work as persisted progress.
 function readCommittedProgress(connection, runId) {
   const completedSources = connection.get(`SELECT count(DISTINCT input.source_version_id) AS count FROM run_evaluations used
     JOIN evaluations evaluation ON evaluation.id = used.evaluation_id JOIN evaluator_profiles profile ON profile.id = evaluation.evaluator_profile_id
@@ -30,6 +34,7 @@ function readCommittedProgress(connection, runId) {
   return { completedSources, completedAssessments };
 }
 
+// Pack unresolved sources within family, configured batch-size, and complete-envelope limits while preserving recovery.
 export function planAssessmentBatches(connection, request, evaluatorInput, maxParallelBatches = 3) {
   if (!Number.isSafeInteger(maxParallelBatches) || maxParallelBatches < 1 || maxParallelBatches > 16) {
     throw new Error('Assessment workers must be an integer between 1 and 16');
@@ -76,6 +81,7 @@ export function planAssessmentBatches(connection, request, evaluatorInput, maxPa
     workerCount, pendingPayloadBytes, estimatedMilliseconds };
 }
 
+// Run bounded workers without holding inference transactions; drain in-flight work after failure and retain valid commits.
 export async function executeAssessmentBatches(connection, request, evaluatorInput, evaluate, report = () => {}, maxParallelBatches = 3) {
   const { recovery, batches, ...plan } = planAssessmentBatches(connection, request, evaluatorInput, maxParallelBatches);
   report({ state: 'plan', runId: request.runId, ...plan });
@@ -92,30 +98,35 @@ export async function executeAssessmentBatches(connection, request, evaluatorInp
   const failures = [];
   const remainingTime = () => estimateAssessmentMilliseconds(completedPayloadBytes, completedWorkerMilliseconds,
     plan.pendingPayloadBytes - completedPayloadBytes, maxParallelBatches);
+  // Claim pending batches until dispatch stops, committing each result before reporting successful progress.
   async function worker() {
     while (!stopped && nextBatch < batches.length) {
       const batchNumber = ++nextBatch;
       const batch = batches[batchNumber - 1];
       const batchStarted = performance.now();
       let recorded;
+      let failureStage = 'request';
       try {
         recorded = recordEvaluationRequest(connection, { ...request, sourceVersionIds: batch.sourceVersionIds });
         if (recorded.inputFingerprint !== batch.inputFingerprint) throw new Error('Assessment inputs changed after execution planning');
         if (connection.isTransaction) throw new Error('Inference refused an open assessment transaction');
         report({ state: 'running', runId: request.runId, evaluationId: recorded.evaluationId, batchNumber, batchCount: batches.length,
           batchId: batch.batchId, sourceDefinitionId: batch.sourceDefinitionId, sourceCount: batch.sourceVersionIds.length });
+        failureStage = 'evaluate';
         const result = await evaluate(recorded);
+        failureStage = 'commit';
         commitAssessmentResults(connection, { binding: request.binding, runId: request.runId, evaluationId: recorded.evaluationId,
           inputFingerprint: recorded.inputFingerprint, result });
       } catch (error) {
         stopped = true;
-        failures.push(error);
+        const failure = describeEvaluationFailure(error, failureStage);
+        failures.push(failure);
         if (recorded && connection.get('SELECT outcome FROM evaluations WHERE id = ?', [recorded.evaluationId])?.outcome === 'running') {
-          failEvaluation(connection, { binding: request.binding, runId: request.runId, evaluationId: recorded.evaluationId, failureCode: 'evaluator-or-result-failed' });
+          failEvaluation(connection, { binding: request.binding, runId: request.runId, evaluationId: recorded.evaluationId, ...failure });
         }
         report({ state: 'failed', runId: request.runId, batchNumber, batchCount: batches.length,
           batchElapsedMilliseconds: Math.round(performance.now() - batchStarted), totalElapsedMilliseconds: Math.round(performance.now() - started),
-          remainingMilliseconds: remainingTime(), failureCode: 'evaluator-or-result-failed' });
+          remainingMilliseconds: remainingTime(), ...failure });
         return;
       }
       const batchElapsedMilliseconds = Math.round(performance.now() - batchStarted);
@@ -135,7 +146,9 @@ export async function executeAssessmentBatches(connection, request, evaluatorInp
     throw error;
   })));
   if (failures.length > 0 || settled.some(result => result.status === 'rejected')) {
-    throw new Error('Assessment execution failed; in-flight work settled, committed results were retained, and unresolved sources require explicit recovery');
+    const failure = failures[0];
+    const detail = failure ? `; ${failure.failureStage}: ${failure.failureReason}${failure.failurePath ? ` at ${failure.failurePath}` : ''}` : '';
+    throw new Error(`Assessment execution failed; in-flight work settled, committed results were retained, and unresolved sources require explicit recovery${detail}`);
   }
   const progress = readCommittedProgress(connection, request.runId);
   if (progress.completedSources !== plan.totalSourceCount) throw new Error('Assessment completion does not cover the pinned source set');

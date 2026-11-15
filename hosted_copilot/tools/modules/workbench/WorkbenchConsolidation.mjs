@@ -3,6 +3,7 @@ import { withEvaluationTransaction, prepareEvaluationInput } from './WorkbenchEv
 import { readSelectedCapacityConfiguration } from './WorkbenchWorkspace.mjs';
 import { mergeConsolidationShards } from './WorkbenchSharding.mjs';
 
+// Rehydrate canonical component membership only when every contributing shard belongs to the pinned completed lineage.
 export function readConsolidatedComponents(connection, runId, profileId, mergeId) {
   const merge = connection.get('SELECT * FROM consolidation_merges WHERE id = ? AND run_id = ? AND evaluator_profile_id = ?', [mergeId, runId, profileId]);
   if (!merge) throw new Error('Synthesis requires its pinned canonical consolidation merge');
@@ -14,9 +15,11 @@ export function readConsolidatedComponents(connection, runId, profileId, mergeId
   return connection.all('SELECT * FROM consolidated_components WHERE merge_id = ? ORDER BY ordinal', [mergeId]).map(component => ({
     componentId: component.id, mergeId, phase: 'consolidation', semanticSummary: component.semantic_summary,
     assessmentResultIds: connection.all('SELECT assessment_result_id AS id FROM consolidated_component_members WHERE component_id = ? ORDER BY assessment_result_id', [component.id]).map(row => row.id),
+    ruleVersionIds: connection.all('SELECT rule_version_id AS id FROM consolidated_component_rules WHERE component_id = ? ORDER BY rule_version_id', [component.id]).map(row => row.id),
   }));
 }
 
+// Verify every planned shard and persist their deterministic union, reusing an existing merge only if membership matches.
 export function commitConsolidationMerge(connection, request, plan, evaluationIds) {
   return withEvaluationTransaction(connection, () => {
     readSelectedCapacityConfiguration(connection, request.binding);
@@ -32,6 +35,7 @@ export function commitConsolidationMerge(connection, request, plan, evaluationId
       if (JSON.stringify(recorded) !== JSON.stringify(job.request.componentIds)) throw new Error('Consolidation merge refuses changed recorded component scope');
       const components = connection.all("SELECT id FROM reconciliation_components WHERE evaluation_id = ? AND phase_code = 'consolidation' ORDER BY ordinal", [evaluation.id]).map(component => ({
         assessmentResultIds: connection.all('SELECT assessment_result_id AS id FROM reconciliation_component_members WHERE component_id = ? ORDER BY assessment_result_id', [component.id]).map(row => row.id),
+        ruleVersionIds: connection.all('SELECT rule_version_id AS id FROM reconciliation_component_rules WHERE component_id = ? ORDER BY rule_version_id', [component.id]).map(row => row.id),
       }));
       return { componentIds: job.request.componentIds, components };
     });
@@ -40,7 +44,8 @@ export function commitConsolidationMerge(connection, request, plan, evaluationId
     const existing = connection.get('SELECT id FROM consolidation_merges WHERE run_id = ? AND evaluator_profile_id = ? AND plan_sha256 = ?', [request.runId, request.reconciliationProfileId, planHash]);
     if (existing) {
       const recorded = readConsolidatedComponents(connection, request.runId, request.reconciliationProfileId, existing.id);
-      if (JSON.stringify(recorded.map(component => component.assessmentResultIds)) !== JSON.stringify(merged.map(component => component.assessmentResultIds))) {
+      if (JSON.stringify(recorded.map(({ assessmentResultIds, ruleVersionIds }) => ({ assessmentResultIds, ruleVersionIds }))) !==
+        JSON.stringify(merged.map(({ assessmentResultIds, ruleVersionIds }) => ({ assessmentResultIds, ruleVersionIds })))) {
         throw new Error('Canonical consolidation recovery refuses changed merged membership');
       }
       return existing.id;
@@ -51,6 +56,7 @@ export function commitConsolidationMerge(connection, request, plan, evaluationId
     for (const [ordinal, component] of merged.entries()) {
       const componentId = Number(connection.run('INSERT INTO consolidated_components(merge_id,ordinal,semantic_summary) VALUES (?,?,?)', [mergeId, ordinal, component.semanticSummary]).lastInsertRowid);
       for (const id of component.assessmentResultIds) connection.run('INSERT INTO consolidated_component_members VALUES (?,?)', [componentId, id]);
+      for (const id of component.ruleVersionIds) connection.run('INSERT INTO consolidated_component_rules VALUES (?,?)', [componentId, id]);
     }
     return mergeId;
   });

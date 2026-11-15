@@ -11,6 +11,7 @@ export function sourceTextHash(text) {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
+// Reject unexpected keys, accessors, and non-plain objects before treating supplied fields as contract data.
 export function requireSourceObject(value, allowed, required, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) {
     throw new Error(`${label} must be a plain object`);
@@ -20,6 +21,7 @@ export function requireSourceObject(value, allowed, required, label) {
   }
 }
 
+// Validate usable Unicode text without trimming or otherwise changing captured evidence.
 export function requireSourceText(value, label) {
   if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\0') || !value.isWellFormed()) {
     throw new Error(`${label} must be nonempty text without NUL characters`);
@@ -32,6 +34,7 @@ export function requireSourceHash(value, label) {
   return value;
 }
 
+// Verify exact file bytes against their hashes and return a uniquely pathed, deterministic capture order.
 export function normalizeCapturedSourceFiles(files) {
   if (!Array.isArray(files)) throw new Error('Captured source files must be an array');
   const normalized = files.map(file => {
@@ -49,6 +52,7 @@ export function normalizeCapturedSourceFiles(files) {
   return normalized;
 }
 
+// Validate and freeze a copied text list, allowing repeated evidence only when its caller explicitly permits it.
 function uniqueTextList(value, label, unique = true) {
   if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
   for (const item of value) requireSourceText(item, label);
@@ -56,12 +60,14 @@ function uniqueTextList(value, label, unique = true) {
   return Object.freeze([...value]);
 }
 
+// Round-trip calendar dates to reject values that JavaScript would otherwise normalize into a different day.
 function sourceDate(value, label) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value) {
     throw new Error(`${label} must be a valid calendar date`);
   }
 }
 
+// Preserve captured meaning while validating lifecycle, absence history, provenance, and optional remote authority.
 export function normalizeSourceRecord(record) {
   requireSourceObject(record, [...requiredFields, ...listFields, ...nullableFields], requiredFields, 'Source record');
   const normalized = {};
@@ -93,6 +99,7 @@ export function normalizeSourceRecord(record) {
   return Object.freeze(normalized);
 }
 
+// Enforce identity uniqueness within a source definition and freeze its validated normalized records.
 export function normalizeSourceRecords(records) {
   if (!Array.isArray(records)) throw new Error('Source records must be an array');
   const normalized = records.map(normalizeSourceRecord);
@@ -100,6 +107,7 @@ export function normalizeSourceRecords(records) {
   return Object.freeze(normalized);
 }
 
+// Adapt supported parser-specific records into the shared evidence contract without guessing missing provenance.
 export function normalizeLegacySourceRecords(parserId, records) {
   if (!Array.isArray(records)) throw new Error('Legacy source records must be an array');
   if (parserId === 'contributor-guidance-v4') return normalizeSourceRecords(records.map(normalizeContributorRecord));
@@ -141,6 +149,7 @@ export function normalizeLegacySourceRecords(parserId, records) {
   }));
 }
 
+// Bind contributor evidence to its exact repository, commit, document locator, and derived source identity.
 function normalizeContributorRecord(record) {
   const originFields = ['repository', 'resolvedCommit', 'referenceUrl'];
   requireSourceObject(record, [...requiredFields, 'removedAt', ...originFields], [...requiredFields, ...originFields], 'Contributor source record');

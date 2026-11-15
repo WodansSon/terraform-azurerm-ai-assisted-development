@@ -6,12 +6,14 @@ function identity(value) {
   if (!Number.isSafeInteger(value) || value < 1) throw new Error('Protected repository context must be a positive safe integer');
 }
 
+// Keep protected-file locators repository-relative and free of traversal or ambiguous path segments.
 function relativePath(value) {
   requireSourceText(value, 'Protected relative path');
   if (!/^[A-Za-z0-9._/-]+$/.test(value) || value.startsWith('/') || value.split('/').some(part => !part || part === '..' || part === '.')) throw new Error('Protected paths must be scoped repository-relative paths');
   return value;
 }
 
+// Isolate protected-capture writes with a savepoint while preserving any enclosing caller transaction.
 function transaction(connection, operation) {
   connection.exec('SAVEPOINT workbench_protected_capture');
   try {
@@ -25,6 +27,7 @@ function transaction(connection, operation) {
   }
 }
 
+// Store protected bytes and rule versions with repository-scoped membership and finalized-history write guards.
 export function createProtectedSnapshotSchema(connection) {
   for (const [table, columns] of Object.entries({
     repository_contexts: ['id', 'repository_id', 'branch_ref', 'commit_oid', 'observed_at'],
@@ -90,6 +93,7 @@ export function createProtectedSnapshotSchema(connection) {
   });
 }
 
+// Translate parser transport into native evidence and verify that its catalog exactly matches the captured blocks.
 export function protectedCaptureFromParser(capture, authority) {
   requireSourceObject(capture, ['Files', 'Blocks', 'Catalog'], ['Files', 'Blocks', 'Catalog'], 'Parsed protected capture');
   const authorityFields = ['repositoryContextId', 'parserContractSha256', 'requiredFiles'];
@@ -120,6 +124,7 @@ export function protectedCaptureFromParser(capture, authority) {
   return { ...authority, files, blocks };
 }
 
+// Rehydrate only finalized protection, retaining both original file bytes and canonical rule-block evidence.
 export function readProtectedSnapshot(connection, snapshotId) {
   identity(snapshotId);
   const snapshot = connection.get('SELECT * FROM protected_snapshots WHERE id = ? AND finalized = 1', [snapshotId]);
@@ -142,6 +147,7 @@ export function readProtectedSnapshot(connection, snapshotId) {
   return { snapshotId, repositoryContextId: snapshot.repository_context_id, capturedAt: snapshot.captured_at, contentSha256: snapshot.content_sha256, parserContractSha256: snapshot.parser_contract_sha256, files, blocks };
 }
 
+// Validate a complete protected capture, reuse identical evidence, and finalize newly versioned protection atomically.
 export function ingestProtectedCapture(connection, request) {
   const fields = ['repositoryContextId', 'parserContractSha256', 'requiredFiles', 'files', 'blocks'];
   requireSourceObject(request, fields, fields, 'Protected capture');

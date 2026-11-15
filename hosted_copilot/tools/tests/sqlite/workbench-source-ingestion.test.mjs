@@ -27,6 +27,11 @@ function authoredFixture(context) {
     CREATE TABLE database_backups (id INTEGER PRIMARY KEY, database_guid TEXT NOT NULL, requested_by_actor_id INTEGER NOT NULL, requested_at TEXT NOT NULL, completed_at TEXT, local_path TEXT NOT NULL, content_sha256 TEXT, outcome TEXT NOT NULL CHECK(outcome IN ('running', 'complete', 'failed', 'cancelled')), verification_outcome TEXT) STRICT;
     CREATE TABLE codeowner_refreshes (id INTEGER PRIMARY KEY, repository_context_id INTEGER NOT NULL, successful_snapshot_id INTEGER, initiated_by_actor_id INTEGER, attempted_at TEXT NOT NULL, observed_sha256 TEXT, outcome TEXT NOT NULL CHECK(outcome IN ('changed', 'unchanged', 'failed')), failure_code TEXT) STRICT;
     CREATE TABLE evaluations (id INTEGER PRIMARY KEY, evaluator_profile_id INTEGER NOT NULL, input_fingerprint TEXT NOT NULL, requested_at TEXT NOT NULL, completed_at TEXT, outcome TEXT NOT NULL CHECK(outcome IN ('running', 'complete', 'failed', 'cancelled')), failure_code TEXT) STRICT;
+    CREATE TABLE analysis_runs (
+      id INTEGER PRIMARY KEY, requested_by_actor_id INTEGER NOT NULL REFERENCES actors(id), requested_at TEXT NOT NULL,
+      force_requested INTEGER NOT NULL CHECK(force_requested IN (0, 1)), outcome TEXT NOT NULL CHECK(outcome IN ('running', 'complete', 'failed', 'cancelled')),
+      completed_at TEXT, CHECK((outcome = 'running') = (completed_at IS NULL))
+    ) STRICT;
     INSERT INTO team_profiles VALUES (1, 'synthetic-profile', 'Synthetic profile');
     INSERT INTO actors VALUES (1, 'system', NULL, NULL, 'Synthetic server');
   `);

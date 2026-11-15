@@ -14,6 +14,7 @@ const inspectionPragmas = new Set([
   'table_list', 'table_xinfo',
 ]);
 
+// Refuse bindings that cannot enforce STRICT tables and connection-level SQL authorization.
 function verifyEngine(database) {
   const version = database.prepare('SELECT sqlite_version() AS version').get().version;
   const components = version.split('.').map(Number);
@@ -26,6 +27,7 @@ function verifyEngine(database) {
   return version;
 }
 
+// Prevent callers from attaching databases or changing protected PRAGMA settings after connection setup.
 function installGuards(database) {
   const { constants } = sqlite;
   database.setAuthorizer((operation, argument, value) => {
@@ -39,6 +41,7 @@ function installGuards(database) {
   });
 }
 
+// Establish and verify the requested durability and access policy before exposing the restricted connection API.
 function openConnection(databasePath, readOnly, busyTimeoutMilliseconds, durable = false) {
   const database = new sqlite.DatabaseSync(databasePath, {
     readOnly,
@@ -88,6 +91,7 @@ function openConnection(databasePath, readOnly, busyTimeoutMilliseconds, durable
   }
 }
 
+// Exercise STRICT-table creation in a disposable database without changing the selected workspace.
 function verifyStrictSupport(busyTimeoutMilliseconds) {
   const probe = openConnection(':memory:', false, busyTimeoutMilliseconds);
   try {
@@ -100,6 +104,7 @@ function verifyStrictSupport(busyTimeoutMilliseconds) {
   }
 }
 
+// Reject ambiguous, remote, linked, or incorrectly existing destinations before SQLite can open or create them.
 function verifyDatabasePath(databasePath, creation = false) {
   if (typeof databasePath !== 'string' || !isAbsolute(databasePath) || databasePath.includes('\0') || databasePath.startsWith('\\\\') || databasePath.startsWith('//')) {
     throw new Error('SQLite inspection requires an explicit absolute local database path.');
@@ -128,6 +133,7 @@ function verifyDatabasePath(databasePath, creation = false) {
   return selectedPath;
 }
 
+// Open an explicitly selected mode, preserving existing files and checking file identity around writable opens.
 export function openWorkbenchSqlite({ mode, databasePath, busyTimeoutMilliseconds = 1000 } = {}) {
   if (!Number.isInteger(busyTimeoutMilliseconds) || busyTimeoutMilliseconds < 0 || busyTimeoutMilliseconds > 5000) {
     throw new Error('SQLite busy timeout must be an integer between 0 and 5000 milliseconds.');

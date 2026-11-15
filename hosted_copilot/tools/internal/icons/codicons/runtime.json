@@ -14,7 +14,7 @@
       "discard", "download", "edit", "edit-compact", "ellipsis", "error", "folder", "git-branch-compact",
       "git-branch-conflicts", "git-pull-request-done", "git-pull-request-draft", "git-stash-apply", "inbox", "info", "json", "kebab-vertical", "layout-sidebar-right",
       "layout-sidebar-right-off", "list-selection", "lock", "new-session", "open-in-window",
-      "open-preview", "pass", "pass-compact", "pass-filled", "question", "save", "search", "shield",
+      "open-preview", "pass", "pass-compact", "pass-filled", "question", "ruby", "save", "search", "shield",
       "shield-compact", "sign-out", "stop-circle", "tasklist", "terminal-compact", "tools", "trash", "warning", "warning-compact"
     ]
   },
