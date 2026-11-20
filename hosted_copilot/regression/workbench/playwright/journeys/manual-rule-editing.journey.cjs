@@ -1,4 +1,4 @@
-const { openWorkbench } = require("../helpers/workbench.cjs");
+const { mockRelationshipReviews, openWorkbench, reviewCandidateRelationships } = require("../helpers/workbench.cjs");
 
 const behaviorIds = ["WB-UX-EDITING-001", "WB-UX-EDITING-002", "WB-UX-EDITING-003"];
 
@@ -29,6 +29,7 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
     };
     state.ruleIssues = [issue];
     state.activeRuleIssueKey = issue.id;
+    renderAssessment();
     setWorkspaceTab("rule-issues");
     renderRuleIssues();
     return { key, ruleId, originalText, updatedText, originalAction: baseline.action, originalRationale: baseline.rationale, rationale: getDecision(candidate).rationale, before: JSON.stringify(state.session) };
@@ -175,6 +176,7 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
     assert(await rationale.inputValue() === fixture.originalRationale && await save.isEnabled(),
       "Exact original revert requires a new rationale or cannot remove the Plan mutation");
     await save.click();
+    await page.waitForFunction(key => !getDecision(state.assessedCandidates.find(item => item.key === key)).inPlan, fixture.key);
     assert(await page.evaluate(key => !getDecision(state.assessedCandidates.find(item => item.key === key)).inPlan
       && getOpenRuleIssues().length === 1, fixture.key), "Original revert failed to reopen the issue or remove its Plan mutation");
   } finally {
@@ -191,14 +193,10 @@ async function exerciseResolutionDialog(page, assert, candidateKey) {
 }
 
 async function run({ page, baseUrl, assert }) {
-  let relationshipRequests = 0;
+  const reviews = await mockRelationshipReviews(page);
   const pageErrors = [];
   const recordPageError = (error) => pageErrors.push(error.message);
   page.on("pageerror", recordPageError);
-  await page.route("**/reconcile-rule", async (route) => {
-    relationshipRequests += 1;
-    await route.abort();
-  });
   await openWorkbench(page, baseUrl);
   const original = await page.evaluate(() => structuredClone(state.session));
   const fixture = await page.evaluate(() => {
@@ -219,6 +217,20 @@ async function run({ page, baseUrl, assert }) {
     const closeAssistance = page.getByRole("button", { name: "Close AI assistance", exact: true });
     if (await closeAssistance.isVisible()) await closeAssistance.click();
     const editor = page.locator('#assessment-panel [data-decision-field="proposedText"]');
+    const originalHeight = await editor.evaluate(element => element.getBoundingClientRect().height);
+    await editor.fill(`${fixture.text}\n${"Synthetic additional wording line.\n".repeat(8)}`);
+    const layout = await editor.evaluate(element => {
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height, resize: style.resize,
+        overflowY: style.overflowY, contained: element.scrollHeight <= element.clientHeight + 1,
+        fullWidth: Math.abs(element.getBoundingClientRect().width - element.parentElement.getBoundingClientRect().width) <= 1
+      };
+    });
+    assert(originalHeight >= 84 && layout.height > originalHeight && layout.resize === "none"
+      && layout.overflowY === "hidden" && layout.contained && layout.fullWidth,
+      "Proposed wording editor did not grow to contain multiline text at full width");
+    await editor.fill(fixture.text);
     const savedText = `${fixture.text} Retain the explicit maintainer wording.`;
     await page.evaluate(() => {
       const panel = elements["assessment-panel"];
@@ -285,7 +297,7 @@ async function run({ page, baseUrl, assert }) {
     }, fixture);
     assert(saved.text === savedText && saved.stored === savedText && saved.saveDisabled && saved.resetEnabled && !saved.unsaved,
       "Save does not persist exact wording independently of AI");
-    assert(saved.originalAssessment && saved.originalIssues && saved.rationale === "Original assessment rationale:",
+    assert(saved.originalAssessment && saved.originalIssues && saved.rationale === "Original Assessment Rationale:",
       "Saving altered rebuild evidence or presented the edited wording as freshly assessed");
     assert(saved.assistance, "Removing relationship checks removed AI Assistance");
 
@@ -319,7 +331,11 @@ async function run({ page, baseUrl, assert }) {
       const candidate = state.assessedCandidates.find((item) => item.key === key);
       return { ready: getPlanReadiness(candidate).ready, selected: getDecision(candidate).inPlan };
     }, fixture.key);
-    assert(plan.ready && plan.selected, "Saved wording still needs an AI relationship check before plan readiness");
+    assert(!plan.ready && plan.selected && reviews.count === 0,
+      "Saving wording or a decision invoked AI or bypassed relationship readiness");
+    await reviewCandidateRelationships(page, fixture.key);
+    assert(await page.evaluate(key => getPlanReadiness(state.assessedCandidates.find(item => item.key === key)).ready, fixture.key),
+      "A current clean relationship response did not satisfy Plan readiness");
     await page.locator('[data-view="preview"]').click();
     const preview = await page.evaluate((key) => ({
       readiness: getPreviewReadiness(),
@@ -327,29 +343,31 @@ async function run({ page, baseUrl, assert }) {
       mutations: buildApprovedRules().mutations,
       candidateId: getEffectiveHostedRuleId(state.assessedCandidates.find((item) => item.key === key))
     }), fixture.key);
-    assert(!preview.requirements.includes("Relationship checks") && preview.requirements.includes("Rule wording"),
-      "Promotion preview still advertises relationship certification");
-    assert(preview.readiness.openRuleIssueCount > 0 && !preview.readiness.ready,
-      "Removing edit checks bypassed the published Rule Issues gate");
+    assert(preview.requirements.includes("Rule relationships") && preview.requirements.includes("Rule wording"),
+      "Promotion preview lost relationship or saved-wording requirements");
+    assert(preview.readiness.openRuleIssueCount === 0 && preview.readiness.ready,
+      "Unselected proposal issues blocked the reviewed projected catalog");
     assert(preview.mutations.some((mutation) => mutation.rule.id === preview.candidateId && mutation.rule.text === savedText),
       "Promotion payload did not preserve exact maintainer-edited wording");
     const deterministic = await page.evaluate(() => {
       const published = state.ruleIssues;
-      state.ruleIssues = [];
       try {
+        state.ruleIssues = [{ ...structuredClone(published[0]), id: "fixture-protected-integrity", classification: "protected-integrity", blocking: true }];
+        const issueBlocked = !getPreviewReadiness().ready && getPreviewReadiness().openRuleIssueCount === 1;
+        state.ruleIssues = published;
         const ready = getPreviewReadiness().ready;
         const candidate = getPlanCandidates()[0];
         const rationale = state.session.decisions[candidate.key].rationale;
         state.session.decisions[candidate.key].rationale = "";
         const missingRationale = getPreviewReadiness();
         state.session.decisions[candidate.key].rationale = rationale;
-        return { ready, rationaleBlocked: !missingRationale.ready && missingRationale.missingRationaleCount > 0 };
+        return { ready, issueBlocked, rationaleBlocked: !missingRationale.ready && missingRationale.missingRationaleCount > 0 };
       } finally {
         state.ruleIssues = published;
       }
     });
-    assert(deterministic.ready && deterministic.rationaleBlocked,
-      "Preview either retains the relationship gate or lost required rationale validation");
+    assert(deterministic.ready && deterministic.issueBlocked && deterministic.rationaleBlocked,
+      "Preview did not accept the current review or lost blocking-issue or rationale validation");
     await page.evaluate((key) => {
       switchView("catalog");
       setWorkspaceTab("candidate-sources");
@@ -360,26 +378,25 @@ async function run({ page, baseUrl, assert }) {
     assert(await page.locator("[data-proposed-text-reset]").isEnabled()
       && await page.locator("[data-proposed-text-save]").isEnabled(),
     "Typing the original text hid the persisted edit from Reset or Save");
-    const beforeReset = await page.evaluate((key) => {
-      const decision = getDecision(state.assessedCandidates.find((item) => item.key === key));
-      return { rationale: decision.rationale, inPlan: decision.inPlan };
-    }, fixture.key);
     await page.locator("[data-proposed-text-reset]").click();
     await page.locator("[data-rule-reset-confirm]").click();
     await page.waitForFunction(() => document.querySelector("[data-proposed-text-reset]")?.disabled);
-    const reset = await page.evaluate(async ({ key, text, rationale, inPlan }) => {
+    const reset = await page.evaluate(async ({ key, text }) => {
       const decision = getDecision(state.assessedCandidates.find((item) => item.key === key));
       const stored = await readSession(state.session.id);
       return decision.proposedText === text && stored.decisions[key].proposedText === text
-        && decision.rationale === rationale && decision.inPlan === inPlan
+        && decision.action === "no-change" && stored.decisions[key].action === "no-change"
+        && decision.rationale === "" && stored.decisions[key].rationale === ""
+        && !decision.inPlan && !stored.decisions[key].inPlan
         && document.querySelector("[data-proposed-text-save]").disabled
         && !document.querySelector("[data-assessment-recommendation]").textContent.includes("Maintainer edited");
-    }, { ...fixture, ...beforeReset });
-    assert(reset, "Reset did not persist original wording, restore its pill, or preserve independent decision fields");
+    }, fixture);
+    assert(reset, "Restore did not persist original wording and the neutral action, clear rationale and Plan membership, or restore its pill");
     await exerciseResolutionDialog(page, assert, fixture.key);
-    assert(relationshipRequests === 0, "Editing, saving, restoring, or previewing requested AI relationship evaluation");
+    assert(reviews.count === 1, "Editing, saving, restoring, or previewing launched an extra relationship evaluation");
     assert(pageErrors.length === 0, `Editing raised an uncaught browser error: ${pageErrors.join("; ")}`);
   } finally {
+    await reviews.dispose();
     page.off("pageerror", recordPageError);
     await page.evaluate(async (session) => {
       state.session = session;

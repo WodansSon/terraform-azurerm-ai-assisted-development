@@ -29,7 +29,7 @@ if ($mode -cin @('conflict', 'by-wording')) {
 $content = if ($mode -ceq 'invalid') { '{"findings":[],"operations":[]}' } else { '{"findings":[]}' }
 if ($mode -ceq 'conflict') {
 	$relatedRule = @($inputData.effectiveCatalog | Where-Object { $_.id -ceq 'IMPL-PATCH-001' })[0]
-	$content = @{ findings = @(@{ ruleId = $changedRule.id; relatedRuleId = $relatedRule.id; relationship = 'conflicts'; ruleQuote = $changedRule.text; relatedQuote = $relatedRule.text; rationale = 'Synthetic conflict used to exercise approval rejection.' }) } | ConvertTo-Json -Depth 10 -Compress
+	$content = @{ findings = @(@{ ruleId = $changedRule.id; relatedRuleId = $relatedRule.id; relationship = 'conflicts'; ruleQuote = $changedRule.text; relatedQuote = $relatedRule.text; relatedText = $relatedRule.text; rationale = 'Synthetic conflict used to exercise approval rejection.' }) } | ConvertTo-Json -Depth 10 -Compress
 }
 if ($mode -ceq 'tools') { Write-Output '{"type":"tool.execution_start","data":{}}' }
 Write-Output '{"type":"model.call_start","data":{}}'

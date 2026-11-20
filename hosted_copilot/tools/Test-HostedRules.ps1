@@ -37,7 +37,7 @@ pwsh -NoProfile -File ./hosted_copilot/tools/Test-HostedRules.ps1 -OutputFormat 
 Runs complete validation and emits one machine-readable result.
 
 .NOTES
-Complete validation includes the Rule Workbench dependency audit and live upstream source checks. Skip switches must reflect the scope of the current change, not bypass relevant failures.
+Complete validation includes Rule Workbench locked-dependency verification and live upstream source checks. Skip switches must reflect the scope of the current change, not bypass relevant failures.
 
 .LINK
 https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main/hosted_copilot/tools/README.md
@@ -454,7 +454,7 @@ if ($runtimeStarted) {
         $upstreamSourceValidatorPath
     )
     $missingRuntimePaths = @($requiredRuntimePaths | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
-    $expectedRootPowerShellFiles = @('Install-HostedRules.ps1', 'Invoke-HostedReview.ps1', 'Start-RuleWorkbench.ps1', 'Start-RuleWorkbenchNew.ps1', 'Test-HostedRules.ps1')
+    $expectedRootPowerShellFiles = @('Install-HostedRules.ps1', 'Invoke-HostedReview.ps1', 'Start-RuleWorkbench.ps1', 'Test-HostedRules.ps1')
     $actualRootPowerShellFiles = @(Get-ChildItem -LiteralPath $PSScriptRoot -File | Where-Object { $_.Extension -in @('.ps1', '.psm1') } | Select-Object -ExpandProperty Name | Sort-Object)
     $rootPowerShellDifference = @(Compare-Object -ReferenceObject $expectedRootPowerShellFiles -DifferenceObject $actualRootPowerShellFiles)
     $obsoleteReviewCommandPath = Join-Path $PSScriptRoot 'commands/review'
@@ -467,7 +467,7 @@ if ($runtimeStarted) {
         -not $_.FullName.StartsWith($modulesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
     })
     if ($missingRuntimePaths.Count -eq 0 -and $rootPowerShellDifference.Count -eq 0 -and $misplacedModules.Count -eq 0 -and $obsoleteReviewCommands.Count -eq 0) {
-        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Hosted runtime paths exist, exactly five supported commands occupy the tools root, and every PowerShell module is beneath tools/modules.'
+        Add-CheckResult -Name 'runtime-layout' -Passed $true -Detail 'Hosted runtime paths exist, exactly four supported commands occupy the tools root, and every PowerShell module is beneath tools/modules.'
     }
     else {
         $layoutIssues = New-Object 'System.Collections.Generic.List[string]'
@@ -1535,19 +1535,20 @@ else {
 }
 
 $validationBinDirectory = Join-Path $PSScriptRoot 'npm/node_modules/.bin'
-$markdownCommand = Join-Path $validationBinDirectory $(if ($IsWindows) { 'markdownlint-cli2.cmd' } else { 'markdownlint-cli2' })
+$markdownScript = Join-Path $PSScriptRoot 'npm/Lint-Markdown.mjs'
+$markdownPackage = Join-Path $PSScriptRoot 'npm/node_modules/markdownlint/package.json'
 $mermaidCommand = Join-Path $validationBinDirectory $(if ($IsWindows) { 'mmdc.cmd' } else { 'mmdc' })
 
-if (-not (Test-Path -LiteralPath $markdownCommand -PathType Leaf)) {
+if (-not (Test-Path -LiteralPath $markdownPackage -PathType Leaf)) {
     Start-ValidationCheck -Name 'markdown'
-    Add-ValidationIssue -Name 'markdown' -Issue 'The lock-installed markdownlint-cli2 executable was not found; run the rule-workbench check to install validation dependencies.'
+    Add-ValidationIssue -Name 'markdown' -Issue 'The lock-installed markdownlint package was not found; run the rule-workbench check to install validation dependencies.'
 }
 else {
     Start-ValidationCheck -Name 'markdown'
     Push-Location $repoRoot
     try {
         $global:LASTEXITCODE = 0
-        $markdownOutput = @(& $markdownCommand 'hosted_copilot/**/*.md' '#hosted_copilot/tools/npm/node_modules' 'docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md' --config '.github/.markdownlint.json' 2>&1)
+        $markdownOutput = @(& node $markdownScript 2>&1)
         $markdownExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
     }
     finally {
@@ -1577,10 +1578,8 @@ else {
         if ($useLinuxCiPuppeteerConfig) {
             @{ args = @('--no-sandbox', '--disable-setuid-sandbox') } | ConvertTo-Json | Set-Content -LiteralPath $puppeteerConfigPath -Encoding utf8NoBOM
         }
-        $validationDependencyRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'npm/node_modules'))
-        $validationDependencyPrefix = $validationDependencyRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
         $markdownPaths = @(
-            Get-ChildItem -LiteralPath $hostedRoot -Filter '*.md' -File -Recurse | Where-Object { -not $_.FullName.StartsWith($validationDependencyPrefix, [System.StringComparison]::OrdinalIgnoreCase) }
+            Get-ChildItem -LiteralPath $hostedRoot -Filter '*.md' -File -Recurse | Where-Object { [System.IO.Path]::GetRelativePath($hostedRoot, $_.FullName) -notmatch '(^|[\\/])node_modules([\\/]|$)' }
             Get-Item -LiteralPath $architecturePath
         )
         $mermaidBlockCount = 0

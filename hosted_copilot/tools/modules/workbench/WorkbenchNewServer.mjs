@@ -10,8 +10,8 @@ import { saveSourceChange, updatePlanMembership, WorkbenchChangeError } from './
 import { readPublishedGuidance } from './WorkbenchPublishedGuidance.mjs';
 import { createWorkbenchAudit } from './WorkbenchAudit.mjs';
 
-const nativeAssets = fileURLToPath(new URL('../../../workbench-new/', import.meta.url));
-const nativeClient = fileURLToPath(new URL('../../../workbench-new/app.js', import.meta.url));
+const nativeAssets = fileURLToPath(new URL('../../../workbench/', import.meta.url));
+const nativeClient = fileURLToPath(new URL('../../../workbench/app.js', import.meta.url));
 const mimeTypes = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2' };
 const fixedAssets = ['index.html', 'app.js', 'styles.css', 'hierarchical-view.js', 'statusbar.js', 'favicon.svg', 'assistance-waiting-phrases.json', 'llm-brands.json'];
 

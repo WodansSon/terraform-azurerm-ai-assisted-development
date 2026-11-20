@@ -1,6 +1,6 @@
 # Hosted Catalog Inputs and Outputs
 
-This directory separates source-intake configuration from approved staged output and confirmed fork publication. The [Terraform first-catalog checkpoint](../docs/WORKBENCH_SQLITE_V1_DESIGN.md#terraform-first-catalog-and-staged-export-checkpoint) owns the lifecycle and remaining implementation gates.
+This directory separates source-intake configuration from approved staged output and confirmed fork publication.
 
 ## Directory Roles
 
@@ -11,7 +11,7 @@ This directory separates source-intake configuration from approved staged output
 | `staged/instruction-catalog.json` | Initial Terraform catalog captured from current Hosted instructions and the review skill; later the destination for an approved export, never proof of publication |
 | `published/instruction-catalog.json` | Intended record of the catalog successfully published to the fork by the separate future PowerShell publish command |
 
-The [initial JSON baseline](initial-rules.json) supplies the current AzureRM [first-run baseline import](../docs/WORKBENCH_SQLITE_V1_DESIGN.md#minimal-json-first-run-exercise). Its `instructionFiles` array contains the three configured destinations. Each entry requires `fileName`, `applyTo`, and a non-empty `rules` array of `id` and `text` objects. `description`, `taskDescription`, and `rulesPostText` are optional strings; implementation rules may also declare `implementationModels`. The input requires no schema file, provenance, source mappings, scores, or historical workflow records. Missing optional text remains empty, and imported provenance remains unclassified rather than inferred from legacy catalogs.
+The [initial JSON baseline](initial-rules.json) supplies the current AzureRM first-run baseline import. Its `instructionFiles` array contains the three configured destinations. Each entry requires `fileName`, `applyTo`, and a non-empty `rules` array of `id` and `text` objects. `description`, `taskDescription`, and `rulesPostText` are optional strings; implementation rules may also declare `implementationModels`. The input requires no schema file, provenance, source mappings, scores, or historical workflow records. Missing optional text remains empty, and imported provenance remains unclassified rather than inferred from legacy catalogs.
 
 The optional text supplies operational review guidance: `description` identifies the review surface, `taskDescription` frames the review task, and `rulesPostText` directs supporting evidence checks across implementation, tests, and documentation. These fields are independent of managed rule wording and do not serve as provenance records.
 

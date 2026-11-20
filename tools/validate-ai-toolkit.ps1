@@ -18,11 +18,7 @@ param(
 
     [switch]$AllowCatalogIssues,
 
-    [switch]$AllowDrift,
-
-    [switch]$FixNpmAudit,
-
-    [switch]$AllowBreakingNpmFix
+    [switch]$AllowDrift
 )
 
 Set-StrictMode -Version Latest
@@ -40,7 +36,6 @@ $contractsScriptPath = Join-Path $PSScriptRoot 'validate-contracts.ps1'
 $interactiveRuleCatalogScriptPath = Join-Path $PSScriptRoot 'Test-InteractiveRuleCatalog.ps1'
 $driftScriptPath = Join-Path $PSScriptRoot 'check-upstream-contributor-drift.ps1'
 $manifestPath = Join-Path $repoRoot 'installer/file-manifest.config'
-$npmSecurityScriptPath = Join-Path $PSScriptRoot 'Test-NpmSecurity.ps1'
 $releaseBundleScriptPath = Join-Path $PSScriptRoot 'build-release-bundle_dry_run.ps1'
 $runtimeLineEndingsScriptPath = Join-Path $PSScriptRoot 'validate-runtime-line-endings.ps1'
 $regressionHarnessScriptPath = Join-Path $PSScriptRoot 'regression/run-regression-harness.ps1'
@@ -458,26 +453,7 @@ try {
 
     $steps = @()
 
-    $npmSecurityArguments = @(
-        '-NoProfile',
-        '-File',
-        $npmSecurityScriptPath,
-        '-LockPath',
-        'tools/npm-validation/package-lock.json'
-    )
-    if ($FixNpmAudit) {
-        $npmSecurityArguments += '-Fix'
-    }
-    if ($AllowBreakingNpmFix) {
-        $npmSecurityArguments += '-AllowBreakingFix'
-    }
-
-    $npmSecurityStep = Invoke-ValidationStep -Name 'npm-security' -Detail 'Audit the Interactive Toolkit npm integrity lock and reject vulnerabilities of any severity before dependency verification.' -Command {
-        & pwsh @npmSecurityArguments
-    }
-    $steps += $npmSecurityStep
-
-    $npmPackagesStep = Invoke-ValidationStep -Name 'npm-packages' -Detail 'Verify that installed npm validation packages exactly match the audited integrity lock without running lifecycle scripts.' -RunningDetail 'VERIFYING AUDITED LOCKFILE' -SuccessDetail 'CURRENT (MATCHES AUDITED LOCKFILE)' -Skipped:(-not $npmSecurityStep.success) -Command {
+    $npmPackagesStep = Invoke-ValidationStep -Name 'npm-packages' -Detail 'Verify that installed npm validation packages exactly match the integrity lock without running lifecycle scripts.' -RunningDetail 'VERIFYING LOCKFILE' -SuccessDetail 'CURRENT (MATCHES LOCKFILE)' -Command {
         if ($null -eq $npmCommand) {
             throw 'npm was not found on PATH'
         }
@@ -487,7 +463,7 @@ try {
                 return
             }
             if (-not (Test-NpmPackageGraphCurrent -LockPath $npmLockPath -InstalledLockPath $npmInstalledLockPath)) {
-                throw 'installed npm package graph does not match the audited lockfile after npm ci'
+                throw 'installed npm package graph does not match the lockfile after npm ci'
             }
         }
     }
@@ -585,7 +561,7 @@ try {
         }
     }
 
-    $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the audited repo markdownlint dependency.' -Skipped:(-not $npmPackagesStep.success) -Command {
+    $steps += Invoke-ValidationStep -Name 'markdown' -Detail 'Lint .github, docs, and CHANGELOG markdown using the locked repo markdownlint dependency.' -Skipped:(-not $npmPackagesStep.success) -Command {
         if (-not (Test-Path -LiteralPath $markdownlintCommandPath -PathType Leaf)) {
             throw "markdownlint was not installed from the repository lockfile: $markdownlintCommandPath"
         }

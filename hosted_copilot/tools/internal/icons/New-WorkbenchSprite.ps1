@@ -3,8 +3,7 @@ param(
     [string] $IconRoot = $PSScriptRoot,
     [ValidateNotNullOrEmpty()]
     [string[]] $Destination = @(
-        (Join-Path $PSScriptRoot '../../../workbench/sprite'),
-        (Join-Path $PSScriptRoot '../../../workbench-new/sprite')
+        (Join-Path $PSScriptRoot '../../../workbench/sprite')
     ),
     [switch] $SkipPreviews
 )

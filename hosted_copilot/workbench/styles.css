@@ -16,6 +16,7 @@ html.theme-hosted-dark {
   --disabled-foreground: #5c5c5c;
   --disabled-background: #141414;
   --disabled-border: #424242;
+  --disabled-control-background: #3b3b3b;
   --accent: #3994bc;
   --accent-bright: #48a0c7;
   --accent-deep: #297aa0;
@@ -513,6 +514,15 @@ h3 {
   --button-hover-foreground: var(--warning-action-foreground);
   --button-border: var(--warning-action-border);
   --button-hover-border: var(--warning-action-border);
+}
+
+.button.error-action {
+  --button-background: var(--error-background);
+  --button-hover-background: rgba(248, 81, 73, 0.22);
+  --button-foreground: var(--error-foreground);
+  --button-hover-foreground: var(--error-foreground);
+  --button-border: var(--error-border);
+  --button-hover-border: var(--error-border);
 }
 
 .button.primary {
@@ -1303,6 +1313,14 @@ html.theme-hosted-dark .rule-issue-banner-reference {
   --information-rail: var(--gold);
   --information-icon: var(--gold);
   --information-foreground: var(--warning-foreground);
+}
+
+.section-disabled .information-panel {
+  --information-background: var(--disabled-background);
+  --information-border: var(--disabled-border);
+  --information-rail: var(--disabled-border);
+  --information-icon: var(--disabled-foreground);
+  --information-foreground: var(--disabled-foreground);
 }
 
 .information-panel .fluent-icon,
@@ -3028,6 +3046,38 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
   text-transform: uppercase;
 }
 
+.section-label.disabled,
+.section-disabled .section-label {
+  color: var(--disabled-foreground);
+}
+
+.section-label.disabled .rule-reference,
+.section-disabled .section-label .rule-reference {
+  color: #404040;
+}
+
+.section-disabled {
+  --ink: var(--disabled-foreground);
+  --muted: var(--disabled-foreground);
+  --control-group-background: var(--disabled-background);
+  color: var(--disabled-foreground);
+}
+
+.section-disabled :is(.action-plan-group, textarea) {
+  color: var(--disabled-foreground);
+  background: var(--disabled-background);
+  border-color: var(--disabled-border);
+}
+
+.section-disabled :is(label, input, textarea) {
+  cursor: default !important;
+}
+
+.rule-issues-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .evidence-box {
   max-height: 250px;
   margin: 0;
@@ -3311,6 +3361,22 @@ html.theme-hosted-dark body .candidate-tree-row.candidate-decoration-needs-input
   appearance: auto;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.action-option input[type="radio"]:disabled {
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-block;
+  padding: 0;
+  background-color: var(--disabled-control-background);
+  border: 1px solid var(--disabled-foreground);
+  border-radius: 50%;
+  cursor: default !important;
+}
+
+.action-option input[type="radio"]:disabled:checked {
+  background-image: radial-gradient(circle at center, var(--disabled-foreground) 0 5px, transparent 5px);
+  background-origin: border-box;
 }
 
 .action-option span {
@@ -6937,7 +7003,10 @@ html.theme-hosted-dark body .status-surface-tooltip {
   background: #0f2d20;
 }
 
-.preview-diff-cell.context,
+.preview-diff-cell.context {
+  background: #0d1117;
+}
+
 .icon-not-found {
   background-color: #da3633;
   background-image: repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(255, 255, 255, 0.8) 2px, rgba(255, 255, 255, 0.8) 3px);

@@ -9,6 +9,7 @@ Copyright Microsoft Corporation. Licensed under the
 - `discard-all.svg` Rotates the pinned `discard.svg` geometry 45 degrees clockwise, with an optical translation, for Undo All.
 - `collection-issues-compact.svg` Adds a Workbench-authored filled exclamation badge and collection cutout to the pinned `collection.svg` geometry for Rule Issues.
 - `event-log.svg` Mirrors the pinned `notebook.svg` geometry to put the binding on the left, removes its cover-label rectangle, and reuses the filled exclamation badge and cutout from `collection-issues-compact.svg` for Event Log.
+- `restore.svg` Adapts the pinned `discard.svg` arrowhead with a one-unit circular arc and a wider open gap for Restore, leaving the upstream `debug-restart.svg` artwork unchanged.
 
 The additional `not-found.svg` is original Workbench artwork, not a Codicons derivative.
 It uses two continuous red diagonal bands, a salmon-pink background, and a red border.

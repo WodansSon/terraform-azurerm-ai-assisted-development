@@ -148,6 +148,13 @@ async function run({ page, baseUrl, assert }) {
   const retireMutation = fixture.mutations.find((mutation) => mutation.action === "retire");
   assert(retireMutation?.status === "retired" && retireMutation.retirementReason && retireMutation.lastPlacement && retireMutation.placementCount === 0, "Approved Retire mutation does not preserve retirement history while clearing active placement");
 
+  const contextAppearance = await page.locator("#preview-view .preview-diff-cell.context").first().evaluate((cell) => {
+    const style = getComputedStyle(cell);
+    return { background: style.backgroundColor, image: style.backgroundImage, outline: style.outlineStyle };
+  });
+  assert(contextAppearance.background === "rgb(13, 17, 23)" && contextAppearance.image === "none" && contextAppearance.outline === "none",
+    "Unchanged Preview lines must have a neutral background without missing-icon warning stripes or outlines");
+
   const approvalStatus = await page.evaluate(async () => {
     let owner = document.querySelector("#preview-status").closest(".status-item");
     const originalRuleIssueBundle = state.ruleIssueBundle;
@@ -157,14 +164,14 @@ async function run({ page, baseUrl, assert }) {
     const blockedWidth = owner.getBoundingClientRect().width;
     const expectedBlockedColor = getComputedStyle(document.documentElement).getPropertyValue("--red").trim();
     const expectedWidth = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--status-promotion-approval-width"));
-    const blockedRequirement = [...document.querySelectorAll("#approval-requirements .approval-requirement")]
-      .find((row) => row.querySelector("span")?.textContent === "Rule Issues");
+    const blockedRequirement = document.querySelector('#approval-requirements [data-approval-requirement="rule-issues"]');
     const blockedValid = owner.classList.contains("error-kind")
       && document.querySelector("#preview-status").textContent === "Blocked"
       && document.querySelector("#approve-export-button").disabled
       && document.querySelector("#approval-badge").textContent === "Blocked by Rule Issues"
       && owner.dataset.workbenchTooltip === "Promotion Approval Status"
-      && blockedRequirement?.querySelector("strong")?.textContent === `${getOpenRuleIssues().length} pending`
+      && blockedRequirement?.querySelector("span")?.textContent === "Projected catalog issues"
+      && blockedRequirement?.querySelector("strong")?.textContent === `${getOpenRuleIssues().length} blocking`
       && blockedRequirement?.querySelector("use")?.getAttribute("href").endsWith("#codicon-warning");
     const blockedDetails = {
       className: owner.className, badge: document.querySelector("#approval-badge").textContent,

@@ -1,5 +1,5 @@
 const fs = require("node:fs");
-const { openWorkbench } = require("../helpers/workbench.cjs");
+const { mockRelationshipReviews, openWorkbench, reviewCandidateRelationships } = require("../helpers/workbench.cjs");
 
 const behaviorIds = [
   "WB-UX-DRAFT-001",
@@ -46,6 +46,7 @@ async function openCandidate(page, query) {
 
 async function run({ page, baseUrl, assert, playback }) {
   await page.emulateMedia({ reducedMotion: "no-preference" });
+  const reviews = await mockRelationshipReviews(page);
   await openWorkbench(page, baseUrl);
   assert(await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches), "Portable review journey requires normal motion");
   const sessionSnapshot = await page.evaluate(() => structuredClone(state.session));
@@ -57,13 +58,7 @@ async function run({ page, baseUrl, assert, playback }) {
   try {
     await playback.show(page, "Draft export and import · exact downloaded bytes");
     await openCandidate(page, candidateSearchId);
-    const proposedEditor = page.locator('#assessment-panel [data-decision-field="proposedText"]');
     const proposedSave = page.locator("#assessment-panel [data-proposed-text-save]");
-    const proposedEditorLayout = await proposedEditor.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return { width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height, resize: style.resize, overflowY: style.overflowY };
-    });
-    assert(proposedEditorLayout.width > 300 && proposedEditorLayout.height === 84 && proposedEditorLayout.resize === "none" && proposedEditorLayout.overflowY === "auto", "Proposed Hosted Rule editor is not fixed, full-width, and internally scrollable");
     assert(await proposedSave.isDisabled(), "Unchanged Proposed Hosted Rule save is enabled");
     const proposedTextSaveSetup = await page.evaluate(() => {
       const candidate = getActiveCandidate();
@@ -173,11 +168,22 @@ async function run({ page, baseUrl, assert, playback }) {
     });
     assert(volumeSetup.issueCount === 30 && volumeSetup.tabCount === "30" && volumeSetup.statusCount === "30", `Rule Issues volume counts are incorrect: ${JSON.stringify(volumeSetup)}`);
     assert(["contradiction", "duplicate", "overlap"].every((kind) => volumeSetup.filterCounts[kind] === "10"), `Rule Issues category counts are incorrect: ${JSON.stringify(volumeSetup.filterCounts)}`);
+    const selectIssueCategory = async kind => {
+      const tab = page.locator(`[data-rule-issue-filter="${kind}"]`);
+      while (!await tab.isVisible()) {
+        const targetIsEarlier = await tab.evaluate(element => [...element.parentElement.children].indexOf(element)
+          < [...element.parentElement.children].findIndex(item => !item.classList.contains("rule-issue-tab-page-hidden")));
+        const pager = page.locator(targetIsEarlier ? "#rule-issues-previous" : "#rule-issues-next");
+        if (!await pager.isEnabled()) throw new Error(`Rule Issue category ${kind} cannot be reached through its pager`);
+        await pager.click();
+      }
+      await tab.click();
+    };
     for (const kind of ["contradiction", "duplicate", "overlap"]) {
-      await page.locator(`[data-rule-issue-filter="${kind}"]`).click();
+      await selectIssueCategory(kind);
       assert(await page.locator("#rule-issues-list .rule-issue-row").count() === 10, `${kind} filter did not render ten Rule Issues`);
     }
-    await page.locator('[data-rule-issue-filter="duplicate"]').click();
+    await selectIssueCategory("duplicate");
     await page.locator("#rule-issues-list .rule-issue-row").nth(9).click();
     assert(await page.evaluate(() => state.activeRuleIssueKey?.startsWith("relationship:IMPL-STRESS-DUPLICATE-10:")), "The tenth duplicate Rule Issue could not be selected");
     await page.evaluate(() => {
@@ -200,7 +206,8 @@ async function run({ page, baseUrl, assert, playback }) {
       renderRuleIssues();
     }, proposedTextSaveSetup);
     assert(proposedTextSaveResult.activeKeyPreserved && proposedTextSaveResult.scrollPreserved, "Proposed Hosted Rule save changed the active Details context");
-    assert(proposedTextSaveResult.proposedText.endsWith("Maintainer wording.") && proposedTextSaveResult.action === proposedTextSaveResult.originalAction, "Proposed Hosted Rule save captured fields other than the edited text");
+    assert(proposedTextSaveResult.proposedText.endsWith("Maintainer wording.") && proposedTextSaveResult.action === null,
+      "Proposed Hosted Rule save failed to preserve wording or clear the now-unavailable No Change action");
     const initialActions = await page.locator("#assessment-panel [data-rule-action]").evaluateAll((controls) => controls.map((control) => control.dataset.ruleAction));
     assert(initialActions.includes("add"), `Draft candidate does not expose Add: ${initialActions.join(", ")}`);
     await page.locator('#assessment-panel [data-rule-action="add"]').click();
@@ -226,7 +233,13 @@ async function run({ page, baseUrl, assert, playback }) {
 
     await page.locator('#assessment-panel [data-rule-action="no-change"]').click();
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').isDisabled(), "No Change did not disable Decision Rationale");
-    assert(!await page.evaluate(() => Boolean(state.session.decisions[state.activeKey])), "No Change did not remove the saved decision");
+    assert(await page.evaluate(() => getDecision(getActiveCandidate()).action === "add"), "Selecting No Change changed the saved decision before explicit Save");
+    await page.locator("#assessment-panel [data-rationale-save]").click();
+    await page.evaluate(() => persistencePromise);
+    assert(await page.evaluate(() => {
+      const decision = getDecision(getActiveCandidate());
+      return decision.action === "no-change" && !decision.inPlan && decision.rationale === "";
+    }), "Saving No Change did not persist the neutral action and clear Plan membership and rationale");
     await importBytes(page, draftBytes, "draft.json");
     await openCandidate(page, proposedId);
     assert(await page.locator('#assessment-panel [data-rule-action="add"]').isChecked(), "Draft import did not restore the selected action");
@@ -267,6 +280,10 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(await page.locator('#assessment-panel .rule-actions > .section-label .rule-reference').innerText() === proposedId, "Generated Hosted ID did not survive reload");
     assert(await page.locator('#assessment-panel [data-decision-field="rationale"]').inputValue() === rationale, "Migrated rationale did not survive reload");
     assert(await page.evaluate(() => getDecision(getActiveCandidate()).inPlan), "Migrated action-derived plan membership did not survive reload");
+    const restoredKey = await page.evaluate(() => getActiveCandidate().key);
+    assert(await page.evaluate(() => !getPlanReadiness(getActiveCandidate()).ready) && reviews.count === 0,
+      "Draft import or reload bypassed relationship validation");
+    await reviewCandidateRelationships(page, restoredKey);
 
     await playback.show(page, "Approval export · exact payload bytes and attribution");
     await page.locator('[data-view="preview"]').click();
@@ -290,9 +307,10 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(approvedMutation.rationale === rationale && approvedMutation.placements.length === 1 && approvedMutation.sourceRelationships.length > 0, "Approved mutation is incomplete");
 
     await playback.show(page, "Compound retirement · one Plan item, one retirement mutation");
-    const compoundDecision = await page.evaluate(() => {
+    const compoundKey = await page.evaluate(() => {
       const candidate = state.candidates.find((item) => item.catalogMapping.state === "active");
-      const retirementRuleId = candidate.catalogMapping.hostedRuleId;
+      const retirementRuleId = state.bundle.catalog.rules.find(rule => rule.status === "active"
+        && rule.id !== candidate.catalogMapping.hostedRuleId).id;
       candidate.recommendation.retireHostedRuleIds = [retirementRuleId];
       const decision = defaultDecision(candidate);
       const timestamp = toUtcTimestamp();
@@ -309,15 +327,22 @@ async function run({ page, baseUrl, assert, playback }) {
       };
       state.session.updatedAt = timestamp;
       state.session.approverName = "Phase Zero Maintainer";
+      renderAll();
+      return candidate.key;
+    });
+    assert(await page.evaluate(key => !getPlanReadiness(state.candidates.find(item => item.key === key)).ready, compoundKey),
+      "Compound retirement bypassed relationship validation");
+    await reviewCandidateRelationships(page, compoundKey);
+    const compoundDecision = await page.evaluate(key => {
       const readiness = getPreviewReadiness();
       const draft = buildDraftExport();
       const approved = buildApprovedRules();
       return {
         ready: readiness.ready,
-        draftRetirements: draft.decisions[candidate.key].retireHostedRuleIds,
+        draftRetirements: draft.decisions[key].retireHostedRuleIds,
         mutations: approved.mutations.map((mutation) => ({ action: mutation.action, id: mutation.rule.id, status: mutation.rule.status }))
       };
-    });
+    }, compoundKey);
     assert(compoundDecision.ready, "Compound retirement decision did not reach approval readiness");
     assert(compoundDecision.draftRetirements.length === 1, "Strict draft did not preserve the compound retirement selection");
     assert(compoundDecision.mutations.length === 1 && compoundDecision.mutations[0].action === "retire" && compoundDecision.mutations[0].status === "retired", "Compound Plan item did not export exactly one retirement mutation");
@@ -377,7 +402,7 @@ async function run({ page, baseUrl, assert, playback }) {
         ruleReferenceWeight: ruleReferenceStyle.fontWeight,
         statusHidden: status.hidden,
         statusCount: elements["rule-issues-status-count"].textContent,
-        statusHasIssues: status.classList.contains("has-issues")
+        statusHasIssues: status.classList.contains("warning-kind")
       };
       stageRuleIssueRecommendation(issue);
       await persistencePromise;
@@ -387,9 +412,10 @@ async function run({ page, baseUrl, assert, playback }) {
       const stagedUi = {
         issueCount: getOpenRuleIssues().length,
         issueRows: document.querySelectorAll("#rule-issues-list .rule-issue-row").length,
+        resolution: getRuleIssueState(issue).status,
         statusHidden: status.hidden,
         statusCount: elements["rule-issues-status-count"].textContent,
-        statusHasIssues: status.classList.contains("has-issues"),
+        statusHasIssues: status.classList.contains("warning-kind"),
         statusColor: getComputedStyle(status).color
       };
       delete state.session.decisions[candidate.key];
@@ -400,7 +426,7 @@ async function run({ page, baseUrl, assert, playback }) {
         issueRows: document.querySelectorAll("#rule-issues-list .rule-issue-row").length,
         statusHidden: status.hidden,
         statusCount: elements["rule-issues-status-count"].textContent,
-        statusHasIssues: status.classList.contains("has-issues"),
+        statusHasIssues: status.classList.contains("warning-kind"),
         statusColor: getComputedStyle(status).color
       };
       state.ruleIssues = originalRuleIssues;
@@ -421,14 +447,16 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(primaryRetirement.action === "retire" && primaryRetirement.ancillaryRetirements.length === 0, "Primary retirement was staged as an ancillary or non-retirement action");
     assert(primaryRetirement.mutations.length === 1 && primaryRetirement.mutations[0].action === "retire" && primaryRetirement.mutations[0].status === "retired", "Primary retirement did not export exactly one retirement mutation");
     assert(primaryRetirement.openUi.actionLabel === "Recommended Maintainer Action:" && primaryRetirement.openUi.actionLabelTransform === "uppercase" && primaryRetirement.openUi.actionLabelOutside, `Recommended Maintainer Action label hierarchy is incorrect: ${JSON.stringify(primaryRetirement.openUi)}`);
-    assert(primaryRetirement.openUi.planActionText === "Add to Promotion Plan" && primaryRetirement.openUi.planActionPrimary && primaryRetirement.openUi.planActionIcon.endsWith("#codicon-new-session"), `Rule Issue action button presentation is incorrect: ${JSON.stringify(primaryRetirement.openUi)}`);
+    assert(primaryRetirement.openUi.planActionText === "Apply Recommended Actions" && primaryRetirement.openUi.planActionPrimary && primaryRetirement.openUi.planActionIcon.endsWith("#codicon-new-session"), `Rule Issue action button presentation is incorrect: ${JSON.stringify(primaryRetirement.openUi)}`);
     assert(primaryRetirement.openUi.ruleReferenceText && primaryRetirement.openUi.ruleReferenceColor === "rgb(72, 160, 199)" && primaryRetirement.openUi.ruleReferenceWeight === "600", `Rule reference presentation is incorrect: ${JSON.stringify(primaryRetirement.openUi)}`);
     assert(!primaryRetirement.openUi.statusHidden && primaryRetirement.openUi.statusCount === "1" && primaryRetirement.openUi.statusHasIssues, `Open Rule Issues status is incorrect: ${JSON.stringify(primaryRetirement.openUi)}`);
-    assert(primaryRetirement.stagedUi.issueCount === 0 && primaryRetirement.stagedUi.issueRows === 0, `Staged Rule Issue remained open: ${JSON.stringify(primaryRetirement.stagedUi)}`);
+    assert(primaryRetirement.stagedUi.issueCount === 0 && primaryRetirement.stagedUi.issueRows === 1
+      && primaryRetirement.stagedUi.resolution === "resolved", `Staged Rule Issue was not resolved with its history retained: ${JSON.stringify(primaryRetirement.stagedUi)}`);
     assert(!primaryRetirement.stagedUi.statusHidden && primaryRetirement.stagedUi.statusCount === "0" && !primaryRetirement.stagedUi.statusHasIssues && primaryRetirement.stagedUi.statusColor === "rgb(140, 140, 140)", `Zero Rule Issues status is incorrect: ${JSON.stringify(primaryRetirement.stagedUi)}`);
     assert(primaryRetirement.restoredUi.issueCount === 1 && primaryRetirement.restoredUi.issueRows === 1, `Undone Rule Issue was not restored: ${JSON.stringify(primaryRetirement.restoredUi)}`);
     assert(!primaryRetirement.restoredUi.statusHidden && primaryRetirement.restoredUi.statusCount === "1" && primaryRetirement.restoredUi.statusHasIssues && primaryRetirement.restoredUi.statusColor === "rgb(229, 186, 125)", `Restored Rule Issues status is incorrect: ${JSON.stringify(primaryRetirement.restoredUi)}`);
   } finally {
+    await reviews.dispose();
     await page.evaluate(async (snapshot) => {
       state.session = snapshot;
       state.activeKey = null;

@@ -34,20 +34,12 @@ Run any reported subtest independently by passing its exact name to `-Run`:
 pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1 -Run local-icon-family-sprites
 ```
 
-Focused execution always runs the Hosted npm security audit and verifies the installed package graph against the audited lockfile. The harness then runs only the requested subtest and its required staging, browser-runtime, or loopback-server prerequisites. The focused-run catalog is checked against every reported test name so newly added tests cannot silently become full-suite-only.
-
-Any failed or inconclusive npm audit blocks focused tests by default. For a known npm issue during local development, explicitly add `-ContinueAfterNpmAuditFailure`. This local-only tradeoff still records the audit failure, requires the installed package graph and browser runtimes to already match the lockfile, performs no dependency or browser installation, marks the functional result unverified, and exits nonzero. The switch requires `-Run`, is rejected for complete validation, and cannot provide release or CI evidence. There is no automatic continuation based on an audit error message.
+Focused execution always verifies the installed package graph against the Hosted lockfile, installing stale or missing dependencies with lifecycle scripts and automatic npm auditing disabled. Installation failures or a mismatched graph block execution. The harness then runs only the requested subtest and its required staging, browser-runtime, or loopback-server prerequisites. The focused-run catalog is checked against every reported test name so newly added tests cannot silently become full-suite-only. These checks do not assess dependency vulnerabilities.
 
 Run one Playwright journey with the same owned synthetic fixture and server lifecycle:
 
 ```powershell
 pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1 -Run browser-playwright-journeys -Journey promotion-preview-review
-```
-
-Continue the same focused journey without installation while retaining a failed overall result when npm audit reports known findings:
-
-```powershell
-pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1 -Run browser-playwright-journeys -Journey promotion-preview-review -ContinueAfterNpmAuditFailure
 ```
 
 Add the valueless `-Headed` switch to watch the selected Playwright journey:
@@ -68,6 +60,6 @@ The Hosted Toolkit profile invokes the same suite through `Test-HostedRules.ps1`
 
 ## Visible Playback
 
-Use the normal Playwright journey test with `-Headed`. It retains the audited dependencies, owned random-port Workbench, synthetic fixture, authenticated shutdown, result checks, and temporary cleanup used by headless validation. Headed viewport playback resizes the visible Chromium window for every tested width, continues through every width when a checkpoint fails, and prints both frame and viewport dimensions.
+Use the normal Playwright journey test with `-Headed`. It retains the locked dependencies, owned random-port Workbench, synthetic fixture, authenticated shutdown, result checks, and temporary cleanup used by headless validation. Headed viewport playback resizes the visible Chromium window for every tested width, continues through every width when a checkpoint fails, and prints both frame and viewport dimensions.
 
 The manifest-owned `browser-zoom` journey uses Chrome's real per-tab zoom API at `100%`, `125%`, `150%`, and `200%` in one fixed large Workbench window. It verifies that the CSS viewport shrinks from `1920x900` to `960x450` while the physical window remains fixed and the Workbench avoids clipping, overlap, page-level overflow, and unsupported-device fallback.

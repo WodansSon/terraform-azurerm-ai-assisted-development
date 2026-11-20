@@ -38,10 +38,6 @@
       "ownership": "shared"
     },
     {
-      "pattern": "tools/Test-NpmSecurity.ps1",
-      "ownership": "shared"
-    },
-    {
       "pattern": "tools/Test-Pii.ps1",
       "ownership": "shared"
     },

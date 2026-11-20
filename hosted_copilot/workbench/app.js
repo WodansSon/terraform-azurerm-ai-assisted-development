@@ -1,8 +1,8 @@
 "use strict";
 
-const DATABASE_NAME = "hosted-rule-workbench";
+const DATABASE_NAME = "hosted-rule-workbench-new";
 const DATABASE_VERSION = 1;
-const ACTIVE_SESSION_KEY = "hosted-rule-workbench.active-session";
+const ACTIVE_SESSION_KEY = "hosted-rule-workbench-new.active-session";
 const WORKBENCH_DISPLAY_SCHEMA_VERSION = 4;
 const WORKBENCH_RULE_ISSUES_SCHEMA_VERSION = 4;
 const SESSION_SCHEMA_VERSION = 7;
@@ -155,6 +155,11 @@ const workbenchTooltip = {
 function icon(name) {
   if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid Codicon name: ${name}`);
   return `<svg class="codicon" aria-hidden="true"><use href="sprite/sprite.svg#codicon-${name}"></use></svg>`;
+}
+
+function customIcon(name) {
+  if (typeof name !== "string" || !/^[a-z0-9-]+$/.test(name)) throw new Error(`Invalid custom icon name: ${name}`);
+  return `<svg class="codicon" aria-hidden="true"><use href="sprite/sprite.svg#custom-${name}"></use></svg>`;
 }
 
 function llmIcon(name) {
@@ -701,6 +706,7 @@ function bindEvents() {
   elements["assessment-results-detail"].addEventListener("input", handleApplicabilityOverrideInput);
   elements["assessment-panel"].addEventListener("click", handleAssessmentClick);
   elements["assessment-panel"].addEventListener("input", handleAssessmentInput);
+  elements["assessment-panel"].addEventListener("keydown", handleAssessmentEditorKeydown);
   elements["assist-sidebar-content"].addEventListener("click", handleRuleAssistanceClick);
   elements["assist-sidebar-content"].addEventListener("input", handleRuleAssistanceInput);
   elements["assist-sidebar-content"].addEventListener("scroll", handleDetailContentScroll, true);
@@ -1264,10 +1270,68 @@ function normalizeDisplayCandidates(display) {
   });
 }
 
+function getRuleIssues() {
+  const issues = structuredClone(state.ruleIssues);
+  const projection = getProjectedRuleCatalog().rules;
+  for (const candidate of state.assessedCandidates) {
+    const review = state.session.relationshipReviews?.[candidate.key];
+    if (!Array.isArray(review?.result?.findings)) continue;
+    const subjectId = getEffectiveHostedRuleId(candidate);
+    const subject = review.result.comparisonRules?.find(rule => rule.id === subjectId);
+    if (!subject) continue;
+    for (const finding of review.result.findings) {
+      const classification = { conflicts: "contradiction", equivalent: "duplicate", "partial-overlap": "overlap" }[finding.relationship];
+      const label = { contradiction: "Contradiction", duplicate: "Duplicate", overlap: "Overlap" }[classification];
+      const rules = [subject, { id: finding.relatedRuleId, text: finding.relatedText }].map(rule => {
+        const baseline = [...state.bundle.catalog.rules, ...state.bundle.catalog.protectedRules]
+          .find(item => item.id === rule.id && item.text === rule.text);
+        return {
+          id: rule.id, text: rule.text, status: baseline?.status || "proposed", disposition: "review",
+          candidateKeys: state.assessedCandidates.filter(item => getEffectiveHostedRuleId(item) === rule.id).map(item => item.key)
+        };
+      });
+      let issue = issues.find(item => !item.blocking && item.classification === classification
+        && item.ruleIds.some(id => id === subjectId || id === finding.relatedRuleId));
+      if (!issue) {
+        issue = {
+          id: `relationship-review:${candidate.key}:${classification}`,
+          classification, label, title: `${label} Between Rules`, bannerTitle: label,
+          bannerMessage: finding.rationale, blocking: false, ruleIds: [], protectedRuleIds: [], candidateKeys: [],
+          rules: [], relationships: [], assessmentSummary: finding.rationale.slice(0, 600),
+          wording: { status: "unresolved", label: "Consolidated Wording Unresolved", presentation: "section",
+            reason: "The relationship check identifies an issue but does not supply approved resolution wording." },
+          recommendedMaintainerAction: { summary: "Review the conflicting wording or remove the affected proposal from the Plan.", operations: [] }
+        };
+        issues.push(issue);
+      }
+      for (const rule of rules) {
+        const index = issue.rules.findIndex(item => item.id === rule.id);
+        if (index < 0) issue.rules.push(rule);
+        else if (rule.text === projection.get(rule.id)?.text || issue.rules[index].text !== projection.get(rule.id)?.text) {
+          issue.rules[index] = rule;
+        }
+      }
+      const relationship = {
+        sourceRuleId: subjectId, relatedRuleId: finding.relatedRuleId, relationship: finding.relationship,
+        kind: classification, rationale: finding.rationale, candidateKey: candidate.key
+      };
+      const index = issue.relationships.findIndex(pair =>
+        pair.sourceRuleId === subjectId && pair.relatedRuleId === finding.relatedRuleId
+        || pair.sourceRuleId === finding.relatedRuleId && pair.relatedRuleId === subjectId);
+      if (index < 0) issue.relationships.push(relationship);
+      else issue.relationships[index] = relationship;
+      issue.ruleIds = issue.rules.map(rule => rule.id);
+      issue.protectedRuleIds = issue.rules.filter(rule => rule.status === "protected").map(rule => rule.id);
+      issue.candidateKeys = [...new Set(issue.rules.flatMap(rule => rule.candidateKeys))];
+    }
+  }
+  return issues;
+}
+
 function getFilteredRuleIssues(filterKey = state.ruleIssueFilter, search = state.queries["rule-issues"]) {
   const query = search.trim().toLowerCase();
   const activeFilter = RULE_ISSUE_FILTERS.find((filter) => filter.key === filterKey);
-  return state.ruleIssues.filter((issue) => {
+  return getRuleIssues().filter((issue) => {
     if (!activeFilter?.classifications.includes(issue.classification)) return false;
     if (!query) return true;
     return [issue.title, issue.label, getRuleIssueState(issue).label, issue.bannerTitle, issue.bannerMessage, issue.assessmentSummary, issue.wording?.text, issue.recommendedMaintainerAction.summary, ...issue.ruleIds, ...issue.rules.map((rule) => rule.text)]
@@ -1295,7 +1359,7 @@ function rememberResolvedRuleIssue(issue, preferredIndex) {
 
 function prepareRuleIssueRestore(candidateKeys) {
   const affectedKeys = new Set(candidateKeys);
-  const affectedIssues = state.ruleIssues.filter((issue) => getRuleIssueOperations(issue).some((operation) => affectedKeys.has(operation.candidateKey) && isRuleIssueOperationApplied(operation)));
+  const affectedIssues = getRuleIssues().filter((issue) => getRuleIssueOperations(issue).some((operation) => affectedKeys.has(operation.candidateKey) && isRuleIssueOperationApplied(operation)));
   if (!affectedIssues.length) return;
   const affectedIds = new Set(affectedIssues.map((issue) => issue.id));
   const remembered = [...state.ruleIssueResolutionHistory].reverse().find((entry) => affectedIds.has(entry.issueId));
@@ -1414,7 +1478,7 @@ function changeRuleIssueTabPage(direction) {
 function renderRuleIssueFilters() {
   const openIssues = getOpenRuleIssues();
   const counts = Object.fromEntries(RULE_ISSUE_FILTERS.map((filter) => [filter.key, openIssues.filter((issue) => filter.classifications.includes(issue.classification)).length]));
-  const visibleFilters = RULE_ISSUE_FILTERS.filter((filter) => state.ruleIssues.some(issue => filter.classifications.includes(issue.classification)));
+  const visibleFilters = RULE_ISSUE_FILTERS.filter((filter) => getRuleIssues().some(issue => filter.classifications.includes(issue.classification)));
   if (!visibleFilters.some((filter) => filter.key === state.ruleIssueFilter)) {
     state.ruleIssueFilter = visibleFilters[0]?.key || RULE_ISSUE_FILTERS[0].key;
   }
@@ -1489,19 +1553,53 @@ function isRuleIssueRecommendationStaged(issue) {
   return operationStates.length > 0 && operationStates.every((entry) => entry.applied);
 }
 
-function isRuleIssueSupersededByReview(issue) {
+function getCurrentRelationshipReview(candidate) {
+  const review = state.session.relationshipReviews?.[candidate.key];
+  return review?.status === "current"
+    && review.snapshot === getRelationshipReviewSnapshot(candidate, getDecision(candidate).proposedText)
+    && Array.isArray(review.result?.comparisonRules) && Array.isArray(review.result?.findings) ? review : null;
+}
+
+function getRelationshipPairReview(first, second) {
+  let covered = false;
+  const findings = [];
+  for (const candidate of state.assessedCandidates) {
+    const review = getCurrentRelationshipReview(candidate);
+    if (!review) continue;
+    const subjectId = getEffectiveHostedRuleId(candidate);
+    const subject = subjectId === first.id ? first : subjectId === second.id ? second : null;
+    if (!subject || getDecision(candidate).proposedText !== subject.text) continue;
+    const related = subject === first ? second : first;
+    if (![subject, related].every(rule => review.result.comparisonRules.some(item => item.id === rule.id && item.text === rule.text))) continue;
+    covered = true;
+    findings.push(...review.result.findings.filter(finding => finding.ruleId === subject.id
+      && finding.relatedRuleId === related.id && finding.relatedText === related.text));
+  }
+  return { covered, findings };
+}
+
+function getRuleIssuePairs(issue, projection = getProjectedRuleCatalog()) {
+  const rules = issue.rules.filter(rule => {
+    if (!projection.rules.has(rule.id)) return false;
+    return rule.status !== "proposed" || rule.candidateKeys.some(key => {
+      const candidate = state.assessedCandidates.find(item => item.key === key);
+      return candidate && getDecision(candidate).inPlan;
+    });
+  }).map(rule => projection.rules.get(rule.id));
+  const pairs = [];
+  for (let first = 0; first < rules.length; first += 1) {
+    for (let second = first + 1; second < rules.length; second += 1) pairs.push([rules[first], rules[second]]);
+  }
+  return pairs;
+}
+
+function isRuleIssueSupersededByReview(issue, projection = getProjectedRuleCatalog()) {
   if (issue.blocking || issue.classification === "protected-integrity" || !issue.relationships?.length) return false;
-  return state.assessedCandidates.some(candidate => {
-    if (!getDecision(candidate).inPlan) return false;
-    const current = getRelationshipReviewState(candidate);
-    if (!["current", "findings"].includes(current.status)) return false;
-    const result = current.review.result;
-    const present = new Set([...result.effectiveRuleIds, ...result.removedRuleIds]);
-    if (result.findings.some(finding => issue.relationships.some(pair =>
-      (finding.ruleId === pair.sourceRuleId && finding.relatedRuleId === pair.relatedRuleId)
-      || (finding.relatedRuleId === pair.sourceRuleId && finding.ruleId === pair.relatedRuleId)))) return false;
-    return issue.relationships.every(relationship => present.has(relationship.sourceRuleId) && present.has(relationship.relatedRuleId)
-      && (result.changedRuleIds.includes(relationship.sourceRuleId) || result.changedRuleIds.includes(relationship.relatedRuleId) || result.removedRuleIds.includes(relationship.sourceRuleId) || result.removedRuleIds.includes(relationship.relatedRuleId)));
+  const pairs = getRuleIssuePairs(issue, projection);
+  return pairs.length > 0 && pairs.every(([first, second]) => {
+    const review = getRelationshipPairReview(first, second);
+    return review.covered && !review.findings.some(finding =>
+      issue.relationships.some(pair => pair.relationship === finding.relationship));
   });
 }
 
@@ -1528,6 +1626,22 @@ function getProjectedRuleCatalog() {
 
 function getRuleIssueState(issue, projection = getProjectedRuleCatalog()) {
   if (issue.blocking || issue.classification === "protected-integrity") return { status: "unresolved", label: issue.label };
+  if (issue.relationships?.length) {
+    const pairs = getRuleIssuePairs(issue, projection);
+    if (!pairs.length) return { status: "resolved", label: "Resolved" };
+    if (issue.ruleIds.some(id => projection.ambiguousIds.has(id))) return { status: "needs-review", label: "Needs Review" };
+    if (pairs.some(([first, second]) => getRelationshipPairReview(first, second).findings.some(finding =>
+      issue.relationships.some(pair => pair.relationship === finding.relationship)))) {
+      return { status: "unresolved", label: issue.label };
+    }
+    if (isRuleIssueSupersededByReview(issue, projection)) return { status: "resolved", label: "Resolved" };
+    const unchangedConflict = pairs.some(([first, second]) => issue.relationships.some(pair =>
+      (pair.sourceRuleId === first.id && pair.relatedRuleId === second.id
+        || pair.sourceRuleId === second.id && pair.relatedRuleId === first.id)
+      && [first, second].every(rule => issue.rules.some(original => original.id === rule.id && original.text === rule.text))
+      && !getRelationshipPairReview(first, second).covered));
+    return unchangedConflict ? { status: "unresolved", label: issue.label } : { status: "needs-review", label: "Needs Review" };
+  }
   const explicit = issue.candidateKeys.some(key => {
     const candidate = state.assessedCandidates.find(item => item.key === key);
     if (!candidate) return false;
@@ -1540,31 +1654,40 @@ function getRuleIssueState(issue, projection = getProjectedRuleCatalog()) {
   });
   if (!explicit) return { status: "unresolved", label: issue.label };
   if (issue.ruleIds.some(id => projection.ambiguousIds.has(id))) return { status: "needs-review", label: "Needs Review" };
-  if (issue.relationships?.length) {
-    const present = issue.relationships.filter(pair => projection.rules.has(pair.sourceRuleId) && projection.rules.has(pair.relatedRuleId));
-    if (!present.length || isRuleIssueSupersededByReview(issue)) return { status: "resolved", label: "Resolved" };
-    const changed = present.some(pair => [pair.sourceRuleId, pair.relatedRuleId].some(id => {
-      const original = issue.rules.find(rule => rule.id === id);
-      return !original || String(original.text).replace(/\r\n/g, "\n") !== String(projection.rules.get(id).text).replace(/\r\n/g, "\n");
-    }));
-    return changed ? { status: "needs-review", label: "Needs Review" } : { status: "unresolved", label: issue.label };
-  }
   return isRuleIssueRecommendationStaged(issue) ? { status: "resolved", label: "Resolved" } : { status: "unresolved", label: issue.label };
 }
 
 function getOpenRuleIssues() {
   const projection = getProjectedRuleCatalog();
-  return state.ruleIssues.filter(issue => getRuleIssueState(issue, projection).status !== "resolved");
+  return getRuleIssues().filter(issue => getRuleIssueState(issue, projection).status !== "resolved");
+}
+
+function getCandidateOpenRuleIssues(candidate) {
+  const projection = getProjectedRuleCatalog();
+  const ruleId = getEffectiveHostedRuleId(candidate);
+  return getOpenRuleIssues().filter(issue => {
+    if (!issue.candidateKeys.includes(candidate.key)) return false;
+    if (!issue.relationships?.length) return true;
+    return getRuleIssuePairs(issue, projection).some(pair => {
+      if (!pair.some(rule => rule.id === ruleId)) return false;
+      const ruleIds = pair.map(rule => rule.id);
+      return getRuleIssueState({
+        ...issue,
+        ruleIds,
+        rules: issue.rules.filter(rule => ruleIds.includes(rule.id))
+      }, projection).status !== "resolved";
+    });
+  });
 }
 
 function getProjectedCatalogIssues() {
-  const { rules } = getProjectedRuleCatalog();
+  const projection = getProjectedRuleCatalog();
   return getOpenRuleIssues().filter(issue => {
     if (issue.blocking || issue.classification === "protected-integrity") return true;
     if (issue.relationships?.length) {
-      return issue.relationships.some(pair => rules.has(pair.sourceRuleId) && rules.has(pair.relatedRuleId));
+      return getRuleIssuePairs(issue, projection).length > 0;
     }
-    return issue.ruleIds.some(id => rules.has(id));
+    return issue.ruleIds.some(id => projection.rules.has(id));
   });
 }
 
@@ -1671,7 +1794,7 @@ async function stageRuleIssueRecommendation(issue) {
 async function handleRuleIssueDetailClick(event) {
   const open = event.target.closest("[data-rule-issue-open]");
   if (open) {
-    const issue = state.ruleIssues.find(item => item.id === open.dataset.ruleIssueOpen);
+    const issue = getRuleIssues().find(item => item.id === open.dataset.ruleIssueOpen);
     if (!issue) return;
     state.ruleIssueFilter = getRuleIssueFilterKey(issue);
     state.activeRuleIssueKey = issue.id;
@@ -1682,13 +1805,13 @@ async function handleRuleIssueDetailClick(event) {
   }
   const copy = event.target.closest("[data-copy-consolidated-wording]");
   if (copy) {
-    const issue = state.ruleIssues.find(item => item.id === copy.dataset.copyConsolidatedWording);
+    const issue = getRuleIssues().find(item => item.id === copy.dataset.copyConsolidatedWording);
     await copyConsolidatedWording(issue?.wording?.text);
     return;
   }
   const resolution = event.target.closest("[data-rule-issue-resolve]");
   if (resolution) {
-    const issue = state.ruleIssues.find((item) => item.id === resolution.dataset.ruleIssueResolve);
+    const issue = getRuleIssues().find((item) => item.id === resolution.dataset.ruleIssueResolve);
     const rule = issue?.rules.find((item) => item.id === resolution.dataset.ruleIssueRule);
     if (rule) openRuleIssueResolutionDialog(issue, rule, resolution);
     return;
@@ -1701,7 +1824,7 @@ async function handleRuleIssueDetailClick(event) {
   }
   const planAction = event.target.closest("[data-rule-issue-plan]");
   if (!planAction) return;
-  const issue = state.ruleIssues.find((item) => item.id === planAction.dataset.ruleIssuePlan);
+  const issue = getRuleIssues().find((item) => item.id === planAction.dataset.ruleIssuePlan);
   if (issue) await stageRuleIssueRecommendation(issue);
 }
 
@@ -2044,7 +2167,7 @@ function renderRuleIssueDetail(issue) {
 }
 
 function renderRuleIssueHistory(candidate, scope = "") {
-  const issues = state.ruleIssues.filter(issue => issue.candidateKeys.includes(candidate.key));
+  const issues = getRuleIssues().filter(issue => issue.candidateKeys.includes(candidate.key));
   if (!issues.length) return "";
   const content = issues.map(issue => {
     const current = getRuleIssueState(issue);
@@ -2332,12 +2455,25 @@ function syncProposedRuleControls(candidate) {
   const textarea = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
   const save = elements["assessment-panel"].querySelector("[data-proposed-text-save]");
   const reset = elements["assessment-panel"].querySelector("[data-proposed-text-reset]");
+  const undo = elements["assessment-panel"].querySelector("[data-proposed-text-undo]");
   if (!textarea || !save) return;
   const decision = getDecision(candidate);
-  if (reset) reset.disabled = !hasMaintainerEditedRuleText(candidate, textarea.value) && !hasMaintainerEditedRuleText(candidate);
   const dirty = textarea.value !== decision.proposedText;
+  const openIssues = getCandidateOpenRuleIssues(candidate);
+  const locked = dirty || openIssues.length > 0;
+  const actionsSection = elements["assessment-panel"].querySelector(".rule-actions");
+  actionsSection.classList.toggle("section-disabled", locked);
+  actionsSection.setAttribute("aria-disabled", String(locked));
+  const issueNotice = actionsSection.querySelector("[data-rule-actions-issue-lock]");
+  issueNotice.hidden = openIssues.length === 0;
+  const selectedAction = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction || null;
+  const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
+  if (undo) undo.disabled = !dirty && selectedAction === decision.action &&
+    (!rationale?.value || rationale.value === decision.rationale);
+  if (reset) reset.disabled = !hasOriginalRuleResetChanges(candidate, textarea.value) &&
+    selectedAction === defaultDecision(candidate).action && !rationale?.value;
   save.disabled = !dirty;
-  const allowedActions = getAllowedActions(candidate, textarea.value);
+  const allowedActions = getAllowedActions(candidate, decision.proposedText);
   let action = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction;
   if (!allowedActions.includes(action)) action = null;
   const actionFieldset = elements["assessment-panel"].querySelector(".action-options");
@@ -2347,7 +2483,7 @@ function syncProposedRuleControls(candidate) {
   }
   elements["assessment-panel"].querySelectorAll("[data-rule-action]").forEach(control => {
     const allowed = allowedActions.includes(control.dataset.ruleAction);
-    control.disabled = !allowed;
+    control.disabled = locked || !allowed;
     control.closest(".action-option").hidden = !allowed;
     if (!allowed && control.checked) {
       control.checked = false;
@@ -2357,8 +2493,24 @@ function syncProposedRuleControls(candidate) {
   syncAssessmentActionControls(candidate, action || null);
   syncAssessmentRationaleControls(action || null, candidate);
   syncImplementationModelControls(candidate, action || null);
+  actionsSection.querySelectorAll("fieldset").forEach(fieldset => {
+    fieldset.disabled = locked;
+    fieldset.setAttribute("aria-disabled", String(locked));
+  });
+  elements["assessment-panel"].querySelectorAll("[data-implementation-model]").forEach(control => {
+    if (locked) control.disabled = true;
+  });
+  elements["assessment-panel"].querySelectorAll("[data-retire-hosted-rule]").forEach(control => { control.disabled = locked; });
+  if (rationale) rationale.setAttribute("aria-keyshortcuts", "Control+S");
+  if (locked) {
+    if (rationale) rationale.disabled = true;
+    const decisionSave = elements["assessment-panel"].querySelector("[data-rationale-save]");
+    if (decisionSave) decisionSave.disabled = true;
+  }
   const guidance = elements["assessment-panel"].querySelector(".rule-actions-guidance p");
-  if (guidance) guidance.textContent = getCatalogStatus(candidate).key === "mapped" && !hasHostedTextChange(candidate, textarea.value)
+  if (guidance) guidance.textContent = dirty
+    ? "Save or undo the wording changes before changing Rule Actions."
+    : getCatalogStatus(candidate).key === "mapped" && !hasHostedTextChange(candidate, textarea.value)
     ? "Current and proposed Hosted rule text are identical, so Update is unavailable."
     : "Choose one action. Hosted catalog status determines which actions are available.";
   const active = activeRelationshipReviews.get(candidate.key);
@@ -2399,7 +2551,31 @@ function getRelationshipReviewSnapshot(candidate, proposedText = getDecision(can
   return JSON.stringify({
     authoritySha256: globalThis.__HOSTED_RULE_WORKBENCH__?.relationshipReview?.authoritySha256 || null,
     candidateKey: candidate.key, sourceFiles: state.bundle.sourceFiles, catalog: state.bundle.catalog,
-    proposals: getRelationshipReviewProposals(candidate, proposedText)
+    sourceHash: candidate.hash, proposedText
+  });
+}
+
+function getApplicableRelationshipFindings(candidate, result) {
+  const catalog = getProjectedRuleCatalog().rules;
+  const rule = catalog.get(getEffectiveHostedRuleId(candidate));
+  const decision = getDecision(candidate);
+  if (decision.inPlan && (!rule || rule.text !== decision.proposedText)) return [];
+  return result.findings.filter(finding => {
+    const related = catalog.get(finding.relatedRuleId);
+    return related && related.text === finding.relatedText;
+  });
+}
+
+function hasMissingRelationshipCoverage(candidate) {
+  const decision = getDecision(candidate);
+  if (!decision.inPlan) return false;
+  const projection = getProjectedRuleCatalog().rules;
+  const subject = projection.get(getEffectiveHostedRuleId(candidate));
+  if (!subject || subject.text !== decision.proposedText) return false;
+  return [...projection.values()].some(related => {
+    if (related.id === subject.id || getRelationshipPairReview(subject, related).covered) return false;
+    const pending = getPlanCandidates().find(item => getEffectiveHostedRuleId(item) === related.id);
+    return !pending || Boolean(getCurrentRelationshipReview(pending));
   });
 }
 
@@ -2418,23 +2594,26 @@ function getRelationshipReviewState(candidate, proposedText = getRelationshipRev
   const snapshot = getRelationshipReviewSnapshot(candidate, proposedText);
   if (active) return { status: active.snapshot === snapshot ? "checking" : "stale", required: true, review };
   if (!review) return { status: "required", required: true, review: null };
-  if (review.snapshot !== snapshot) return { status: "stale", required: true, review };
   if (review.status === "failed") return { status: "failed", required: true, review };
+  if (review.status === "stale" || review.snapshot !== snapshot) return { status: "stale", required: true, review };
   if (review.status !== "current" || !Array.isArray(review.result?.findings)) return { status: "required", required: true, review: null };
-  return { status: review.result.findings.length ? "findings" : "current", required: review.result.findings.length > 0, review };
+  const findings = getApplicableRelationshipFindings(candidate, review.result);
+  if (!findings.length && hasMissingRelationshipCoverage(candidate)) return { status: "incomplete", required: true, review, findings };
+  return { status: findings.length ? "findings" : "current", required: findings.length > 0, review, findings };
 }
 
 function getRelationshipReviewAttention(candidate, proposedText = getRelationshipReviewWording(candidate)) {
   const current = getRelationshipReviewState(candidate, proposedText);
   if (!current.required) return null;
-  const labels = { checking: "Checking Relationships", stale: "Revalidation Required", required: "Relationship Check Required", failed: "Relationship Check Failed", findings: "Relationships Need Review" };
-  return { reason: "relationships", label: labels[current.status], actionIcon: "edit", target: current.status === "required" || current.status === "stale" ? "[data-relationship-review-status]" : "[data-relationship-review-panel]", review: current };
+  const labels = { checking: "Checking Relationships", stale: "Revalidation Required", incomplete: "Relationship Check Required", required: "Relationship Check Required", failed: "Relationship Check Failed", findings: "Relationships Need Review" };
+  return { reason: "relationships", label: labels[current.status], actionIcon: "edit", target: ["required", "stale", "incomplete"].includes(current.status) ? "[data-relationship-review-status]" : "[data-relationship-review-panel]", review: current };
 }
 
 function renderRelationshipReviewStatus(candidate, proposedText) {
   const current = getRelationshipReviewState(candidate, proposedText);
   if (current.status === "unchanged") return "";
   if (current.status === "current") return '<span class="ui-badge status-capsule status-badge success" data-relationship-review-status>Relationships Checked</span>';
+  if (current.status === "findings") return '<span class="ui-badge status-capsule status-badge warning" data-relationship-review-status>Relationships Checked</span>';
   const attention = getRelationshipReviewAttention(candidate, proposedText);
   return `<button class="ui-badge status-capsule status-badge warning clickable" type="button" data-relationship-review-status data-relationship-review-open aria-label="${escapeHtml(attention.label)}" data-workbench-tooltip="${escapeHtml(attention.label)}">${escapeHtml(attention.label)}</button>`;
 }
@@ -2468,10 +2647,12 @@ function renderRelationshipReviewPanel(candidate, proposedText = getRelationship
     const failure = legacyRuntimeFailure ? getRelationshipReviewClientFailure("runtime-missing") : recordedFailure;
     return `<div class="error-banner" role="alert" aria-atomic="true">${icon("error").replace('class="codicon"', 'class="codicon error-banner-icon"')}<div class="error-banner-message">${renderBannerHeading("Relationship Check Failed")} <span>${escapeHtml(failure.message)}</span><details data-relationship-review-failure-details><summary>Failure details</summary><p>Failure code: <code>${escapeHtml(failure.code)}</code></p><p>Recovery: <code>${escapeHtml(failure.recovery)}</code></p></details></div><div class="banner-actions" role="group" aria-label="Error banner actions">${failure.retryable ? `<button class="banner-action error-banner-dismiss clickable" type="button" data-relationship-review-run aria-label="Retry relationship check" data-workbench-tooltip="Retry relationship check">${icon("debug-restart")}</button>` : ""}<button class="banner-action error-banner-dismiss clickable" type="button" data-relationship-review-dismiss aria-label="Dismiss relationship check error" data-workbench-tooltip="Dismiss error">${icon("close")}</button></div></div>`;
   }
-  if (current.status === "findings") {
-    return current.review.result.findings.map(finding => renderInformationPanel(`<div>${renderBannerHeading("Relationships Need Review")}<p>${escapeHtml(finding.ruleId)} / ${escapeHtml(finding.relatedRuleId)}: ${escapeHtml(formatTitleCase(finding.relationship.replaceAll("-", " ")))}</p><p>${escapeHtml(finding.rationale)}</p><blockquote>${escapeHtml(finding.ruleQuote)}</blockquote><blockquote>${escapeHtml(finding.relatedQuote)}</blockquote></div>`, { iconMarkup: fluentIcon("info-20-regular"), className: "warning" })).join("");
-  }
-  return "";
+  const openIssues = getCandidateOpenRuleIssues(candidate);
+  const issue = openIssues.find(item => item.id === state.activeRuleIssueKey) || openIssues[0]
+    || (current.status === "findings" ? getRuleIssues().find(item => item.candidateKeys.includes(candidate.key)
+      && item.relationships?.some(pair => current.findings.some(finding =>
+        pair.sourceRuleId === finding.ruleId && pair.relatedRuleId === finding.relatedRuleId && pair.relationship === finding.relationship))) : null);
+  return issue ? `<div class="rule-issues-action"><button class="button error-action clickable" type="button" data-rule-issue-open="${escapeHtml(issue.id)}" aria-label="Open Rule Issues" data-workbench-tooltip="Open Rule Issues">${icon("git-branch-conflicts")}Rule Issues</button></div>` : "";
 }
 
 function syncRelationshipReviewControls(candidate, proposedText = getRelationshipReviewWording(candidate)) {
@@ -2496,16 +2677,19 @@ function syncRelationshipReviewControls(candidate, proposedText = getRelationshi
 }
 
 function isRelationshipReviewResponse(result, request, runtime) {
-  const keys = ["schemaVersion", "requestId", "candidateKey", "authoritySha256", "snapshotKey", "inputSha256", "changedRuleIds", "removedRuleIds", "effectiveRuleIds", "findings", "elapsedMilliseconds", "model", "reasoningEffort"];
+  const keys = ["schemaVersion", "requestId", "candidateKey", "authoritySha256", "snapshotKey", "inputSha256", "changedRuleIds", "removedRuleIds", "effectiveRuleIds", "comparisonRules", "findings", "elapsedMilliseconds", "model", "reasoningEffort"];
   return result && JSON.stringify(Object.keys(result).sort()) === JSON.stringify(keys.sort())
     && result.schemaVersion === 1 && result.requestId === request.requestId && result.candidateKey === request.candidateKey
     && result.snapshotKey === request.snapshotKey && result.authoritySha256 === runtime.authoritySha256
     && result.model === runtime.model && result.reasoningEffort === runtime.reasoningEffort
     && /^[a-f0-9]{64}$/.test(result.inputSha256) && Number.isInteger(result.elapsedMilliseconds) && result.elapsedMilliseconds >= 0 && result.elapsedMilliseconds <= 300000
     && Array.isArray(result.findings) && Array.isArray(result.changedRuleIds) && Array.isArray(result.removedRuleIds) && Array.isArray(result.effectiveRuleIds)
+    && Array.isArray(result.comparisonRules) && result.comparisonRules.every(rule => typeof rule.id === "string" && typeof rule.text === "string")
     && result.findings.every(finding => result.changedRuleIds.includes(finding.ruleId) && result.effectiveRuleIds.includes(finding.relatedRuleId)
       && finding.ruleId !== finding.relatedRuleId && ["equivalent", "partial-overlap", "conflicts"].includes(finding.relationship)
-      && [finding.ruleQuote, finding.relatedQuote, finding.rationale].every(value => typeof value === "string" && value.length > 0));
+      && [finding.ruleQuote, finding.relatedQuote, finding.relatedText, finding.rationale].every(value => typeof value === "string" && value.length > 0)
+      && finding.relatedText.includes(finding.relatedQuote)
+      && result.comparisonRules.some(rule => rule.id === finding.relatedRuleId && rule.text === finding.relatedText));
 }
 
 async function checkRuleRelationships(candidate) {
@@ -2516,6 +2700,7 @@ async function checkRuleRelationships(candidate) {
     return;
   }
   const prior = getRelationshipReviewState(candidate);
+  const previousReview = state.session.relationshipReviews[candidate.key];
   if (!prior.required) return;
   if (prior.status === "failed" && !prior.review.failure.retryable) return;
   const controller = new AbortController();
@@ -2553,13 +2738,12 @@ async function checkRuleRelationships(candidate) {
     if (controller.signal.aborted && !active.reason) return;
     const code = active.reason || error.message;
     const failure = error.reviewFailure || getRelationshipReviewClientFailure(code);
-    state.session.relationshipReviews[candidate.key] = { status: "failed", snapshot: active.snapshot, failure, checkedAt: toUtcTimestamp() };
+    state.session.relationshipReviews[candidate.key] = { ...previousReview, status: "failed", snapshot: previousReview?.snapshot || active.snapshot, failure, checkedAt: toUtcTimestamp() };
     await persistSession();
   } finally {
     clearTimeout(deadline);
     clearInterval(timer);
     activeRelationshipReviews.delete(candidate.key);
-    if (getActiveCandidate()?.key === candidate.key) syncRelationshipReviewControls(candidate);
     if (elements["relationship-review-stop"]) elements["relationship-review-stop"].hidden = activeRelationshipReviews.size === 0;
     renderDecisionOutputs();
   }
@@ -2734,11 +2918,13 @@ function clearCandidateDecision(candidateKey) {
 }
 
 function hasOriginalRuleResetChanges(candidate, proposedText = getDecision(candidate).proposedText) {
-  return hasMaintainerEditedRuleText(candidate, proposedText) || hasMaintainerEditedRuleText(candidate);
+  const decision = getDecision(candidate);
+  return hasMaintainerEditedRuleText(candidate, proposedText) || hasMaintainerEditedRuleText(candidate) ||
+    decision.action !== defaultDecision(candidate).action || Boolean(decision.rationale) || decision.inPlan;
 }
 
-async function persistProposedRuleText(candidate, proposedText) {
-  if (proposedText === getDecision(candidate).proposedText) return true;
+async function persistProposedRuleText(candidate, proposedText, restoreOriginal = false) {
+  if (!restoreOriginal && proposedText === getDecision(candidate).proposedText) return true;
   const before = JSON.stringify(state.session);
   const editor = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
   const editorText = editor?.value;
@@ -2748,7 +2934,7 @@ async function persistProposedRuleText(candidate, proposedText) {
     }
   };
   const nextSession = structuredClone(state.session);
-  const { assessment, ...decision } = getDecision(candidate);
+  const { assessment, ...decision } = restoreOriginal ? defaultDecision(candidate) : getDecision(candidate);
   const updatedAt = toUtcTimestamp();
   nextSession.decisions[candidate.key] = {
     ...decision,
@@ -2758,6 +2944,10 @@ async function persistProposedRuleText(candidate, proposedText) {
     updatedAt
   };
   nextSession.updatedAt = updatedAt;
+  if (proposedText !== getDecision(candidate).proposedText && nextSession.relationshipReviews[candidate.key]) {
+    nextSession.relationshipReviews[candidate.key].status = "stale";
+  }
+  if (restoreOriginal) removeCandidateFromBulkOperations(candidate.key, nextSession);
   try {
     await persistSession(nextSession, assertCurrent);
     try { assertCurrent(); }
@@ -2776,7 +2966,7 @@ async function persistProposedRuleText(candidate, proposedText) {
 async function resetOriginalRule(candidate) {
   const content = elements["assessment-panel"].querySelector(".assessment-content");
   const scrollTop = content?.scrollTop || 0;
-  if (!await persistProposedRuleText(candidate, defaultDecision(candidate).proposedText)) return;
+  if (!await persistProposedRuleText(candidate, defaultDecision(candidate).proposedText, true)) return;
   renderAll();
   showCandidatePane("details");
   const refreshedContent = elements["assessment-panel"].querySelector(".assessment-content");
@@ -2845,15 +3035,16 @@ function openWorkbenchDialog({ name, title, iconMarkup, bodyHtml, trigger, warni
 function openOriginalRuleResetDialog(candidate, trigger) {
   const dialog = openWorkbenchDialog({
     name: "rule-reset",
-    title: "Reset Rule to Original?",
-    iconMarkup: icon("debug-restart"),
-    bodyHtml: `<p>Restore the original proposed wording for <strong class="rule-reference">${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong>?</p><p>This will replace the saved wording for this proposal.</p>`,
+    title: "Restore Original Baseline?",
+    iconMarkup: customIcon("restore"),
+    bodyHtml: `<p>Restore the original proposed wording and Rule Actions for <strong class="rule-reference">${escapeHtml(getEffectiveHostedRuleId(candidate))}</strong>?</p><p>This replaces this candidate's saved draft and pending edits. Other candidates are not changed.</p>`,
     trigger,
+    focusTarget: () => elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]'),
     warning: true,
     actions: [
       { label: "Cancel", variant: "primary", attribute: "data-rule-reset-cancel" },
       {
-        label: "Reset to Original", variant: "review", attribute: "data-rule-reset-confirm", iconMarkup: icon("debug-restart"),
+        label: "Restore Original", variant: "review", attribute: "data-rule-reset-confirm", iconMarkup: customIcon("restore"),
         onConfirm: async () => {
           const current = getActiveCandidate();
           if (current?.key === candidate.key) await resetOriginalRule(current);
@@ -2960,7 +3151,6 @@ function saveDecision(candidate, decision) {
   }
   state.session.updatedAt = toUtcTimestamp();
   persistSession();
-  syncCandidateTreeRows();
   renderBulkActions();
   renderDecisionOutputs();
 }
@@ -3006,6 +3196,10 @@ async function resetCandidate(candidate) {
 }
 
 function renderDecisionOutputs() {
+  syncCandidateTreeRows();
+  const candidate = getActiveCandidate();
+  if (candidate) syncProposedRuleControls(candidate);
+  renderRuleIssues();
   renderMetrics();
   renderPlan();
   renderCapacity();
@@ -3947,7 +4141,7 @@ function renderApplicabilityOverride(candidate) {
     const editing = state.assessmentOverrideEditingKey === candidate.key;
     const fieldId = `saved-override-rationale-${candidate.key}`;
     const actions = editing
-      ? `<button class="titlebar-icon clickable rationale-save" type="button" data-override-save aria-label="Apply Override Rationale" data-workbench-tooltip="Apply override rationale" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-edit-cancel aria-label="Cancel Override Rationale Changes" data-workbench-tooltip="Cancel override rationale changes">${icon("close")}</button>`
+      ? `<button class="titlebar-icon clickable rationale-save" type="button" data-override-save aria-label="Save Override Rationale" data-workbench-tooltip="Save override rationale" disabled>${icon("save")}</button><button class="titlebar-icon clickable" type="button" data-override-edit-cancel aria-label="Cancel Override Rationale Changes" data-workbench-tooltip="Cancel override rationale changes">${icon("close")}</button>`
       : `<button class="titlebar-icon clickable" type="button" data-override-edit aria-label="Edit Override Rationale" data-workbench-tooltip="Edit override rationale">${icon("edit")}</button><button class="titlebar-icon clickable" type="button" data-override-remove aria-label="Remove Override" data-workbench-tooltip="Remove override">${icon("discard")}</button>`;
     return `
       <div class="section-block maintainer-override" data-override-key="${escapeHtml(candidate.key)}">
@@ -3973,7 +4167,7 @@ function renderApplicabilityOverride(candidate) {
       <div class="override-form subcontext-container" hidden>
         <span class="control-subtitle">Corrected Outcome:</span>
         <label class="override-outcome clickable"><input type="radio" name="corrected-outcome" value="eligible" checked><span>Eligible for Candidate Sources</span></label>
-        ${renderRationaleField({ id: `override-rationale-${candidate.key}`, label: "Override Rationale:", maxLength: OVERRIDE_RATIONALE_MAX_LENGTH, placeholder: "Briefly explain why the AI exclusion is incorrect.", className: "override-rationale", actionsMarkup: `<span class="override-inline-actions"><button class="titlebar-icon clickable" type="button" data-override-apply aria-label="Apply Override" data-workbench-tooltip="Apply override" disabled>${icon("git-stash-apply")}</button><button class="titlebar-icon clickable" type="button" data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel override">${icon("close")}</button></span>` })}
+        ${renderRationaleField({ id: `override-rationale-${candidate.key}`, label: "Override Rationale:", maxLength: OVERRIDE_RATIONALE_MAX_LENGTH, placeholder: "Briefly explain why the AI exclusion is incorrect.", className: "override-rationale", actionsMarkup: `<span class="override-inline-actions"><button class="titlebar-icon clickable" type="button" data-override-apply aria-label="Save Override" data-workbench-tooltip="Save override" disabled>${icon("save")}</button><button class="titlebar-icon clickable" type="button" data-override-cancel aria-label="Cancel Override" data-workbench-tooltip="Cancel override">${icon("close")}</button></span>` })}
         <p class="override-audit-note">The original AI result remains in the assessment audit. This provisional override records the corrected outcome, rationale, authenticated maintainer, and timestamp.</p>
       </div>
     </div>
@@ -4769,8 +4963,9 @@ function renderAssessment() {
             <span class="relationship-review-status-slot" data-relationship-review-status-slot>${renderRelationshipReviewStatus(candidate, decision.proposedText)}</span>
           </span>
           <span class="proposed-rule-actions" role="group" aria-label="Proposed rule actions">
-            <button class="titlebar-icon proposed-rule-save" type="button" data-proposed-text-save aria-label="Save proposed Hosted rule" data-workbench-tooltip="Save proposed Hosted rule" disabled>${icon("save")}</button>
-            <button class="titlebar-icon clickable" type="button" data-proposed-text-reset aria-label="Reset rule to original" data-workbench-tooltip="Reset rule to original" ${hasOriginalRuleResetChanges(candidate) ? "" : "disabled"}>${icon("debug-restart")}</button>
+            <button class="titlebar-icon proposed-rule-save" type="button" data-proposed-text-save aria-label="Save proposed Hosted rule" data-workbench-tooltip="Save proposed Hosted rule" aria-keyshortcuts="Control+S" disabled>${icon("save")}</button>
+            <button class="titlebar-icon clickable" type="button" data-proposed-text-undo aria-label="Undo Current Changes" data-workbench-tooltip="Undo Current Changes" aria-keyshortcuts="Control+U" disabled>${icon("discard")}</button>
+            <button class="titlebar-icon clickable" type="button" data-proposed-text-reset aria-label="Restore original baseline" data-workbench-tooltip="Restore original baseline" aria-keyshortcuts="Control+R" ${hasOriginalRuleResetChanges(candidate) ? "" : "disabled"}>${customIcon("restore")}</button>
           </span>
         </div>
         <div data-proposed-rule-explanation>${renderAssessmentExplanation(candidate, assessment)}</div>
@@ -4784,6 +4979,7 @@ function renderAssessment() {
         <div class="rule-actions-content">
           <span class="control-subtitle">Rule Action:</span>
           <div class="control-group action-plan-group">
+            <p class="section-help" data-rule-actions-issue-lock hidden>Resolve the applicable Rule Issues before changing Rule Actions or Decision Rationale. Wording editing remains available.</p>
             <fieldset class="action-options">
               <legend class="sr-only">Rule action</legend>
               ${allowedActions.map(action => renderRuleActionChoice(action, decision.action)).join("")}
@@ -4899,22 +5095,10 @@ function handleAssessmentInput(event) {
   if (!candidate) return;
   if (event.target.dataset.ruleAction) {
     const action = event.target.dataset.ruleAction;
-    if (action === "no-change") {
-      if (getDecision(candidate).retireHostedRuleIds.length) updateDecision(candidate, { action });
-      else {
-        removeCandidateFromBulkOperations(candidate.key);
-        saveDecision(candidate, null);
-      }
-      syncAssessmentActionControls(candidate, action);
-      syncImplementationModelControls(candidate, action);
-      syncAssessmentRationaleControls(action, candidate);
-      syncProposedRuleControls(candidate);
-      event.target.focus({ preventScroll: true });
-      return;
-    }
     syncAssessmentActionControls(candidate, action);
     syncImplementationModelControls(candidate, action);
     syncAssessmentRationaleControls(action, candidate);
+    syncProposedRuleControls(candidate);
     return;
   }
   if (event.target.dataset.retireHostedRule) {
@@ -4943,9 +5127,25 @@ function handleAssessmentInput(event) {
     }
     if (event.target.dataset.decisionField === "rationale") {
       syncRationaleCounter(event.target);
-      syncDecisionSaveState(candidate);
+      syncProposedRuleControls(candidate);
     }
   }
+}
+
+function handleAssessmentEditorKeydown(event) {
+  if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+  const wording = event.target.matches('[data-decision-field="proposedText"]');
+  const rationale = event.target.matches('[data-decision-field="rationale"]');
+  const key = event.key.toLowerCase();
+  const selector = key === "s" && (wording || rationale)
+    ? wording ? "[data-proposed-text-save]" : "[data-rationale-save]"
+    : wording && key === "u" ? "[data-proposed-text-undo]"
+      : wording && key === "r" ? "[data-proposed-text-reset]" : null;
+  if (!selector) return;
+  const button = elements["assessment-panel"].querySelector(selector);
+  if (key === "s" && (!button || button.disabled)) return;
+  event.preventDefault();
+  if (!event.repeat && button && !button.disabled) button.click();
 }
 
 function handleDetailBackToTopClick(event) {
@@ -4984,7 +5184,8 @@ function syncAssessmentActionControls(candidate, action = getDecision(candidate)
 
 function syncImplementationModelControls(candidate, action = getDecision(candidate).action) {
   const selectedModels = getDecision(candidate).implementationModels;
-  const editable = canEditImplementationModels(candidate, action);
+  const editable = canEditImplementationModels(candidate, action)
+    && !elements["assessment-panel"].querySelector(".rule-actions")?.classList.contains("section-disabled");
   elements["assessment-panel"].querySelectorAll("[data-implementation-model]").forEach((control) => {
     control.checked = selectedModels.includes(control.dataset.implementationModel);
     control.disabled = !editable;
@@ -5003,8 +5204,10 @@ function syncDecisionSaveState(candidate = getActiveCandidate()) {
   }
   const persisted = getDecision(candidate);
   const value = rationale.value.trim();
-  const dirty = action !== persisted.action || value !== persisted.rationale.trim();
-  save.disabled = action === "no-change" || !value || !dirty;
+  const dirty = action !== persisted.action || (value !== "" && value !== persisted.rationale.trim());
+  const wording = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]');
+  save.disabled = elements["assessment-panel"].querySelector(".rule-actions")?.classList.contains("section-disabled")
+    || wording?.value !== persisted.proposedText || (action !== "no-change" && !value) || !dirty;
   const saveLabel = state.rationaleReturnView === "plan" ? "Save decision and return to Promotion Plan" : "Save decision";
   save.setAttribute("aria-label", saveLabel);
   setWorkbenchTooltip(save, saveLabel);
@@ -5016,17 +5219,32 @@ function syncAssessmentRationaleControls(action, candidate = getActiveCandidate(
   if (!rationale) return;
   const noChange = action === "no-change" && (!candidate || getDecision(candidate).retireHostedRuleIds.length === 0);
   if (noChange) rationale.value = "";
-  rationale.disabled = !action || noChange;
+  rationale.disabled = !action || noChange
+    || elements["assessment-panel"].querySelector(".rule-actions")?.classList.contains("section-disabled");
   rationale.placeholder = !action ? "Select a rule action to record rationale."
     : noChange ? "No rationale is required for No Change." : "Record why this action is appropriate.";
   syncRationaleCounter(rationale);
   if (save) {
-    if (!action || noChange) save.disabled = true;
+    if (!action) save.disabled = true;
     else syncDecisionSaveState(candidate);
   }
 }
 
 async function handleAssessmentClick(event) {
+  if (event.target.closest("[data-proposed-text-undo]")) {
+    const candidate = getActiveCandidate();
+    if (!candidate) return;
+    const content = elements["assessment-panel"].querySelector(".assessment-content");
+    const scrollTop = content?.scrollTop || 0;
+    renderAssessment();
+    const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]');
+    if (rationale) rationale.value = "";
+    syncProposedRuleControls(candidate);
+    const refreshedContent = elements["assessment-panel"].querySelector(".assessment-content");
+    if (refreshedContent) refreshedContent.scrollTop = scrollTop;
+    elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.focus({ preventScroll: true });
+    return;
+  }
   const reviewControl = event.target.closest("[data-relationship-review-open], [data-relationship-review-run], [data-relationship-review-cancel], [data-relationship-review-dismiss]");
   if (reviewControl) {
     const candidate = getActiveCandidate();
@@ -5081,6 +5299,7 @@ async function handleAssessmentClick(event) {
     renderRuleIssues();
     renderAssessmentResults();
     renderDecisionOutputs();
+    elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.focus({ preventScroll: true });
     showToast("Proposed Hosted rule saved.");
     return;
   }
@@ -5088,11 +5307,11 @@ async function handleAssessmentClick(event) {
   const candidate = getActiveCandidate();
   if (!candidate) return;
   const rationale = elements["assessment-panel"].querySelector('[data-decision-field="rationale"]')?.value.trim() || "";
-  if (!rationale) {
+  const action = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction;
+  if (!rationale && action !== "no-change") {
     showToast("Record a decision rationale before saving this action.", true);
     return;
   }
-  const action = elements["assessment-panel"].querySelector("[data-rule-action]:checked")?.dataset.ruleAction;
   if (!action) return;
   const current = getDecision(candidate);
   const proposedText = elements["assessment-panel"].querySelector('[data-decision-field="proposedText"]')?.value || current.proposedText;
@@ -6508,8 +6727,8 @@ function selectCandidate(key, rationaleReturnView = null) {
   state.activeProtectedRuleId = null;
   state.rationaleReturnView = rationaleReturnView;
   setRuleAssistanceCandidate(getActiveCandidate(), "candidate-sources");
-  syncCandidateTreeRows();
   renderAssessment();
+  syncCandidateTreeRows();
   refreshPresentation();
 }
 

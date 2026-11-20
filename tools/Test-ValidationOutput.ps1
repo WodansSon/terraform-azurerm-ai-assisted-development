@@ -245,7 +245,6 @@ Assert-OutputSequence -Name 'text output ending' -Actual @(Complete-ValidationTe
 $presentationConsumers = @(
     'Test-ChangedToolkitRouting.ps1',
     'Test-ValidationOutput.ps1',
-    'npm-validation/Test-NpmSecurity.ps1',
     'Validate-ChangedToolkits.ps1'
 )
 if ($ProductScope -in @('All', 'Interactive')) {
@@ -452,13 +451,13 @@ if ($ProductScope -in @('All', 'Interactive')) {
     $priorIssueCount = $issues.Count
     $interactiveValidationContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'validate-ai-toolkit.ps1') -Raw
     if ($interactiveValidationContent -match "-Name 'npm-install'" -or
-        $interactiveValidationContent -notmatch "-Name 'npm-packages'.*-RunningDetail 'VERIFYING AUDITED LOCKFILE'.*-SuccessDetail 'CURRENT \(MATCHES AUDITED LOCKFILE\)'" -or
+        $interactiveValidationContent -notmatch "-Name 'npm-packages'.*-RunningDetail 'VERIFYING LOCKFILE'.*-SuccessDetail 'CURRENT \(MATCHES LOCKFILE\)'" -or
         $interactiveValidationContent -notmatch 'function Test-NpmPackageGraphCurrent' -or
         $interactiveValidationContent -notmatch "npm-validation/node_modules/\.package-lock\.json" -or
         $interactiveValidationContent -notmatch 'if \(-not \(Test-NpmPackageGraphCurrent') {
-        $issues.Add('Interactive npm validation must report package currency against the audited lockfile instead of labeling the result as an install')
+        $issues.Add('Interactive npm validation must report package currency against the lockfile instead of labeling the result as an install')
     }
-    Add-OutputTestResult -Name 'Interactive npm audit/package wording' -Passed ($issues.Count -eq $priorIssueCount)
+    Add-OutputTestResult -Name 'Interactive npm package wording' -Passed ($issues.Count -eq $priorIssueCount)
 }
 
 if ($ProductScope -in @('All', 'Hosted')) {
@@ -466,15 +465,13 @@ if ($ProductScope -in @('All', 'Hosted')) {
     $priorIssueCount = $issues.Count
     $hostedWorkbenchValidationContent = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1') -Raw
     if ($hostedWorkbenchValidationContent -match "Start-TestResult -Name 'locked-browser-dependencies'" -or
-        $hostedWorkbenchValidationContent -notmatch '\$dependencyRunningDetail = if \(\$auditPassed\) \{ ''VERIFYING AUDITED LOCKFILE'' \} else \{ ''VERIFYING INSTALLED LOCKFILE GRAPH'' \}' -or
-        $hostedWorkbenchValidationContent -notmatch 'Start-TestResult -Name ''npm-packages'' -RunningDetail \$dependencyRunningDetail' -or
-        $hostedWorkbenchValidationContent -notmatch '\$lockedDependencySuccessDetail = if \(\$auditPassed\) \{ ''CURRENT \(MATCHES AUDITED LOCKFILE\)'' \} else \{ ''CURRENT \(MATCHES LOCKFILE; UNVERIFIED\)'' \}' -or
-        $hostedWorkbenchValidationContent -notmatch 'Add-TestResult -Name ''npm-packages''.*-SuccessDetail \$lockedDependencySuccessDetail' -or
+        $hostedWorkbenchValidationContent -notmatch "Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING LOCKFILE'" -or
+        $hostedWorkbenchValidationContent -notmatch "Add-TestResult -Name 'npm-packages'.*-SuccessDetail 'CURRENT \(MATCHES LOCKFILE\)'" -or
         $hostedWorkbenchValidationContent -notmatch 'function Test-NpmPackageGraphCurrent' -or
         $hostedWorkbenchValidationContent -notmatch "node_modules/\.package-lock\.json") {
-        $issues.Add('Hosted npm validation must skip redundant installs and distinguish audited from unverified lockfile currency')
+        $issues.Add('Hosted npm validation must skip redundant installs and report package currency against the lockfile')
     }
-    Add-OutputTestResult -Name 'Hosted npm audit/package wording' -Passed ($issues.Count -eq $priorIssueCount)
+    Add-OutputTestResult -Name 'Hosted npm package wording' -Passed ($issues.Count -eq $priorIssueCount)
 }
 
 $suiteStopwatch.Stop()

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/guidance-capacity.schema.json",
+  "title": "Hosted Guidance Capacity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "tokenPolicySha256", "maximumGuidanceTokens", "totalGuardedTokens", "estimator", "safetyMarginPercent", "reportCount", "reports"],
+  "properties": {
+    "status": { "enum": ["passed", "failed"] },
+    "tokenPolicySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "maximumGuidanceTokens": { "type": "integer", "minimum": 1 },
+    "totalGuardedTokens": { "type": "integer", "minimum": 0 },
+    "estimator": { "const": "character-quarter-estimate-v1" },
+    "safetyMarginPercent": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "reportCount": { "type": "integer", "minimum": 1 },
+    "reports": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/report" }
+    }
+  },
+  "$defs": {
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "paths", "characterCount", "estimatedTokens", "guardedTokens", "budgetTokens", "budgetHeadroomTokens", "utilizationPercent", "withinBudget"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "kind": { "enum": ["file", "combined"] },
+        "paths": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "characterCount": { "type": "integer", "minimum": 0 },
+        "estimatedTokens": { "type": "integer", "minimum": 0 },
+        "guardedTokens": { "type": "integer", "minimum": 0 },
+        "budgetTokens": { "type": "integer", "minimum": 1 },
+        "budgetHeadroomTokens": { "type": "integer" },
+        "utilizationPercent": { "type": "number", "minimum": 0 },
+        "withinBudget": { "type": "boolean" }
+      }
+    }
+  }
+}

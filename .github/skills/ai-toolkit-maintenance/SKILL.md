@@ -189,7 +189,7 @@ The `MAINT-UPSTREAM-*` rules and contributor-source workflow below apply only to
   - Run `pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1` when local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs.
   - Run `pwsh -NoProfile -File ./tools/validate-contracts.ps1` after contract or consumer changes.
   - Run `pwsh -NoProfile -File ./tools/Test-InteractiveRuleCatalog.ps1` after contract rule, provenance, evidence, or lifecycle changes.
-  - Run change-aware validation after Markdown-based AI-toolkit changes so npm dependencies are audited and installed from repository lockfiles before Markdown validation.
+  - Run change-aware validation after Markdown-based AI-toolkit changes so npm dependencies are installed from repository lockfiles with lifecycle scripts and automatic auditing disabled before Markdown validation.
 
 ## Output expectation
 

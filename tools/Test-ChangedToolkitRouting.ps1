@@ -13,7 +13,6 @@ $validationOutputModulePath = Join-Path $PSScriptRoot 'ValidationOutput.psm1'
 $agentsPath = Join-Path $PSScriptRoot '../AGENTS.md'
 $toolkitMaintenanceSkillPath = Join-Path $PSScriptRoot '../.github/skills/ai-toolkit-maintenance/SKILL.md'
 $changelogMaintenanceSkillPath = Join-Path $PSScriptRoot '../.github/skills/changelog-maintenance/SKILL.md'
-$npmSecurityPath = Join-Path $PSScriptRoot 'Test-NpmSecurity.ps1'
 $interactiveValidationPath = Join-Path $PSScriptRoot 'validate-ai-toolkit.ps1'
 $hostedWorkbenchTestPath = Join-Path $PSScriptRoot '../hosted_copilot/tools/tests/Test-RuleWorkbench.ps1'
 $interactiveManifestPath = Join-Path $PSScriptRoot '../installer/file-manifest.config'
@@ -27,7 +26,6 @@ $workflowContent = Get-Content -LiteralPath $workflowPath -Raw
 $agentsContent = Get-Content -LiteralPath $agentsPath -Raw
 $toolkitMaintenanceSkillContent = Get-Content -LiteralPath $toolkitMaintenanceSkillPath -Raw
 $changelogMaintenanceSkillContent = Get-Content -LiteralPath $changelogMaintenanceSkillPath -Raw
-$npmSecurityContent = Get-Content -LiteralPath $npmSecurityPath -Raw
 $interactiveValidationContent = Get-Content -LiteralPath $interactiveValidationPath -Raw
 $hostedWorkbenchTestContent = Get-Content -LiteralPath $hostedWorkbenchTestPath -Raw
 $interactiveManifestContent = Get-Content -LiteralPath $interactiveManifestPath -Raw
@@ -81,9 +79,8 @@ $productBoundaryPresent = $agentsContent -match 'Only the Interactive Toolkit ma
     $toolkitMaintenanceSkillContent -match 'Only Interactive maintenance may create versioned release bundles' -and
     $changelogMaintenanceSkillContent -match 'For Hosted-only work, read and edit only `hosted_copilot/CHANGELOG\.md`' -and
     $changelogMaintenanceSkillContent -match 'do not load root `CHANGELOG\.md` or run Interactive release preparation' -and
-    $npmSecurityContent -match '\[string\[\]\]\$LockPath' -and
-    $interactiveValidationContent -match "'-LockPath',\s*'tools/npm-validation/package-lock\.json'" -and
-    $hostedWorkbenchTestContent.Contains("'-LockPath', `$nodePackageLockRelativePath")
+    $interactiveValidationContent -match "ci --prefix 'tools/npm-validation' --ignore-scripts --no-audit --no-fund" -and
+    $hostedWorkbenchTestContent.Contains('ci --prefix $npmRoot --ignore-scripts --no-audit --no-fund')
 if (-not $productBoundaryPresent) {
     $issues.Add('shared maintainer guidance and npm validation must preserve independent Interactive release and Hosted local-source workflows')
 }
@@ -196,8 +193,8 @@ $cases = @(
         repositoryChecks = $true
     },
     [pscustomobject]@{
-        name = 'shared-npm-security'
-        paths = @('tools/Test-NpmSecurity.ps1', 'tools/npm-validation/package-lock.json')
+        name = 'shared-npm-validation'
+        paths = @('tools/npm-validation/package.json', 'tools/npm-validation/package-lock.json')
         validators = @('Interactive Toolkit', 'Hosted Toolkit')
         repositoryChecks = $true
     },

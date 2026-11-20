@@ -6,4 +6,4 @@ at commit `6220ff87f3ddd923b05ffdac7e2d9cb714213205`.
 
 Copyright GitHub Inc. Licensed under the [MIT License](LICENSE.txt).
 
-The adjacent `runtime.json` declares the exact symbols included in `sprite.svg` and the runtime legal notices. `preview.png` shows every adjacent source SVG with at most six columns. `hosted_copilot/tools/internal/workbench/New-WorkbenchOcticonSprite.ps1` delegates to the same shared builder used by every icon family, preserving the selected source geometry.
+The adjacent `runtime.json` declares the exact symbols included in `sprite.svg` and the runtime legal notices. `preview.png` shows every adjacent source SVG with at most six columns. The shared [New-WorkbenchSprite.ps1](../New-WorkbenchSprite.ps1) generates assets for legacy and New Workbench consumers, preserving the selected source geometry.

@@ -14,7 +14,7 @@ Each source SVG is unmodified and was verified against its upstream Git blob has
 
 ## Offline Generation
 
-The adjacent `runtime.json` declares the runtime symbols and legal companion files. `hosted_copilot/tools/internal/workbench/New-WorkbenchLlmIconSprite.ps1` delegates to the same shared builder used by every icon family, without model-specific generation behavior or network requests. The manifest selects OpenAI, Claude, Gemini, and Grok for the runtime sprite. The preview continues to display all 340 vendored icons, with at most six columns.
+The adjacent `runtime.json` declares the runtime symbols and legal companion files. The shared [New-WorkbenchSprite.ps1](../New-WorkbenchSprite.ps1) generates assets for legacy and New Workbench consumers without model-specific generation behavior or network requests. The manifest selects OpenAI, Claude, Gemini, and Grok for the runtime sprite. The preview continues to display all 340 vendored icons, with at most six columns.
 
 Generation preserves native viewBoxes, source geometry, fragment IDs, fills, and fill rules. Upstream layout-only root styles are omitted; the two standard icons with root grayscale styling retain it as an SVG filter presentation attribute. Symbols use the `llm-` prefix. Missing declared source icons fail generation rather than producing incomplete runtime artwork.
 

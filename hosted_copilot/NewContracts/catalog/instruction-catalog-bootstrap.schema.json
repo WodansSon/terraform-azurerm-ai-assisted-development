@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Initial Terraform Guidance Staged Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "kind", "state", "approval", "profileCode", "source", "files", "rules"],
+  "properties": {
+    "$schema": { "const": "../../NewContracts/catalog/instruction-catalog-bootstrap.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "hosted-guidance-bootstrap" },
+    "state": { "const": "staged" },
+    "approval": { "const": "not-recorded" },
+    "profileCode": { "const": "terraform-azurerm" },
+    "source": { "const": "repository-guidance-files" },
+    "files": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relativePath", "role", "contentSha256", "content"],
+        "properties": {
+          "relativePath": { "enum": [".github/instructions/azurerm-go.instructions.md", ".github/instructions/azurerm-tests.instructions.md", ".github/instructions/azurerm-docs.instructions.md", ".github/copilot-instructions.md", ".github/skills/code-review/SKILL.md"] },
+          "role": { "enum": ["instructions", "repository", "skill"] },
+          "surface": { "enum": ["implementation", "testing", "documentation"] },
+          "patterns": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "contentSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "content": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          { "if": { "properties": { "role": { "const": "instructions" } } }, "then": { "required": ["surface", "patterns"] }, "else": { "not": { "anyOf": [{ "required": ["surface"] }, { "required": ["patterns"] }] } } }
+        ]
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "surface", "kind", "section", "sourcePath", "sourceLine", "text"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]+-[A-Z0-9]+-[0-9]+[A-Z]?$" },
+          "surface": { "enum": ["implementation", "testing", "documentation"] },
+          "kind": { "enum": ["managed", "protected"] },
+          "section": { "type": "string", "minLength": 1 },
+          "sourcePath": { "enum": [".github/instructions/azurerm-go.instructions.md", ".github/instructions/azurerm-tests.instructions.md", ".github/instructions/azurerm-docs.instructions.md"] },
+          "sourceLine": { "type": "integer", "minimum": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "implementationModels": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["legacy", "typed", "framework"] } }
+        }
+      }
+    }
+  }
+}

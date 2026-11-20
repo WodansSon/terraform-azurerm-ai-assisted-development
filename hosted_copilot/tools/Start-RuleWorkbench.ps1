@@ -12,7 +12,10 @@ Specifies the loopback port used by the Workbench server.
 Specifies a process whose exit should stop the Workbench server.
 
 .PARAMETER SiteDirectory
-Specifies the external directory that receives staged Workbench assets and validated artifacts. Defaults to `%LOCALAPPDATA%\hosted-workbench\site`.
+Specifies the external directory that receives staged Workbench assets and validated artifacts. Defaults to `%LOCALAPPDATA%\hosted-workbench-new\site`, retaining the validated client's existing staging location.
+
+.PARAMETER DisplaySourceDirectory
+Optionally copies the two validated display artifacts into an empty site. Never copies browser drafts or runtime configuration.
 
 .PARAMETER InventoryDirectory
 Specifies the external directory that stores collected source inventories. Defaults to `%LOCALAPPDATA%\terraform-azurerm-ai-assisted-development\hosted-rule-intake\inventories`.
@@ -87,6 +90,10 @@ https://github.com/WodansSon/terraform-azurerm-ai-assisted-development/blob/main
 param(
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
+    [string]$DisplaySourceDirectory,
+
+    [Parameter(ParameterSetName = 'Default')]
+    [Parameter(ParameterSetName = 'Force')]
     [ValidateRange(1024, 65535)]
     [int]$Port = 43143,
 
@@ -97,7 +104,7 @@ param(
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
-    [string]$SiteDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench/site'),
+    [string]$SiteDirectory = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'hosted-workbench-new/site'),
 
     [Parameter(ParameterSetName = 'Default')]
     [Parameter(ParameterSetName = 'Force')]
@@ -179,7 +186,7 @@ if ($Help -or $Detailed) {
         'Workflow Options' = @('Rebuild', 'Force', 'StageOnly', 'NoLaunch')
         'Server And Output' = @('Port', 'OwnerProcessId', 'OutputFormat')
         'Evaluation' = @('Model', 'AssessmentReasoningEffort', 'MaxRetries', 'MaxParallelBatches', 'EvaluatorCommand')
-        'Storage And Recovery' = @('SiteDirectory', 'InventoryDirectory', 'AssessmentCacheDirectory', 'ReconciliationCacheDirectory', 'AssessmentResumeDirectory')
+        'Storage And Recovery' = @('SiteDirectory', 'DisplaySourceDirectory', 'InventoryDirectory', 'AssessmentCacheDirectory', 'ReconciliationCacheDirectory', 'AssessmentResumeDirectory')
         'Authorization' = @('SkipGitHubAuthorization')
     }
     Show-HostedCommandHelp -ScriptPath $PSCommandPath -DisplayName 'Hosted Rule Workbench Help' -ParameterGroups $helpParameterGroups
@@ -346,6 +353,16 @@ function Copy-FileAtomically {
 
 function Read-StagedWorkbenchDisplay {
     $script:workbenchPhase = 'EXISTING DISPLAY VALIDATION'
+    if ($DisplaySourceDirectory -and
+        -not (Test-Path -LiteralPath $stagedDisplayPath) -and -not (Test-Path -LiteralPath $stagedRuleIssuesPath)) {
+        $sourceDisplay = Join-Path $DisplaySourceDirectory 'workbench-display.json'
+        $sourceIssues = Join-Path $DisplaySourceDirectory 'workbench-rule-issues.json'
+        if (-not (Test-Path -LiteralPath $sourceDisplay -PathType Leaf) -or -not (Test-Path -LiteralPath $sourceIssues -PathType Leaf)) {
+            throw 'DisplaySourceDirectory must contain both existing Workbench display artifacts'
+        }
+        Copy-Item -LiteralPath $sourceDisplay -Destination $stagedDisplayPath
+        Copy-Item -LiteralPath $sourceIssues -Destination $stagedRuleIssuesPath
+    }
     if (-not (Test-Path -LiteralPath $stagedDisplayPath -PathType Leaf) -or -not (Test-Path -LiteralPath $stagedRuleIssuesPath -PathType Leaf)) {
         throw "A complete staged Workbench display was not found in $resolvedSiteDirectory. Run Start-RuleWorkbench.ps1 -Rebuild to create one."
     }
@@ -784,11 +801,11 @@ try {
         if ($shutdownRequested) {
             break
         }
-        $client = $acceptTask.GetAwaiter().GetResult()
+        $connection = $acceptTask.GetAwaiter().GetResult()
         $stream = $null
         $deferredResponse = $false
         try {
-            $stream = $client.GetStream()
+            $stream = $connection.GetStream()
             $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $false, 1024, $true)
             $requestLine = $reader.ReadLine()
             if ([string]::IsNullOrWhiteSpace($requestLine)) {
@@ -850,7 +867,7 @@ try {
                 try {
                     $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders
                     $reviewParameters = @{ RepositoryRoot = $repositoryRoot; DisplayPath = $stagedDisplayPath; EvaluatorCommand = $EvaluatorCommand; ReceiptDirectory = $receiptDirectory }
-                    $evaluationRequests.Add((Start-RelationshipReviewRequest -RunspacePool $evaluationPool -Client $client -RequestBody $requestBody -Parameters $reviewParameters))
+                    $evaluationRequests.Add((Start-RelationshipReviewRequest -RunspacePool $evaluationPool -Client $connection -RequestBody $requestBody -Parameters $reviewParameters))
                     $deferredResponse = $true
                 }
                 catch {
@@ -887,7 +904,7 @@ try {
                 }
                 try {
                     $requestBody = Read-HttpRequestBody -Reader $reader -Headers $requestHeaders -MaximumBytes 1048576
-                    $evaluationRequests.Add((Start-RuleAssistanceRequest -RunspacePool $evaluationPool -Client $client -RequestBody $requestBody -Parameters $assistanceParameters))
+                    $evaluationRequests.Add((Start-RuleAssistanceRequest -RunspacePool $evaluationPool -Client $connection -RequestBody $requestBody -Parameters $assistanceParameters))
                     $deferredResponse = $true
                 }
                 catch {
@@ -934,7 +951,7 @@ try {
             }
         }
         finally {
-            if (-not $deferredResponse) { $client.Dispose() }
+            if (-not $deferredResponse) { $connection.Dispose() }
         }
     }
 }

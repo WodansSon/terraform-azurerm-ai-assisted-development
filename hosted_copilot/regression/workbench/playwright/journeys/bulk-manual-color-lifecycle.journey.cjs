@@ -1,4 +1,4 @@
-const { openWorkbench, getCandidateHierarchy, getCssTokenColor } = require("../helpers/workbench.cjs");
+const { mockRelationshipReviews, openWorkbench, getCandidateHierarchy, getCssTokenColor, revealCandidate, reviewCandidateRelationships } = require("../helpers/workbench.cjs");
 
 const behaviorIds = [
   "WB-UX-OWNERSHIP-001",
@@ -58,10 +58,12 @@ function hierarchyMatches(snapshot, status, color) {
 }
 
 async function run({ page, baseUrl, assert, playback }) {
+  const reviews = await mockRelationshipReviews(page);
   await openWorkbench(page, baseUrl);
   const sessionSnapshot = await page.evaluate(() => structuredClone(state.session));
   const addedColor = await getCssTokenColor(page, "--added-resource");
   const accentColor = await getCssTokenColor(page, "--accent-bright");
+  const needsInputColor = await getCssTokenColor(page, "--modified-resource");
 
   try {
     const candidate = await page.evaluate(() => {
@@ -73,6 +75,19 @@ async function run({ page, baseUrl, assert, playback }) {
 
     await page.locator("#bulk-actions > summary").click();
     await page.locator('#bulk-actions [data-bulk-scope="add"]').click();
+    await page.waitForFunction(key => getDecision(state.candidates.find(item => item.key === key)).inPlan, candidate.key);
+    assert(await page.evaluate(key => !getPlanReadiness(state.candidates.find(item => item.key === key)).ready, candidate.key)
+      && reviews.count === 0, "Bulk Add bypassed relationship readiness or invoked AI automatically");
+    await reviewCandidateRelationships(page, candidate.key);
+    const reviewed = await page.evaluate(key => {
+      const candidate = state.candidates.find(item => item.key === key);
+      const readiness = getPlanReadiness(candidate);
+      const row = document.querySelector(`[data-candidate-key="${key}"]`);
+      return { ready: readiness.ready, attention: readiness.attention?.reason, label: readiness.label, rowClass: row?.className };
+    }, candidate.key);
+    assert(reviewed.ready && reviewed.rowClass?.includes("candidate-decoration-ready"),
+      `Current relationship review did not update candidate readiness decoration: ${JSON.stringify(reviewed)}`);
+    await page.locator('[data-candidate-pane="candidates"]').click();
     await page.waitForFunction((key) => document.querySelector(`[data-candidate-key="${key}"]`)?.classList.contains("candidate-decoration-ready"), candidate.key);
     await playback.show(page, "Bulk ownership · ready green hierarchy");
     const bulkReady = await inspectCandidate(page, candidate.key);
@@ -82,6 +97,10 @@ async function run({ page, baseUrl, assert, playback }) {
 
     await row.locator(".candidate-tree-copy").click();
     await page.locator('#assessment-panel [data-rule-action="no-change"]').click();
+    assert(await page.evaluate(key => getDecision(state.candidates.find(item => item.key === key)).inPlan, candidate.key),
+      "Selecting No Change changed the saved Plan before explicit Save");
+    await page.locator("#assessment-panel [data-rationale-save]").click();
+    await page.evaluate(() => persistencePromise);
     await page.locator('[data-candidate-pane="candidates"]').click();
     await page.waitForFunction((key) => {
       const row = document.querySelector(`[data-candidate-key="${key}"]`);
@@ -97,6 +116,9 @@ async function run({ page, baseUrl, assert, playback }) {
     await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("Maintainer manually confirmed this Add decision after bulk review.");
     await page.locator("#assessment-panel [data-rationale-save]").click();
     await page.evaluate(() => persistencePromise);
+    assert(reviews.count === 1, "Saving Manual Add invoked relationship evaluation automatically");
+    const manualReviewStatus = await page.evaluate(key => getRelationshipReviewState(state.candidates.find(item => item.key === key)).status, candidate.key);
+    assert(manualReviewStatus === "current", "Saving an unchanged Manual Add invalidated its saved relationship check");
     await page.locator('[data-candidate-pane="candidates"]').click();
     await page.waitForFunction((key) => document.querySelector(`[data-candidate-key="${key}"]`)?.classList.contains("candidate-decoration-ready"), candidate.key);
     await playback.show(page, "Manual ownership · completed green hierarchy");
@@ -125,7 +147,76 @@ async function run({ page, baseUrl, assert, playback }) {
     assert(preview.proposedChangeCount === 0 && preview.proposedEmptyTitle === "No Proposed Changes", "Unselected decision remained in Proposed Changes");
     assert(preview.payloadChangeCount === 0 && preview.payloadEmptyTitle === "No Payload Changes", "Unselected decision remained in Payload Changes");
     assert(preview.rawChangeCount === 0 && preview.rawEmptyTitle === "No Approved Rules", "Unselected decision remained in Raw Approved Rules");
+
+    await page.locator('[data-view="catalog"]').click();
+    await page.locator("#search-input").fill("");
+    const siblings = await page.evaluate(() => {
+      const good = state.candidates.find(item => getEffectiveHostedRuleId(item) === "IMPL-PATCH-001");
+      const pending = state.candidates.find(item => getEffectiveHostedRuleId(item) === "REVIEW-REPO-001");
+      if (!good || !pending) throw new Error("Mixed sibling validation fixture is missing");
+      return { good: good.key, pending: pending.key, text: getDecision(good).proposedText };
+    });
+    await revealCandidate(page, siblings.good);
+    const goodRow = page.locator(`[data-candidate-key="${siblings.good}"]`);
+    await goodRow.locator(".candidate-tree-copy").click();
+    await page.locator('#assessment-panel [data-rule-action="update"]').check();
+    await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("Synthetic mixed-sibling validation: preserve the clearing safeguard.");
+    await page.locator("#assessment-panel [data-rationale-save]").click();
+    await page.evaluate(() => persistencePromise);
+    await reviewCandidateRelationships(page, siblings.good);
+    const savedReview = await page.evaluate(key => JSON.stringify(state.session.relationshipReviews[key]), siblings.good);
+    await page.locator('[data-candidate-pane="candidates"]').click();
+    await revealCandidate(page, siblings.pending);
+    const pendingRow = page.locator(`[data-candidate-key="${siblings.pending}"]`);
+    await pendingRow.locator(".candidate-tree-copy").click();
+    await page.locator('#assessment-panel [data-rule-action="add"]').check();
+    await page.locator('#assessment-panel [data-decision-field="rationale"]').fill("Synthetic mixed-sibling validation: leave this sibling awaiting review.");
+    await page.locator("#assessment-panel [data-rationale-save]").click();
+    await page.evaluate(() => persistencePromise);
+    await page.locator('[data-candidate-pane="candidates"]').click();
+    const mixedGood = await inspectCandidate(page, siblings.good);
+    const mixedPending = await inspectCandidate(page, siblings.pending);
+    assert(mixedGood.leaf.color === addedColor && mixedGood.leaf.iconColor === addedColor
+      && hierarchyMatches(mixedPending, "needs-input", needsInputColor)
+      && mixedGood.category.color === needsInputColor && mixedGood.source.color === needsInputColor
+      && mixedGood.category.description === "2 selected, 1 needs input", "One pending sibling did not leave the checked child green and both ancestors amber");
+    await pendingRow.locator("[data-decision-key]").uncheck();
+    const withoutPending = await inspectCandidate(page, siblings.good);
+    assert(hierarchyMatches(withoutPending, "ready", addedColor)
+      && await page.evaluate(({ key, saved }) => JSON.stringify(state.session.relationshipReviews[key]) === saved, { key: siblings.good, saved: savedReview }),
+      "Unselecting the pending sibling transferred its attention to the unchanged checked rule");
+    await pendingRow.locator("[data-decision-key]").check();
+    assert(await page.evaluate(({ key, saved }) => getRelationshipReviewState(state.candidates.find(item => item.key === key)).status === "current"
+      && JSON.stringify(state.session.relationshipReviews[key]) === saved, { key: siblings.good, saved: savedReview }),
+      "Reselecting an unchanged sibling invalidated or replaced the checked rule's review");
+    await pendingRow.locator("[data-decision-key]").uncheck();
+    await goodRow.locator(".candidate-tree-copy").click();
+    const editedText = siblings.text + " Verify that the clearing value is sent.";
+    await page.locator('#assessment-panel [data-decision-field="proposedText"]').fill(editedText);
+    await page.locator("#assessment-panel [data-proposed-text-save]").click();
+    await page.waitForFunction(({ key, text }) => getDecision(state.candidates.find(item => item.key === key)).proposedText === text,
+      { key: siblings.good, text: editedText });
+    await page.locator('[data-candidate-pane="candidates"]').click();
+    await pendingRow.locator("[data-decision-key]").check();
+    const edited = await inspectCandidate(page, siblings.good);
+    assert(hierarchyMatches(edited, "needs-input", needsInputColor)
+      && edited.category.description === "2 selected, 2 need input"
+      && await page.evaluate(key => !state.session.relationshipReviews[key], siblings.good),
+      "Reselecting a sibling revived the edited rule's discarded review or produced incorrect ancestor colors");
+    await reviewCandidateRelationships(page, siblings.good);
+    const rechecked = await inspectCandidate(page, siblings.good);
+    assert(rechecked.leaf.color === addedColor && rechecked.leaf.iconColor === addedColor
+      && rechecked.category.color === needsInputColor && rechecked.source.color === needsInputColor
+      && rechecked.category.description === "2 selected, 1 needs input", "Checking edited wording did not refresh the mixed hierarchy immediately");
+    await page.locator('#assessment-panel [data-decision-field="proposedText"]').fill(siblings.text);
+    await page.locator("#assessment-panel [data-proposed-text-save]").click();
+    await page.waitForFunction(({ key, text }) => getDecision(state.candidates.find(item => item.key === key)).proposedText === text,
+      { key: siblings.good, text: siblings.text });
+    assert(await page.evaluate(key => !state.session.relationshipReviews[key]
+      && getRelationshipReviewState(state.candidates.find(item => item.key === key)).status === "required", siblings.good),
+      "Saving earlier wording resurrected a discarded check without revalidation");
   } finally {
+    await reviews.dispose();
     await page.evaluate(async (snapshot) => {
       state.session = snapshot;
       await persistSession();

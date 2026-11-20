@@ -235,7 +235,7 @@ The Interactive Toolkit command runs its complete maintainer validation flow in 
 - Interactive rule catalog schema, lifecycle, contract-hash, and installer-exclusion validation
 - Deterministic argument, help, output, and error regression tests for `Get-PRReady.ps1`
 - Branch-local regression case runnability validation for changed cases and fixtures
-- Integrity-lock validation and npm vulnerability auditing at every severity
+- Integrity-lock validation for npm dependencies
 - Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
 - System Architecture diagram width, right-edge, and border-padding validation
 - Release dry-run output boundary validation for the source repository and persistent user-profile installer
@@ -275,19 +275,20 @@ pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowCatalogIssue
 
 The lower-level commands remain available for debugging and targeted re-runs.
 
-Run the repository-wide npm security audit directly with:
+Validation verifies installed dependencies against each toolkit's lockfile and installs stale or missing packages with `npm ci --ignore-scripts --no-audit --no-fund`. It does not change dependency manifests, override the configured registry, perform vulnerability auditing, or apply automatic dependency fixes. A passing validation result is not a vulnerability assessment. Existing maintainer-reviewed dependency overrides remain unchanged.
 
-```powershell
-pwsh -NoProfile -File ./tools/Test-NpmSecurity.ps1
-```
+#### GitHub dependency security
 
-Normal validation is read-only and fails when any tracked npm lockfile reports a low, moderate, high, or critical vulnerability. To stage npm's safe fixes and same-major transitive dependency overrides, then apply them only after a clean re-audit, run:
+GitHub provides repository vulnerability monitoring and pull-request dependency checks separately from local toolkit validation. This replaces the repository's local npm audit gate with GitHub-native controls, not an equivalent execution of `npm audit`.
 
-```powershell
-pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -FixNpmAudit
-```
+- Keep the dependency graph and Dependabot alerts enabled to monitor known vulnerabilities in default-branch dependencies, including newly published advisories.
+- Keep Dependabot security updates enabled and unpaused so GitHub can attempt pull requests with vulnerability fixes. An enabled setting does not guarantee that every vulnerability has an available or successful automatic update.
+- Keep the `Dependency Security Review` job in [CodeQL Security Analysis](../.github/workflows/codeql-analysis.yml) configured to fail pull requests introducing dependency vulnerabilities rated moderate or higher.
+- Require the GitHub Actions check named `Dependency Security Review` in branch protection for `main`. A failing check blocks normal pull-request merging.
+- Preserve the current administrator bypass: administrator enforcement is disabled, so administrators can bypass the required check. The check is not an absolute merge barrier for administrators.
+- Keep local dependency installation locked and automatic npm auditing disabled. GitHub advisory detection and CI dependency review do not use the developer machine's npm audit endpoint; Dependabot update generation can still require access to the configured package feeds.
 
-Remediation refuses to modify dirty manifests. A semver-major fix remains blocked unless the maintainer explicitly adds `-AllowBreakingNpmFix`; the full validation flow then verifies the resulting dependency graph and repository behavior.
+Dependabot settings and branch-protection requirements are GitHub repository settings, not workflow-file configuration. Cloning the repository or copying its workflows does not reproduce those settings. When configuring a fork or restoring repository settings, verify dependency security under **Settings > Advanced Security** and the required check under **Settings > Branches**.
 
 #### Reviewed dependency overrides
 

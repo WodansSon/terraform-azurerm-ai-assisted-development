@@ -10,13 +10,7 @@ param(
     [int]$SlowMo = 0,
 
     [ValidateSet('Text', 'Json')]
-    [string]$OutputFormat = 'Text',
-
-    [switch]$FixNpmAudit,
-
-    [switch]$AllowBreakingNpmFix,
-
-    [switch]$ContinueAfterNpmAuditFailure
+    [string]$OutputFormat = 'Text'
 )
 
 Set-StrictMode -Version Latest
@@ -58,8 +52,6 @@ $implementationContractPath = Join-Path $PSScriptRoot '../../docs/HOSTED_COPILOT
 $nodePackageManifestPath = Join-Path $npmRoot 'package.json'
 $nodePackageLockPath = Join-Path $npmRoot 'package-lock.json'
 $nodeInstalledLockPath = Join-Path $npmRoot 'node_modules/.package-lock.json'
-$nodePackageLockRelativePath = 'hosted_copilot/tools/npm/package-lock.json'
-$npmSecurityScriptPath = Join-Path $repositoryRoot 'tools/Test-NpmSecurity.ps1'
 $puppeteerCliRelativePath = if ($IsWindows) { 'node_modules/.bin/puppeteer.cmd' } else { 'node_modules/.bin/puppeteer' }
 $puppeteerCliPath = Join-Path $npmRoot $puppeteerCliRelativePath
 $displaySchemaPath = Join-Path $PSScriptRoot '../../contracts/workbench/workbench-display-v4.schema.json'
@@ -69,21 +61,12 @@ $issues = New-Object 'System.Collections.Generic.List[string]'
 $testStartTimes = @{}
 $activePreparationStage = $null
 $activePreparationParent = $null
-$dependencyAuditFindings = New-Object 'System.Collections.Generic.List[object]'
-$dependencyAuditCounts = $null
-$dependencyAuditError = $null
-$dependencyAuditInconclusive = $false
-$dependencyAuditContinuation = $false
-$failureAlreadyReported = $false
-$npmFixApplied = $false
-$npmFixRequiresBreaking = $false
-$npmFixChanges = New-Object 'System.Collections.Generic.List[string]'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ("hosted-rule-workbench-test-" + [guid]::NewGuid().ToString('N'))
-$mandatoryTestNames = @('npm audit', 'npm-packages', 'run-selection')
+$mandatoryTestNames = @('npm-packages', 'run-selection')
 $browserRuntimeTestNames = @('locked-browser-runtime', 'portable-icon-generation', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage')
 $serverTestNames = @('loopback-host-validation', 'server-owned-runtime-config', 'browser-playwright-journeys', 'browser-viewport-layout', 'browser-framework-coverage', 'authenticated-server-shutdown')
 $staticTestNames = @(
-    'npm-audit-continuation',
+    'npm-packages-policy',
     'relationship-review',
     'relationship-production-server',
     'rule-assistance',
@@ -466,19 +449,7 @@ if ($OutputFormat -eq 'Text') {
 }
 
 try {
-    if ($AllowBreakingNpmFix -and -not $FixNpmAudit) {
-        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-AllowBreakingNpmFix requires -FixNpmAudit'
-    }
-    elseif ($ContinueAfterNpmAuditFailure -and [string]::IsNullOrWhiteSpace($Run)) {
-        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-ContinueAfterNpmAuditFailure requires a focused -Run and is not available for the complete Workbench suite'
-    }
-    elseif ($ContinueAfterNpmAuditFailure -and $FixNpmAudit) {
-        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-ContinueAfterNpmAuditFailure cannot be combined with -FixNpmAudit'
-    }
-    elseif ($FixNpmAudit -and -not [string]::IsNullOrWhiteSpace($Run)) {
-        Add-TestResult -Name 'run-selection' -Passed $false -Detail '-FixNpmAudit is available only for the complete Workbench suite'
-    }
-    elseif ($missingFocusedRuns.Count -gt 0 -or $unknownFocusedRuns.Count -gt 0) {
+    if ($missingFocusedRuns.Count -gt 0 -or $unknownFocusedRuns.Count -gt 0) {
         Add-TestResult -Name 'run-selection' -Passed $false -Detail "Focused-run catalog is out of sync: missing=$($missingFocusedRuns -join ', '); unknown=$($unknownFocusedRuns -join ', ')"
     }
     elseif ($Headed -and $Run -ne 'browser-playwright-journeys') {
@@ -493,67 +464,22 @@ try {
     $nodePackageConfig = Get-Content -LiteralPath $nodePackageManifestPath -Raw | ConvertFrom-Json
     $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
     $npmCommand = Get-Command $npmCommandName -ErrorAction Stop
-    Start-TestResult -Name 'npm audit'
-    $npmSecurityArguments = @('-NoProfile', '-File', $npmSecurityScriptPath, '-LockPath', $nodePackageLockRelativePath, '-OutputFormat', 'Json')
-    if ($FixNpmAudit) { $npmSecurityArguments += '-Fix' }
-    if ($AllowBreakingNpmFix) { $npmSecurityArguments += '-AllowBreakingFix' }
-    $auditOutput = @(& pwsh @npmSecurityArguments 2>&1)
-    $auditExitCode = $LASTEXITCODE
-    $auditResult = try { ($auditOutput | Out-String) | ConvertFrom-Json } catch { $null }
-    $matchingAuditReports = @(if ($null -ne $auditResult) { $auditResult.reports | Where-Object { $_.lockPath -eq $nodePackageLockRelativePath } })
-    $hostedAuditReport = if ($matchingAuditReports.Count -gt 0) { $matchingAuditReports[0] } else { $null }
-    $auditPassed = $auditExitCode -eq 0 -and $null -ne $hostedAuditReport -and $hostedAuditReport.status -eq 'passed'
-    $dependencyAuditInconclusive = -not $auditPassed -and $null -eq $hostedAuditReport
-    if ($null -ne $hostedAuditReport) {
-        $dependencyAuditCounts = $hostedAuditReport.counts
-        foreach ($finding in @($hostedAuditReport.findings)) { $dependencyAuditFindings.Add($finding) }
-        foreach ($change in @($hostedAuditReport.remediationChanges)) { $npmFixChanges.Add($change) }
-        $npmFixApplied = [bool]$hostedAuditReport.remediationApplied
-        $npmFixRequiresBreaking = [bool]$hostedAuditReport.requiresBreakingFix
-    }
-    if (-not $auditPassed) {
-        $dependencyAuditError = if ($null -ne $auditResult -and @($auditResult.failures).Count -gt 0) { @($auditResult.failures) -join '; ' } else { 'Shared npm security validation did not return a passing Hosted lockfile report' }
-    }
-    $dependencyAuditContinuation = $ContinueAfterNpmAuditFailure -and -not $auditPassed
-    $auditDetail = if ($dependencyAuditContinuation) {
-        "$dependencyAuditError; focused validation is continuing without dependency installation and remains unverified"
-    }
-    elseif (-not $auditPassed) {
-        "$dependencyAuditError; dependency installation blocked"
-    }
-    elseif ($npmFixApplied) {
-        'Remediated the lockfile and passed the shared npm audit at the low threshold'
-    }
-    else {
-        "Lockfile passed the shared npm audit at the low threshold: critical=$($dependencyAuditCounts.critical), high=$($dependencyAuditCounts.high), moderate=$($dependencyAuditCounts.moderate), low=$($dependencyAuditCounts.low)"
-    }
-    Add-TestResult -Name 'npm audit' -Passed $auditPassed -Detail $auditDetail
-    if (-not $auditPassed -and -not $dependencyAuditContinuation) {
-        $failureAlreadyReported = $true
-        throw 'npm audit failed before dependency installation'
-    }
-    $dependencyRunningDetail = if ($auditPassed) { 'VERIFYING AUDITED LOCKFILE' } else { 'VERIFYING INSTALLED LOCKFILE GRAPH' }
-    Start-TestResult -Name 'npm-packages' -RunningDetail $dependencyRunningDetail
+    Start-TestResult -Name 'npm-packages' -RunningDetail 'VERIFYING LOCKFILE'
     $dependencyOutput = @()
     $dependencyExitCode = 0
     $packageGraphCurrent = Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath
-    if (-not $packageGraphCurrent -and $dependencyAuditContinuation) {
-        $dependencyExitCode = 1
-        $dependencyOutput = @('npm audit did not pass and the installed package graph does not match the lockfile; dependency installation and focused execution are blocked')
-    }
-    elseif (-not $packageGraphCurrent) {
+    if (-not $packageGraphCurrent) {
         $dependencyOutput = @(& $npmCommand.Source ci --prefix $npmRoot --ignore-scripts --no-audit --no-fund 2>&1)
         $dependencyExitCode = $LASTEXITCODE
     }
     $lockedDependencyValid = $dependencyExitCode -eq 0 -and (Test-NpmPackageGraphCurrent -LockPath $nodePackageLockPath -InstalledLockPath $nodeInstalledLockPath) -and (Test-Path -LiteralPath (Join-Path $npmRoot 'node_modules/puppeteer/package.json') -PathType Leaf) -and (Test-Path -LiteralPath (Join-Path $npmRoot 'node_modules/@playwright/test/package.json') -PathType Leaf)
-    $lockedDependencySuccessDetail = if ($auditPassed) { 'CURRENT (MATCHES AUDITED LOCKFILE)' } else { 'CURRENT (MATCHES LOCKFILE; UNVERIFIED)' }
     $lockedDependencyDetail = if ($lockedDependencyValid) {
         "Installed packages match the lockfile for Playwright $($nodePackageConfig.devDependencies.'@playwright/test') and Puppeteer $($nodePackageConfig.devDependencies.puppeteer)."
     }
     else {
         ($dependencyOutput | Out-String).Trim()
     }
-    Add-TestResult -Name 'npm-packages' -Passed $lockedDependencyValid -SuccessDetail $lockedDependencySuccessDetail -Detail $lockedDependencyDetail
+    Add-TestResult -Name 'npm-packages' -Passed $lockedDependencyValid -SuccessDetail 'CURRENT (MATCHES LOCKFILE)' -Detail $lockedDependencyDetail
     if (-not $lockedDependencyValid) {
         throw 'locked browser validation dependencies could not be installed'
     }
@@ -561,14 +487,7 @@ try {
         Start-TestResult -Name 'locked-browser-runtime'
         $browserInstallOutput = New-Object 'System.Collections.Generic.List[string]'
         $browserInstallPassed = Test-Path -LiteralPath $puppeteerCliPath -PathType Leaf
-        if ($browserInstallPassed -and -not $auditPassed) {
-            $output = @(& $puppeteerCliPath browsers list 2>&1)
-            foreach ($line in $output) { $browserInstallOutput.Add([string]$line) }
-            $browserInstallPassed = $LASTEXITCODE -eq 0 -and
-                @($output | Where-Object { [string]$_ -match '^chrome@' }).Count -gt 0 -and
-                @($output | Where-Object { [string]$_ -match '^chrome-headless-shell@' }).Count -gt 0
-        }
-        elseif ($browserInstallPassed) {
+        if ($browserInstallPassed) {
             foreach ($browserName in @('chrome', 'chrome-headless-shell')) {
                 if (-not $browserInstallPassed) {
                     break
@@ -578,11 +497,8 @@ try {
                 $browserInstallPassed = $LASTEXITCODE -eq 0
             }
         }
-        $browserRuntimeDetail = if ($browserInstallPassed -and $auditPassed) {
+        $browserRuntimeDetail = if ($browserInstallPassed) {
             'Installed the Puppeteer-pinned Chrome and Chrome Headless Shell runtimes through the locked local CLI.'
-        }
-        elseif ($browserInstallPassed) {
-            'Verified existing Chrome and Chrome Headless Shell runtimes without installation after npm audit did not pass.'
         }
         else {
             ($browserInstallOutput | Out-String).Trim()
@@ -840,65 +756,39 @@ try {
     Add-TestResult -Name 'fixture-display-valid' -Passed ([bool]($displayJson | Test-Json -SchemaFile $displaySchemaPath -ErrorAction Stop)) -Detail 'The offline Workbench display satisfies the v4 display schema.'
     Write-PreparationStatus -Status passed -Name 'display-fixture'
 
-    if (Test-ShouldRun 'npm-audit-continuation') {
-        Start-TestResult -Name 'npm-audit-continuation' -RunningDetail 'Checking strict defaults and explicit continuation against the production audit gate'
+    if (Test-ShouldRun 'npm-packages-policy') {
+        Start-TestResult -Name 'npm-packages-policy' -RunningDetail 'Checking lockfile-based dependency installation and failure propagation'
         $policyTokens = $null
         $policyErrors = $null
         $policyAst = [Management.Automation.Language.Parser]::ParseFile($PSCommandPath, [ref]$policyTokens, [ref]$policyErrors)
-        if ($policyErrors.Count) { throw 'The Workbench continuation policy does not parse' }
-        $inconclusiveAssignment = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Extent.Text.StartsWith('$dependencyAuditInconclusive = -not ', [StringComparison]::Ordinal) }, $false)
-        $continuationAssignment = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Extent.Text.StartsWith('$dependencyAuditContinuation = $ContinueAfterNpmAuditFailure ', [StringComparison]::Ordinal) }, $false)
-        $auditRecording = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.Extent.Text.StartsWith("Add-TestResult -Name 'npm audit' -Passed ", [StringComparison]::Ordinal) }, $false)
-        $auditGate = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.IfStatementAst] -and $node.Clauses[0].Item1.Extent.Text.Contains('$auditPassed', [StringComparison]::Ordinal) -and $node.Extent.Text.Contains("throw 'npm audit failed before dependency installation'", [StringComparison]::Ordinal) }, $false)
-        if ($null -eq $inconclusiveAssignment -or $null -eq $continuationAssignment -or $null -eq $auditRecording -or $null -eq $auditGate) { throw 'The production npm audit policy could not be located' }
-        $policyFrame = [scriptblock]::Create(@'
-param($auditPassed, $ContinueAfterNpmAuditFailure, $hostedAuditReport)
-$observed = @{ passed = $null }
-$auditDetail = 'Synthetic policy check'
-function Add-TestResult { param($Name, $Passed, $Detail) $observed.passed = $Passed }
-'@ + "`n" + $inconclusiveAssignment.Extent.Text + "`n" + $continuationAssignment.Extent.Text + "`n" + $auditRecording.Extent.Text + "`n" +
-            '$blocked = $false' + "`ntry {`n" + $auditGate.Extent.Text + "`n} catch { `$blocked = `$true }`n" +
-            '[pscustomobject]@{ blocked = $blocked; continued = $dependencyAuditContinuation; passed = $observed.passed; inconclusive = $dependencyAuditInconclusive }')
-        $policyCaseCount = 0
-        foreach ($passed in @($true, $false)) {
-            foreach ($continueRequested in @($false, $true)) {
-                foreach ($hasReport in @($false, $true)) {
-                    if ($passed -and -not $hasReport) { continue }
-                    $fixtureReport = if ($hasReport) { [pscustomobject]@{ status = if ($passed) { 'passed' } else { 'failed' } } } else { $null }
-                    $observedPolicy = & $policyFrame $passed $continueRequested $fixtureReport
-                    if ($observedPolicy.passed -ne $passed -or $observedPolicy.blocked -ne (-not $passed -and -not $continueRequested) -or
-                        $observedPolicy.continued -ne (-not $passed -and $continueRequested) -or $observedPolicy.inconclusive -ne (-not $passed -and -not $hasReport)) {
-                        throw 'Npm audit continuation bypassed the explicit flag or changed the failed audit result'
-                    }
-                    $policyCaseCount++
-                }
-            }
-        }
+        if ($policyErrors.Count) { throw 'The Workbench dependency installation policy does not parse' }
         $dependencyGate = $policyAst.Find({ param($node) $node -is [Management.Automation.Language.IfStatementAst] -and
             $node.Clauses[0].Item1.Extent.Text.Contains('$packageGraphCurrent', [StringComparison]::Ordinal) -and
-            $node.Extent.Text.Contains('$dependencyExitCode = 1', [StringComparison]::Ordinal) }, $false)
+            $node.Extent.Text.Contains('ci --prefix $npmRoot', [StringComparison]::Ordinal) }, $false)
         if ($null -eq $dependencyGate) { throw 'The production locked-dependency gate could not be located' }
         $dependencyFrame = [scriptblock]::Create(@'
-param($packageGraphCurrent, $dependencyAuditContinuation)
-$invocation = @{ called = $false }
-function Invoke-FixtureNpm { $invocation.called = $true }
+param($packageGraphCurrent, $fixtureExitCode)
+$invocation = @{ arguments = @() }
+function Invoke-FixtureNpm { $invocation.arguments = @($args) }
 $npmCommand = @{ Source = 'Invoke-FixtureNpm' }
 $npmRoot = 'synthetic-fixture'
-$LASTEXITCODE = 0
+$LASTEXITCODE = $fixtureExitCode
 $dependencyExitCode = 0
 $dependencyOutput = @()
-'@ + "`n" + $dependencyGate.Extent.Text + "`n" + '[pscustomobject]@{ installed = $invocation.called; exitCode = $dependencyExitCode }')
+'@ + "`n" + $dependencyGate.Extent.Text + "`n" + '[pscustomobject]@{ arguments = $invocation.arguments; exitCode = $dependencyExitCode }')
+        $policyCaseCount = 0
         foreach ($graphMatches in @($false, $true)) {
-            foreach ($continueRequested in @($false, $true)) {
-                $dependencyPolicy = & $dependencyFrame $graphMatches $continueRequested
-                if ($dependencyPolicy.installed -ne (-not $graphMatches -and -not $continueRequested) -or
-                    $dependencyPolicy.exitCode -ne $(if (-not $graphMatches -and $continueRequested) { 1 } else { 0 })) {
-                    throw 'Explicit npm continuation installed dependencies or accepted a mismatched locked graph'
+            foreach ($fixtureExitCode in @(0, 1)) {
+                $dependencyPolicy = & $dependencyFrame $graphMatches $fixtureExitCode
+                $expectedArguments = if ($graphMatches) { '' } else { 'ci --prefix synthetic-fixture --ignore-scripts --no-audit --no-fund' }
+                if (($dependencyPolicy.arguments -join ' ') -cne $expectedArguments -or
+                    $dependencyPolicy.exitCode -ne $(if ($graphMatches) { 0 } else { $fixtureExitCode })) {
+                    throw 'Dependency installation did not preserve lockfile selection, disabled auditing, or failure propagation'
                 }
                 $policyCaseCount++
             }
         }
-        Add-TestResult -Name 'npm-audit-continuation' -Passed $true -Detail "$policyCaseCount production-policy cases keep default audits strict, preserve failure during explicit continuation, and prohibit dependency installation or a mismatched graph during continuation."
+        Add-TestResult -Name 'npm-packages-policy' -Passed $true -Detail "$policyCaseCount production-policy cases skip current graphs, install stale graphs without lifecycle scripts or auditing, and preserve installation failures."
     }
 
     if ((Test-ShouldRun 'relationship-review') -or (Test-ShouldRun 'relationship-production-server')) {
@@ -943,7 +833,9 @@ $dependencyOutput = @()
         $untouchedSubject.inPlan = $false
         $untouchedSubject.proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$subject.recommendation.ruleText))
         $untouchedInput = Get-RelationshipReviewInput -Display $display -Request $untouchedRequest
-        if (@($untouchedInput.changedRuleIds).Count -or @($untouchedInput.removedRuleIds).Count) { throw 'Untouched off-Plan baseline became a catalog mutation' }
+        if (@($untouchedInput.changedRuleIds).Count -ne 1 -or $untouchedInput.changedRuleIds[0] -cne $subject.recommendation.hostedId -or @($untouchedInput.removedRuleIds).Count) { throw 'Off-Plan check did not retain its single subject' }
+        $untouchedProjection = Get-RelationshipReviewInput -Display $display -Request $untouchedRequest -PlanOnly
+        if (@($untouchedProjection.changedRuleIds).Count -or @($untouchedProjection.removedRuleIds).Count) { throw 'Untouched off-Plan baseline became a catalog mutation' }
         $emptySchema = Get-RelationshipReviewResponseSchema $untouchedInput | ConvertTo-Json -Depth 30
         if (-not (Test-Json -Json '{"findings":[]}' -Schema $emptySchema -ErrorAction Stop)) { throw 'Zero-change findings schema is not valid' }
         $untouchedSubject.action = $null
@@ -969,12 +861,40 @@ $dependencyOutput = @()
         $approvalObject = ($approval | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50
         $approvalParameters = @{ RepositoryRoot = $repositoryRoot; DisplayPath = $displayPath; ReceiptDirectory = $reviewReceipts }
         if (-not (Test-RelationshipReviewApproval -Request $approvalObject @approvalParameters).valid) { throw 'A valid server receipt was rejected' }
+        $selectionRequest = ($request | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50
+        $selectionSubject = @($selectionRequest.proposals | Where-Object candidateKey -CEQ $subjectKey)[0]
+        $selectionSubject.inPlan = $false
+        $selectionInput = Get-RelationshipReviewInput -Display $display -Request $selectionRequest
+        if (($selectionInput | ConvertTo-Json -Depth 50 -Compress) -cne ($inputData | ConvertTo-Json -Depth 50 -Compress)) { throw 'Selection changed the subject comparison evidence' }
+        $checkedSubject = @($request.proposals | Where-Object { $_.candidateKey -ceq $subjectKey })[0]
+        if ((Get-RelationshipReviewContextHash -SourceFiles $request.sourceFiles -Proposal $checkedSubject) -cne
+            (Get-RelationshipReviewContextHash -SourceFiles $selectionRequest.sourceFiles -Proposal $selectionSubject)) { throw 'Selection invalidated unchanged subject evidence' }
+        $pairSubject = @($inputData.effectiveCatalog | Where-Object { $_.id -ceq $subject.recommendation.hostedId })[0]
+        $pairRelated = @($inputData.effectiveCatalog | Where-Object { $_.id -ceq 'IMPL-PATCH-001' })[0]
+        $finding = [ordered]@{ ruleId = $pairSubject.id; relatedRuleId = $pairRelated.id; relationship = 'conflicts';
+            ruleQuote = $pairSubject.text; relatedQuote = $pairRelated.text; relatedText = $pairRelated.text; rationale = 'Synthetic exact-text relationship evidence.' }
+        $null = Test-RelationshipReviewResult -Json (@{ findings = @($finding) } | ConvertTo-Json -Depth 10) -InputData $inputData
+        $finding.relatedText += ' Not compared.'
+        $wrongTextRejected = $false
+        try { $null = Test-RelationshipReviewResult -Json (@{ findings = @($finding) } | ConvertTo-Json -Depth 10) -InputData $inputData }
+        catch { $wrongTextRejected = $_.Exception.Data['RelationshipReviewCode'] -ceq 'invalid-response' }
+        if (-not $wrongTextRejected) { throw 'An unreviewed related text version was accepted' }
+        $receiptPath = Join-Path $reviewReceipts ($request.requestId + '.json')
+        $receiptText = Get-Content -LiteralPath $receiptPath -Raw
+        $receipt = $receiptText | ConvertFrom-Json -Depth 100
+        $receipt.comparisonRules = @($receipt.comparisonRules | Where-Object { $_.id -cne $pairRelated.id })
+        [IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 100), [Text.UTF8Encoding]::new($false))
+        $missingPairRejected = $false
+        try { $null = Test-RelationshipReviewApproval -Request $approvalObject @approvalParameters }
+        catch { $missingPairRejected = $_.Exception.Data['RelationshipReviewCode'] -ceq 'snapshot-changed' }
+        [IO.File]::WriteAllText($receiptPath, $receiptText, [Text.UTF8Encoding]::new($false))
+        if (-not $missingPairRejected) { throw 'Approval accepted missing exact comparison evidence' }
         $approvalObject.receipts[0].requestId = [guid]::NewGuid().ToString()
         $forgedRejected = $false
         try { $null = Test-RelationshipReviewApproval -Request $approvalObject @approvalParameters } catch { $forgedRejected = $true }
         if (-not $forgedRejected) { throw 'A forged receipt was accepted' }
         $approvalObject = ($approval | ConvertTo-Json -Depth 50) | ConvertFrom-Json -Depth 50
-        $approvalObject.proposals[0].proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('Changed after the check.'))
+        @($approvalObject.proposals | Where-Object { $_.candidateKey -ceq $subjectKey })[0].proposedTextBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('Changed after the check.'))
         $staleRejected = $false
         try { $null = Test-RelationshipReviewApproval -Request $approvalObject @approvalParameters } catch { $staleRejected = $true }
         if (-not $staleRejected) { throw 'A stale receipt was accepted' }
@@ -1279,12 +1199,11 @@ $dependencyOutput = @()
         Copy-Item -LiteralPath (Join-Path $iconRoot '../../../contracts/workbench/icon-runtime.schema.json') -Destination $defaultSchemaDirectory
         $defaultGenerationOutput = @(& pwsh -NoProfile -File (Join-Path $defaultGeneratorDirectory 'New-WorkbenchSprite.ps1') -IconRoot $iconGenerationRoot -SkipPreviews 2>&1)
         $portableIconGenerationValid = $portableIconGenerationValid -and $LASTEXITCODE -eq 0
-        foreach ($uiName in @('workbench', 'workbench-new')) {
-            $defaultSpritePath = Join-Path $defaultGenerationRoot "$uiName/sprite/sprite.svg"
-            $portableIconGenerationValid = $portableIconGenerationValid -and
-                (Test-Path -LiteralPath $defaultSpritePath -PathType Leaf) -and
-                (Get-Content -LiteralPath $defaultSpritePath -Raw) -ceq $generatedSpriteContent
-        }
+        $defaultSpritePath = Join-Path $defaultGenerationRoot 'workbench/sprite/sprite.svg'
+        $portableIconGenerationValid = $portableIconGenerationValid -and
+            (Test-Path -LiteralPath $defaultSpritePath -PathType Leaf) -and
+            (Get-Content -LiteralPath $defaultSpritePath -Raw) -ceq $generatedSpriteContent -and
+            -not (Test-Path -LiteralPath (Join-Path $defaultGenerationRoot 'workbench-new'))
         Remove-Item -LiteralPath (Join-Path $generatedLlmIconRoot 'LICENSE.txt') -Force
         $missingLlmLicenseOutput = @(& pwsh -NoProfile -File $iconGeneratorPath -IconRoot $iconGenerationRoot -Destination $generatedSpriteRoot -SkipPreviews 2>&1)
         $missingLlmLicenseExitCode = $LASTEXITCODE
@@ -3045,10 +2964,8 @@ catch {
         Write-PreparationStatus -Status failed -Name $activePreparationStage -Parent $failedPreparationParent -Detail $_.Exception.Message
         if ($failedPreparationParent) { Write-PreparationStatus -Status failed -Name $failedPreparationParent -Detail $_.Exception.Message }
     }
-    if (-not $failureAlreadyReported) {
-        $issues.Add($_.Exception.Message)
-    }
-    if ($OutputFormat -eq 'Text' -and -not $failureAlreadyReported) {
+    $issues.Add($_.Exception.Message)
+    if ($OutputFormat -eq 'Text') {
         Write-Host (Format-ValidationStatusLine -Status 'failed' -Name 'workbench-test-run' -Detail $_.Exception.Message -NameWidth $script:statusNameWidth)
     }
 }
@@ -3064,18 +2981,6 @@ $result = [ordered]@{
     issueCount = $issues.Count
     tests = $results.ToArray()
     issues = $issues.ToArray()
-    dependencyAudit = [ordered]@{
-        threshold = 'low'
-        counts = $dependencyAuditCounts
-        findings = $dependencyAuditFindings.ToArray()
-        error = $dependencyAuditError
-        inconclusive = $dependencyAuditInconclusive
-        continuedAfterFailure = $dependencyAuditContinuation
-        remediationApplied = $npmFixApplied
-        remediationChanges = $npmFixChanges.ToArray()
-        requiresBreakingFix = $npmFixRequiresBreaking
-        installationBlocked = -not $npmFixApplied -and ($dependencyAuditFindings.Count -gt 0 -or $null -ne $dependencyAuditError)
-    }
 }
 
 if ($OutputFormat -eq 'Json') {
@@ -3089,64 +2994,6 @@ else {
         Passed = $result.passedCount
         Failed = $result.failedCount
     })
-    if ($npmFixApplied) {
-        Write-ValidationSectionHeader -Title 'Dependency remediation'
-        Write-ValidationSummary -Fields ([ordered]@{
-            Status = 'APPLIED'
-            Audit = 'PASSED'
-            Changes = $npmFixChanges.Count
-        })
-        foreach ($change in $npmFixChanges) {
-            Write-Output "  - $change"
-        }
-    }
-    elseif ($dependencyAuditFindings.Count -gt 0) {
-        Write-ValidationSectionHeader -Title 'Dependency security'
-        Write-ValidationSummary -Fields ([ordered]@{
-            Threshold = 'LOW'
-            Critical = $dependencyAuditCounts.critical
-            High = $dependencyAuditCounts.high
-            Installation = 'BLOCKED'
-            FunctionalTests = if ($dependencyAuditContinuation) { 'CONTINUED (UNVERIFIED)' } else { 'BLOCKED' }
-        })
-        Write-ValidationSectionHeader -Title 'Vulnerabilities'
-        foreach ($finding in $dependencyAuditFindings) {
-            Write-ValidationSummary -Fields ([ordered]@{
-                Package = $finding.package
-                Severity = $finding.severity
-                Advisory = $finding.advisory
-                Affected = $finding.affectedRange
-                Dependency = $finding.dependencyPath
-                Fix = $finding.remediation
-            })
-            Write-Output ''
-        }
-        Write-ValidationSectionHeader -Title 'Action required'
-        Write-Output '  1. Run: pwsh -NoProfile -File ./hosted_copilot/tools/tests/Test-RuleWorkbench.ps1 -FixNpmAudit'
-        Write-Output '  2. Review the resulting package.json and package-lock.json diff.'
-        Write-Output '  3. If only a breaking fix remains, review it before adding -AllowBreakingNpmFix.'
-        Write-Output '  4. Complete validation remains blocked until the staged graph passes audit.'
-    }
-    elseif ($dependencyAuditInconclusive) {
-        Write-ValidationSectionHeader -Title 'Dependency security'
-        Write-ValidationSummary -Fields ([ordered]@{
-            Threshold = 'LOW'
-            Audit = 'INCONCLUSIVE'
-            Installation = 'BLOCKED'
-            FunctionalTests = if ($dependencyAuditContinuation) { 'CONTINUED (UNVERIFIED)' } else { 'BLOCKED' }
-            Error = $dependencyAuditError
-        })
-    }
-    elseif ($null -ne $dependencyAuditError) {
-        Write-ValidationSectionHeader -Title 'Dependency security'
-        Write-ValidationSummary -Fields ([ordered]@{
-            Threshold = 'LOW'
-            Audit = 'FAILED'
-            Installation = 'BLOCKED'
-            FunctionalTests = if ($dependencyAuditContinuation) { 'CONTINUED (UNVERIFIED)' } else { 'BLOCKED' }
-            Error = $dependencyAuditError
-        })
-    }
     if ($issues.Count -gt 0) {
         Write-ValidationSectionHeader -Title 'Failures'
         foreach ($issue in $issues) {

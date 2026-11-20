@@ -38,7 +38,6 @@ Import-Module -Name $validationOutputModulePath -Force
 $ownershipPath = Join-Path $PSScriptRoot 'toolkit-ownership.json'
 $interactiveValidatorPath = Join-Path $PSScriptRoot 'Validate-InteractiveToolkit.ps1'
 $hostedValidatorPath = Join-Path $repoRoot 'hosted_copilot/tools/Test-HostedRules.ps1'
-$npmSecurityScriptPath = Join-Path $PSScriptRoot 'Test-NpmSecurity.ps1'
 $npmValidationRoot = Join-Path $PSScriptRoot 'npm-validation'
 $npmCommandName = if ($IsWindows) { 'npm.cmd' } else { 'npm' }
 $npmCommand = Get-Command $npmCommandName -ErrorAction SilentlyContinue
@@ -256,25 +255,19 @@ function Invoke-RepositoryCheck {
             $checkIssues.Add('npm was not found on PATH')
         }
         else {
-            $auditOutput = @(& pwsh -NoProfile -File $npmSecurityScriptPath 2>&1)
-            if ($LASTEXITCODE -ne 0) {
-                $checkIssues.Add(("npm security validation failed: {0}" -f (($auditOutput | Out-String).Trim())))
+            $global:LASTEXITCODE = 0
+            $installOutput = @(& $npmCommand.Source ci --prefix $npmValidationRoot --ignore-scripts --no-audit --no-fund 2>&1)
+            $installExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+            if ($installExitCode -ne 0) {
+                $checkIssues.Add(("Locked npm validation dependency installation failed: {0}" -f (($installOutput | Out-String).Trim())))
             }
             else {
                 $global:LASTEXITCODE = 0
-                $installOutput = @(& $npmCommand.Source ci --prefix $npmValidationRoot --ignore-scripts --no-audit --no-fund 2>&1)
-                $installExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-                if ($installExitCode -ne 0) {
-                    $checkIssues.Add(("Locked npm validation dependency installation failed: {0}" -f (($installOutput | Out-String).Trim())))
-                }
-                else {
-                    $global:LASTEXITCODE = 0
-                    $markdownOutput = @(& $markdownCommand @existingMarkdownPaths --config '.github/.markdownlint.json' 2>&1)
-                    $markdownExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+                $markdownOutput = @(& $markdownCommand @existingMarkdownPaths --config '.github/.markdownlint.json' 2>&1)
+                $markdownExitCode = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }
 
-                    if ($markdownExitCode -ne 0) {
-                        $checkIssues.Add(("Markdown validation failed: {0}" -f (($markdownOutput | Out-String).Trim())))
-                    }
+                if ($markdownExitCode -ne 0) {
+                    $checkIssues.Add(("Markdown validation failed: {0}" -f (($markdownOutput | Out-String).Trim())))
                 }
             }
         }

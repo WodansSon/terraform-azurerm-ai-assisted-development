@@ -32,6 +32,10 @@ support compact status surfaces. Link Dismiss is the native-16px semantic
 substitute for Link Off, which has no 16px upstream asset. Gauge Regular conveys
 remaining Hosted guidance capacity.
 
+The runtime sprite includes the native 16px Regular Link Multiple and Link
+Dismiss variants for status-bar previews. The Filled variants remain available
+for existing consumers.
+
 The generated runtime `sprite.svg` contains only icons currently consumed by
 the Workbench, as declared in the adjacent `runtime.json` alongside runtime legal
 notices. The shared builder used by every icon family generates both assets.

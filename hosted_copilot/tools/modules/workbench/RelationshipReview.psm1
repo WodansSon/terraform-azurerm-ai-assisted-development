@@ -148,6 +148,27 @@ function Get-RelationshipReviewInput {
         $record.proposal = [ordered]@{ action = $proposal.action; inPlan = $proposal.inPlan; text = $text; retireHostedRuleIds = @($proposal.retireHostedRuleIds) }
     }
     if ($seen.Count -ne $records.Count) { throw (New-RelationshipReviewException 'invalid-request') }
+    if (-not $PlanOnly) {
+        $subject = $records[[string]$Request.candidateKey]
+        $comparisons = [Collections.Generic.List[object]]::new()
+        $versions = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        $comparisons.Add([ordered]@{ id = $subject.id; status = 'proposed'; text = $subject.proposal.text })
+        foreach ($rule in $rules.Values) {
+            if ($rule.id -ceq $subject.id -or $rule.status -cnotin @('active', 'protected')) { continue }
+            if ($versions.Add("$($rule.id)`0$($rule.text)")) { $comparisons.Add($rule) }
+        }
+        foreach ($record in $records.Values) {
+            if ($record.id -ceq $subject.id) { continue }
+            if ($versions.Add("$($record.id)`0$($record.proposal.text)")) {
+                $comparisons.Add([ordered]@{ id = $record.id; status = 'proposed'; text = $record.proposal.text })
+            }
+        }
+        return [ordered]@{
+            changedRuleIds = @($subject.id)
+            removedRuleIds = @()
+            effectiveCatalog = @($comparisons | Sort-Object -Property id, text -CaseSensitive)
+        }
+    }
     $effective = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
     foreach ($rule in $rules.Values) { if ($rule.status -cin @('active', 'protected')) { $effective.Add($rule.id, $rule) } }
     $changed = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
@@ -191,12 +212,12 @@ function Get-RelationshipReviewResponseSchema {
         '$schema' = 'https://json-schema.org/draft/2020-12/schema'; type = 'object'; additionalProperties = $false; required = @('findings')
         properties = [ordered]@{ findings = [ordered]@{
             type = 'array'; uniqueItems = $true
-            items = [ordered]@{ type = 'object'; additionalProperties = $false; required = @('ruleId', 'relatedRuleId', 'relationship', 'ruleQuote', 'relatedQuote', 'rationale')
+            items = [ordered]@{ type = 'object'; additionalProperties = $false; required = @('ruleId', 'relatedRuleId', 'relationship', 'ruleQuote', 'relatedQuote', 'relatedText', 'rationale')
                 properties = [ordered]@{
                     ruleId = @{ type = 'string'; enum = @($InputData.changedRuleIds) }
-                    relatedRuleId = @{ type = 'string'; enum = @($InputData.effectiveCatalog | ForEach-Object id) }
+                    relatedRuleId = @{ type = 'string'; enum = @($InputData.effectiveCatalog | ForEach-Object id | Sort-Object -Unique -CaseSensitive) }
                     relationship = @{ enum = @('equivalent', 'partial-overlap', 'conflicts') }
-                    ruleQuote = @{ type = 'string'; minLength = 1 }; relatedQuote = @{ type = 'string'; minLength = 1 }; rationale = @{ type = 'string'; minLength = 1 }
+                    ruleQuote = @{ type = 'string'; minLength = 1 }; relatedQuote = @{ type = 'string'; minLength = 1 }; relatedText = @{ type = 'string'; minLength = 1 }; rationale = @{ type = 'string'; minLength = 1 }
                 }
             }
         } }
@@ -214,14 +235,15 @@ function Test-RelationshipReviewResult {
     try { if (-not (Test-Json -Json $Json -Schema $schema -ErrorAction Stop)) { throw 'invalid' } }
     catch { throw (New-RelationshipReviewException 'invalid-response') }
     $result = $Json | ConvertFrom-Json -Depth 30 -DateKind String
-    $rules = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
-    foreach ($rule in $InputData.effectiveCatalog) { $rules.Add($rule.id, $rule.text) }
     $pairs = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($finding in $result.findings) {
-        $pair = (@($finding.ruleId, $finding.relatedRuleId) | Sort-Object -CaseSensitive) -join "`0"
+        $subject = @($InputData.effectiveCatalog | Where-Object { $_.id -ceq $finding.ruleId })
+        $related = @($InputData.effectiveCatalog | Where-Object { $_.id -ceq $finding.relatedRuleId -and $_.text -ceq $finding.relatedText })
+        $pair = "$($finding.ruleId)`0$($finding.relatedRuleId)`0$($finding.relatedText)"
         if ($finding.ruleId -ceq $finding.relatedRuleId -or -not $pairs.Add($pair) -or
-            -not $rules[$finding.ruleId].Contains($finding.ruleQuote, [StringComparison]::Ordinal) -or
-            -not $rules[$finding.relatedRuleId].Contains($finding.relatedQuote, [StringComparison]::Ordinal)) { throw (New-RelationshipReviewException 'invalid-response') }
+            $subject.Count -ne 1 -or $related.Count -ne 1 -or
+            -not $subject[0].text.Contains($finding.ruleQuote, [StringComparison]::Ordinal) -or
+            -not $related[0].text.Contains($finding.relatedQuote, [StringComparison]::Ordinal)) { throw (New-RelationshipReviewException 'invalid-response') }
     }
     return $result
 }
@@ -243,7 +265,7 @@ function Test-RelationshipReviewApproval {
         if ($proposal.action -cin @('add', 'update', 'retire', 'restore') -or $text.Replace("`r`n", "`n") -cne ([string]$candidate.recommendation.ruleText).Replace("`r`n", "`n") -or @($proposal.retireHostedRuleIds).Count) { $null = $required.Add([string]$proposal.candidateKey) }
     }
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    $contextHash = Get-JsonSnapshotSha256 -Depth 100 -Value ([ordered]@{ sourceFiles = $Request.sourceFiles; proposals = $Request.proposals })
+    $receipts = [Collections.Generic.List[object]]::new()
     foreach ($entry in $Request.receipts) {
         Assert-RelationshipReviewProperties $entry @('candidateKey', 'requestId')
         $receiptId = [guid]::Empty
@@ -251,16 +273,50 @@ function Test-RelationshipReviewApproval {
         $path = Join-Path $ReceiptDirectory ($receiptId.ToString() + '.json')
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw (New-RelationshipReviewException 'snapshot-changed') }
         $receipt = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -Depth 100 -DateKind String
-        if ($receipt.candidateKey -cne $entry.candidateKey -or $receipt.authoritySha256 -cne $runtime.authoritySha256 -or $receipt.contextSha256 -cne $contextHash -or @($receipt.result.findings).Count) { throw (New-RelationshipReviewException 'snapshot-changed') }
+        $proposal = @($Request.proposals | Where-Object { $_.candidateKey -ceq $entry.candidateKey })
+        if ($proposal.Count -ne 1) { throw (New-RelationshipReviewException 'invalid-request') }
+        $contextHash = Get-RelationshipReviewContextHash -SourceFiles $Request.sourceFiles -Proposal $proposal[0]
+        if ($receipt.candidateKey -cne $entry.candidateKey -or $receipt.authoritySha256 -cne $runtime.authoritySha256 -or $receipt.contextSha256 -cne $contextHash) { throw (New-RelationshipReviewException 'snapshot-changed') }
+        $receipts.Add($receipt)
         $null = $required.Remove([string]$entry.candidateKey)
     }
     if ($required.Count) { throw (New-RelationshipReviewException 'snapshot-changed') }
     if (@($Request.proposals).Count) {
         $probe = [pscustomobject][ordered]@{ schemaVersion = 1; requestId = [guid]::NewGuid().ToString(); authoritySha256 = $runtime.authoritySha256; snapshotKey = '0' * 64;
             candidateKey = [string]$Request.proposals[0].candidateKey; sourceFiles = $Request.sourceFiles; proposals = $Request.proposals }
-        $null = Get-RelationshipReviewInput -Display $display -Request $probe -PlanOnly
+        $projection = Get-RelationshipReviewInput -Display $display -Request $probe -PlanOnly
+        foreach ($ruleId in $projection.changedRuleIds) {
+            $rule = @($projection.effectiveCatalog | Where-Object { $_.id -ceq $ruleId })[0]
+            foreach ($related in $projection.effectiveCatalog) {
+                if ($related.id -ceq $ruleId) { continue }
+                $covered = $false
+                foreach ($receipt in $receipts) {
+                    $subjectId = [string]$receipt.result.changedRuleIds[0]
+                    $subject = @($receipt.comparisonRules | Where-Object { $_.id -ceq $subjectId })[0]
+                    if ($subject.id -ceq $rule.id -and $subject.text -ceq $rule.text) {
+                        $target = $related
+                    } elseif ($subject.id -ceq $related.id -and $subject.text -ceq $related.text) {
+                        $target = $rule
+                    } else { continue }
+                    if (@($receipt.comparisonRules | Where-Object { $_.id -ceq $target.id -and $_.text -ceq $target.text }).Count -eq 0) { continue }
+                    if (@($receipt.result.findings | Where-Object { $_.relatedRuleId -ceq $target.id -and $_.relatedText -ceq $target.text }).Count) { throw (New-RelationshipReviewException 'snapshot-changed') }
+                    $covered = $true
+                }
+                if (-not $covered) { throw (New-RelationshipReviewException 'snapshot-changed') }
+            }
+        }
     }
     return [ordered]@{ valid = $true }
 }
 
-Export-ModuleMember -Function New-RelationshipReviewException, Wait-RelationshipReviewTask, Get-RelationshipReviewFailure, Get-RelationshipReviewRuntime, Start-RelationshipReviewRequest, Get-RelationshipReviewInput, Get-RelationshipReviewResponseSchema, Test-RelationshipReviewResult, Test-RelationshipReviewApproval
+function Get-RelationshipReviewContextHash {
+    param([Parameter(Mandatory)][object]$SourceFiles, [Parameter(Mandatory)][object]$Proposal)
+    return Get-JsonSnapshotSha256 -Depth 100 -Value ([ordered]@{
+        sourceFiles = $SourceFiles
+        candidateKey = $Proposal.candidateKey
+        sourceHash = $Proposal.sourceHash
+        proposedTextBase64 = $Proposal.proposedTextBase64
+    })
+}
+
+Export-ModuleMember -Function New-RelationshipReviewException, Wait-RelationshipReviewTask, Get-RelationshipReviewFailure, Get-RelationshipReviewRuntime, Start-RelationshipReviewRequest, Get-RelationshipReviewInput, Get-RelationshipReviewResponseSchema, Test-RelationshipReviewResult, Test-RelationshipReviewApproval, Get-RelationshipReviewContextHash

@@ -9,9 +9,9 @@
   "sprite": {
     "icons": [
       "add", "arrow-left", "chat-sparkle-error", "check", "check-compact", "checklist",
-      "chevron-down", "chevron-right-compact", "chevron-up", "circle-slash-compact", "close",
-      "cloud-upload", "collection", "copilot", "copy", "debug-restart", "diff", "diff-modified",
-      "discard", "download", "edit", "edit-compact", "ellipsis", "error", "folder", "git-branch-compact",
+      "chevron-down", "chevron-right-compact", "chevron-up", "circle-slash", "circle-slash-compact", "close",
+      "cloud-upload", "collection", "copilot", "copy", "debug-restart", "debug-restart-frame", "diff", "diff-modified",
+      "discard", "download", "edit", "edit-compact", "ellipsis", "error", "folder", "git-branch", "git-branch-compact",
       "git-branch-conflicts", "git-pull-request-done", "git-pull-request-draft", "git-stash-apply", "inbox", "info", "json", "kebab-vertical", "layout-sidebar-right",
       "layout-sidebar-right-off", "list-selection", "lock", "new-session", "open-in-window",
       "open-preview", "pass", "pass-compact", "pass-filled", "question", "ruby", "save", "search", "shield",

@@ -83,13 +83,16 @@ try {
         authoritySha256 = $runtime.authoritySha256; snapshotKey = $request.snapshotKey
         inputSha256 = Get-JsonSnapshotSha256 -Value $inputData -Depth 100
         changedRuleIds = $inputData.changedRuleIds; removedRuleIds = $inputData.removedRuleIds
-        effectiveRuleIds = @($inputData.effectiveCatalog | ForEach-Object id); findings = @($result.findings)
+        effectiveRuleIds = @($inputData.effectiveCatalog | ForEach-Object id | Sort-Object -Unique -CaseSensitive); findings = @($result.findings)
+        comparisonRules = @($inputData.effectiveCatalog | ForEach-Object { [ordered]@{ id = $_.id; text = $_.text } })
         elapsedMilliseconds = [int]$watch.ElapsedMilliseconds; model = $runtime.model; reasoningEffort = $runtime.reasoningEffort
     }
     if ($ReceiptDirectory) {
         $null = [IO.Directory]::CreateDirectory($ReceiptDirectory)
         $receipt = [ordered]@{ candidateKey = $request.candidateKey; authoritySha256 = $runtime.authoritySha256;
-            contextSha256 = Get-JsonSnapshotSha256 -Depth 100 -Value ([ordered]@{ sourceFiles = $request.sourceFiles; proposals = $request.proposals }); result = $response }
+            contextSha256 = Get-RelationshipReviewContextHash -SourceFiles $request.sourceFiles -Proposal (@($request.proposals | Where-Object { $_.candidateKey -ceq $request.candidateKey })[0])
+            comparisonRules = $inputData.effectiveCatalog
+            result = $response }
         Write-JsonSnapshot -Path (Join-Path $ReceiptDirectory ([string]$request.requestId + '.json')) -Value $receipt
     }
     Write-JsonSnapshot -Path $OutputPath -Value $response

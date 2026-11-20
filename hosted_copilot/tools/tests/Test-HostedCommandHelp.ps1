@@ -55,8 +55,8 @@ try {
 
     Write-TestProgress -Name 'tools-root-layout' -Detail 'Checking that only public entry points and the README occupy the tools root'
     $rootFiles = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '..') -File | ForEach-Object Name | Sort-Object)
-    $expectedRootFiles = @('Install-HostedRules.ps1', 'Invoke-HostedReview.ps1', 'README.md', 'Start-RuleWorkbench.ps1', 'Start-RuleWorkbenchNew.ps1', 'Test-HostedRules.ps1') | Sort-Object
-    Add-TestResult -Name 'tools-root-layout' -Passed (@(Compare-Object $expectedRootFiles $rootFiles).Count -eq 0) -Detail 'The tools root contains exactly the five public commands and README; support files belong in their owning folders.'
+    $expectedRootFiles = @('Install-HostedRules.ps1', 'Invoke-HostedReview.ps1', 'README.md', 'Start-RuleWorkbench.ps1', 'Test-HostedRules.ps1') | Sort-Object
+    Add-TestResult -Name 'tools-root-layout' -Passed (@(Compare-Object $expectedRootFiles $rootFiles).Count -eq 0) -Detail 'The tools root contains exactly the four public commands and README; support files belong in their owning folders.'
 
     Write-TestProgress -Name 'native-help-content' -Detail 'Reading standard PowerShell help and parameter-set metadata'
     $nativeHelp = Get-Help -Name $fixturePath -Full
@@ -111,10 +111,9 @@ try {
         -not (Test-Path -LiteralPath $sentinelPath)
     Add-TestResult -Name 'help-alias-equivalence' -Passed $aliasesValid -Detail 'Help, h, and Detailed return identical curated output, while native question-mark help succeeds and every help path exits before fixture work.'
 
-    Write-TestProgress -Name 'registered-command-help' -Detail 'Validating all five maintainer command menus and native help topics'
+    Write-TestProgress -Name 'registered-command-help' -Detail 'Validating all four maintainer command menus and native help topics'
     $registeredCommands = @(
         @{ Path = $workbenchLauncherPath; Title = 'HOSTED RULE WORKBENCH HELP'; Synopsis = 'Launches or rebuilds the Hosted Rule Workbench'; Groups = @('WORKFLOW OPTIONS', 'SERVER AND OUTPUT', 'EVALUATION', 'STORAGE AND RECOVERY', 'AUTHORIZATION') },
-        @{ Path = (Join-Path $PSScriptRoot '../Start-RuleWorkbenchNew.ps1'); Title = 'WORKBENCH NEW HELP'; Synopsis = 'Starts the isolated native SQL Workbench New comparison instance'; Groups = @('STORAGE', 'SERVER AND OUTPUT') },
         @{ Path = $installerPath; Title = 'HOSTED RULES INSTALLATION HELP'; Synopsis = 'Plans or installs the Hosted Toolkit payload'; Groups = @('DEPLOYMENT OPTIONS', 'TARGET AND PACKAGE', 'OUTPUT') },
         @{ Path = $reviewCommandPath; Title = 'HOSTED REVIEW WORKFLOW HELP'; Synopsis = 'Starts, resumes, adjudicates, or cleans up a controlled Hosted review'; Groups = @('REVIEW LIFECYCLE', 'REVIEW QUALITY', 'TARGET REPOSITORY') },
         @{ Path = $validatorPath; Title = 'HOSTED RULES VALIDATION HELP'; Synopsis = 'Validates the complete Hosted Toolkit source checkout'; Groups = @('VALIDATION SCOPE', 'OUTPUT') }
@@ -160,7 +159,7 @@ try {
         $env:LOCALAPPDATA = $previousLocalAppData
     }
     $registeredCommandsValid = $registeredCommandsValid -and -not (Test-Path -LiteralPath $isolatedLocalAppData)
-    Add-TestResult -Name 'registered-command-help' -Passed $registeredCommandsValid -Detail 'All five maintainer commands expose complete native help plus equivalent side-effect-free Help, h, and Detailed menus.'
+    Add-TestResult -Name 'registered-command-help' -Passed $registeredCommandsValid -Detail 'All four maintainer commands expose complete native help plus equivalent side-effect-free Help, h, and Detailed menus.'
 
     Write-TestProgress -Name 'workbench-argument-contract' -Detail 'Rejecting incomplete and conflicting Workbench invocations before operation'
     $forceWithoutRebuildOutput = @(& pwsh -NoProfile -File $workbenchLauncherPath -Force -StageOnly 2>&1)
