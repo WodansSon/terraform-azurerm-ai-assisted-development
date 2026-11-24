@@ -71,7 +71,8 @@ Before review execution, capture:
 
 - A collision-resistant run ID and session ID when available.
 - UTC start time in ISO 8601 format and a filename-safe UTC timestamp with
-  microsecond precision, such as `20261124T045317123456Z`.
+  second precision in `YYYYMMDDTHHMISS` format, such as `20261124T045317`
+  (`%Y%m%dT%H%M%S`), without fractional seconds or a trailing `Z`.
 - Repository root and repository identity from direct Git evidence.
 - Branch, full initial HEAD SHA, and initial porcelain worktree status.
 - Requested PR and expected commit, if supplied.
@@ -112,7 +113,7 @@ it is invalid rather than silently replacing it with an inferred service.
 Write one Markdown file per invocation:
 
 ```text
-.local/code-reviews/<service>/<pr-number>/<full-commit-sha>/<utc-timestamp>.md
+.local/code-reviews/<service>/<pr-number>/<full-commit-sha>/YYYYMMDDTHHMISS.md
 ```
 
 Resolve the path beneath the current repository root. Path components must not
@@ -121,8 +122,9 @@ complete reviewed SHA in the directory name. Keep the model and run ID in
 Metadata only, not in the filename.
 
 Never overwrite an existing report. Use exclusive file creation; if the proposed
-path exists, obtain a fresh microsecond-precision UTC timestamp and retry without
-adding a filename suffix. Keep the original start time in Metadata.
+path exists, wait until the next UTC second, obtain a fresh second-precision
+timestamp, and retry without adding a filename suffix. Keep the original start
+time in Metadata.
 Do not edit `.gitignore` automatically; verify whether the archive is ignored and
 disclose if it is not.
 
