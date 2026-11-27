@@ -7,6 +7,7 @@ const behaviorIds = ["WB-UX-ASSISTANCE-001"];
 
 async function assertReadOnlyComposer(page, assert) {
   const context = page.locator(".assist-chat-context");
+  await page.evaluate(() => syncTruncationTooltips());
   const presentation = await context.evaluate(node => {
     const style = getComputedStyle(node);
     const label = node.querySelector(".assist-chat-context-label");
@@ -92,6 +93,7 @@ async function assertContextChipTruncation(page, assert) {
       renderRuleAssistanceSidebar();
     }, title);
     await resizer.press("Home");
+    await page.evaluate(() => syncTruncationTooltips());
     const narrow = await measure();
     assert(narrow.overflow && narrow.singleLine && narrow.contained && narrow.noMarkup
       && narrow.text === title && narrow.tooltip === title,
@@ -100,6 +102,16 @@ async function assertContextChipTruncation(page, assert) {
     await waitForWorkbenchTooltip(page);
     assert(await page.locator("#status-surface-tooltip").textContent() === title,
       "The truncated context tooltip lost or interpreted part of the full issue title");
+    await context.locator(".assist-chat-context-label").hover();
+    await waitForWorkbenchTooltip(page);
+    const ownership = await context.evaluate(node => ({
+      wholeChip: workbenchTooltip.owner === node && !node.querySelector("[data-truncation-tooltip]"),
+      above: Math.abs(node.getBoundingClientRect().top
+        - document.getElementById("status-surface-tooltip").getBoundingClientRect().bottom
+        - getWorkbenchPixelMetric("--tooltip-gap")) < 1
+    }));
+    assert(ownership.wholeChip && ownership.above,
+      `Hovering the truncated context label replaced the chip's above-only tooltip: ${JSON.stringify(ownership)}`);
     await resizer.press("End");
     const wide = await measure();
     await resizer.press("Home");

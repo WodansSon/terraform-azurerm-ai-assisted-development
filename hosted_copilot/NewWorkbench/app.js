@@ -847,15 +847,13 @@ function showWorkbenchTooltip(item, anchorX = item.getBoundingClientRect().left 
   const left = Math.floor(Math.min(Math.max(inset, preferredLeft), Math.max(inset, window.innerWidth - tooltipRect.width - inset)));
   const below = itemRect.bottom + gap;
   const above = itemRect.top - tooltipRect.height - gap;
-  let preferredTop;
-  if (item.dataset.workbenchTooltipPlacement === "above" && above >= inset) {
-    preferredTop = above;
-  } else if (below + tooltipRect.height + inset <= window.innerHeight) {
-    preferredTop = below;
+  let top;
+  if (item.dataset.workbenchTooltipPlacement === "above") {
+    top = Math.floor(above);
   } else {
-    preferredTop = above;
+    const preferredTop = below + tooltipRect.height + inset <= window.innerHeight ? below : above;
+    top = Math.floor(Math.min(Math.max(inset, preferredTop), Math.max(inset, window.innerHeight - tooltipRect.height - inset)));
   }
-  const top = Math.floor(Math.min(Math.max(inset, preferredTop), Math.max(inset, window.innerHeight - tooltipRect.height - inset)));
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${top}px`;
 }
@@ -7393,7 +7391,7 @@ function scheduleTruncationTooltips() {
 
 function syncTruncationTooltips() {
   document.querySelectorAll("[data-truncation-tooltip]").forEach((node) => {
-    if (node.hasAttribute("data-workbench-tooltip") || node.closest("[data-truncation-owner]")) {
+    if (node.closest("[data-workbench-tooltip], [data-truncation-owner]")) {
       node.removeAttribute("data-truncation-tooltip");
       return;
     }
@@ -7403,7 +7401,7 @@ function syncTruncationTooltips() {
     node.removeAttribute("data-truncation-tooltip");
   });
   document.querySelectorAll(".app-shell *, dialog[open] *").forEach((node) => {
-    if (!node.getClientRects().length || !node.textContent.trim() || node.hasAttribute("data-workbench-tooltip") || node.closest("[data-truncation-owner]")) return;
+    if (!node.getClientRects().length || !node.textContent.trim() || node.closest("[data-workbench-tooltip], [data-truncation-owner]")) return;
     if (getComputedStyle(node).textOverflow !== "ellipsis") return;
     if (node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight) return;
     if (!node.hasAttribute("data-truncation-tooltip")) node.setAttribute("data-truncation-tooltip", "");

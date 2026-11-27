@@ -24,6 +24,29 @@ async function run({ page, baseUrl, assert, playback }) {
     } finally { probe.remove(); hideStatusTooltip(); }
   });
   assert(disabledControls.every(Boolean), "Shared disabled controls retained tooltips, active presentation, or lost accessible names");
+  const tooltipOwnership = await page.evaluate(() => {
+    const probe = document.createElement("div");
+    probe.style.cssText = "position: fixed; top: 100px; left: 260px";
+    probe.innerHTML = `<span data-workbench-tooltip="Complete authored explanation"><span class="owned-label">Long authored explanation</span></span><span class="automatic-label">Long ordinary label</span>`;
+    for (const label of probe.querySelectorAll(".owned-label, .automatic-label")) {
+      label.style.cssText = "display: block; width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis";
+    }
+    document.querySelector(".app-shell").append(probe);
+    try {
+      const owned = probe.querySelector(".owned-label");
+      const automatic = probe.querySelector(".automatic-label");
+      syncTruncationTooltips();
+      const respected = !owned.hasAttribute("data-truncation-tooltip")
+        && getWorkbenchTooltipOwner(owned) === owned.parentElement;
+      owned.setAttribute("data-truncation-tooltip", "");
+      syncTruncationTooltips();
+      const staleRemoved = !owned.hasAttribute("data-truncation-tooltip");
+      syncTruncationTooltips();
+      return respected && staleRemoved && !owned.hasAttribute("data-truncation-tooltip")
+        && automatic.hasAttribute("data-truncation-tooltip") && getWorkbenchTooltipOwner(automatic) === automatic;
+    } finally { probe.remove(); }
+  });
+  assert(tooltipOwnership, "Truncation scans created or retained nested tooltips inside an authored tooltip owner, or disabled ordinary truncation tooltips");
   await playback.show(page, "Provenance tooltip · 768px viewport");
   const roots = await page.evaluate(() => {
     const revision = state.assessedCandidates.find((candidate) => candidate.sourceType === "upstream")?.revision;
@@ -188,22 +211,22 @@ async function run({ page, baseUrl, assert, playback }) {
   assert(Math.abs(fallback.aboveGap - 6) < 1 && fallback.horizontallyContained && fallback.verticallyContained, "Tooltip does not flip above the control with the fixed 6px gap when insufficient space remains below");
 
   await pill.evaluate(node => { node.dataset.workbenchTooltipPlacement = "above"; });
-  const abovePreferred = await enterAt(box.x + 2);
-  assert(Math.abs(box.y - abovePreferred.bottom - 6) < 1 && abovePreferred.visible && abovePreferred.textMatches,
-    "An ordinary tooltip owner could not prefer above placement without a component-specific selector");
+  const aboveOnly = await enterAt(box.x + 2);
+  assert(Math.abs(box.y - aboveOnly.bottom - 6) < 1 && aboveOnly.visible && aboveOnly.textMatches,
+    "An ordinary tooltip owner could not declare above-only placement without a component-specific selector");
   await page.mouse.move(8, 8);
   await page.waitForFunction(() => !document.querySelector("#status-surface-tooltip").classList.contains("visible"));
   await page.locator("#source-provenance-tooltip-probe").evaluate(node => { node.style.top = "0px"; });
-  const belowFallback = await pill.evaluate(node => {
+  const constrainedAbove = await pill.evaluate(node => {
     showWorkbenchTooltip(node);
     const tooltip = document.getElementById("status-surface-tooltip").getBoundingClientRect();
     return {
-      gap: tooltip.top - node.getBoundingClientRect().bottom,
-      contained: tooltip.top >= 8 && tooltip.bottom <= innerHeight - 8
+      gap: node.getBoundingClientRect().top - tooltip.bottom,
+      horizontallyContained: tooltip.left >= 8 && tooltip.right <= innerWidth - 8 + 0.1
     };
   });
-  assert(Math.abs(belowFallback.gap - 6) < 1 && belowFallback.contained,
-    "An above-preferred tooltip did not fall back below when the viewport lacked room above");
+  assert(Math.abs(constrainedAbove.gap - 6) < 1 && constrainedAbove.horizontallyContained,
+    "An above-only tooltip flipped below or lost its control gap when the viewport lacked room above");
 
   await page.evaluate(() => document.querySelector("#source-provenance-tooltip-probe").remove());
 
