@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "stage", "phase", "components"],
+      "properties": {
+        "schemaVersion": { "const": 4 },
+        "stage": { "const": "reconciliation" },
+        "phase": { "enum": ["routing", "consolidation"] },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["assessmentResultIds", "ruleVersionIds", "semanticSummary"],
+            "properties": {
+              "assessmentResultIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+              "ruleVersionIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+              "semanticSummary": { "type": "string", "minLength": 1, "maxLength": 1200 }
+            },
+            "anyOf": [
+              { "properties": { "assessmentResultIds": { "minItems": 1 } } },
+              { "properties": { "ruleVersionIds": { "minItems": 1 } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "stage", "phase", "groups", "dispositions"],
+      "properties": {
+        "schemaVersion": { "const": 4 },
+        "stage": { "const": "reconciliation" },
+        "phase": { "const": "synthesis" },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } },
+        "dispositions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["assessmentResultId", "code", "rationale"],
+            "properties": {
+              "assessmentResultId": { "$ref": "#/$defs/id" },
+              "code": { "enum": ["grouped", "excluded", "deferred"] },
+              "rationale": { "$ref": "#/$defs/text" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "integer", "minimum": 1 },
+    "text": { "type": "string", "minLength": 1 },
+    "codes": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 128 } },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "semanticSummary", "synthesisRationale", "wording", "selectionFactors", "selectionRationale", "reviewState", "needsReview", "members", "operations", "continuity", "relatedCoverage"],
+      "properties": {
+        "title": { "$ref": "#/$defs/text" },
+        "semanticSummary": { "$ref": "#/$defs/text" },
+        "synthesisRationale": { "$ref": "#/$defs/text" },
+        "wording": { "$ref": "#/$defs/text" },
+        "selectionFactors": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "selectionRationale": { "$ref": "#/$defs/text" },
+        "reviewState": { "enum": ["recommended", "excluded", "deferred"] },
+        "needsReview": { "type": "boolean" },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["assessmentResultId", "role", "coverageRationale"],
+            "properties": {
+              "assessmentResultId": { "$ref": "#/$defs/id" },
+              "role": { "enum": ["primary", "supporting"] },
+              "coverageRationale": { "$ref": "#/$defs/text" }
+            }
+          }
+        },
+        "operations": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/operation" } },
+        "continuity": { "$ref": "#/$defs/continuity" },
+        "relatedCoverage": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["target", "relationship", "rationale", "evidence"],
+            "properties": {
+              "target": {
+                "type": "object", "additionalProperties": false, "required": ["kind", "id"],
+                "properties": { "kind": { "enum": ["assessment", "rule"] }, "id": { "$ref": "#/$defs/id" } }
+              },
+              "relationship": { "enum": ["equivalent", "partial-overlap", "left-extends-right", "left-narrows-right", "conflicts"] },
+              "rationale": { "$ref": "#/$defs/text" },
+              "evidence": {
+                "type": "array", "minItems": 1,
+                "items": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["assessmentResultId", "sourceQuote", "targetQuote"],
+                  "properties": {
+                    "assessmentResultId": { "$ref": "#/$defs/id" },
+                    "sourceQuote": { "type": "string", "minLength": 1, "maxLength": 2000 },
+                    "targetQuote": { "type": "string", "minLength": 1, "maxLength": 2000 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "continuity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "priorGroupVersionIds", "retainedGroupVersionId", "confidence", "rationale", "memberMatches"],
+      "properties": {
+        "kind": { "enum": ["new", "equivalent", "material-change", "split", "merge", "unresolved"] },
+        "priorGroupVersionIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "retainedGroupVersionId": { "type": ["integer", "null"], "minimum": 1 },
+        "confidence": { "enum": ["high", "medium", "low"] },
+        "rationale": { "$ref": "#/$defs/text" },
+        "memberMatches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["assessmentResultId", "priorAssessmentResultId", "currentQuote", "priorQuote", "rationale"],
+            "properties": {
+              "assessmentResultId": { "$ref": "#/$defs/id" },
+              "priorAssessmentResultId": { "$ref": "#/$defs/id" },
+              "currentQuote": { "$ref": "#/$defs/text" },
+              "priorQuote": { "$ref": "#/$defs/text" },
+              "rationale": { "$ref": "#/$defs/text" }
+            }
+          }
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "action", "targetRuleVersionId", "surfaceCode", "sectionHeading", "rationale", "relationship", "provenanceCodes", "evidenceCodes", "applicabilityCodes"],
+      "properties": {
+        "role": { "enum": ["primary", "ancillary"] },
+        "action": { "enum": ["add", "update", "retire", "restore", "no-change", "exclude", "defer"] },
+        "targetRuleVersionId": { "type": ["integer", "null"], "minimum": 1 },
+        "surfaceCode": { "type": ["string", "null"], "minLength": 1 },
+        "sectionHeading": { "type": ["string", "null"], "minLength": 1 },
+        "rationale": { "$ref": "#/$defs/text" },
+        "provenanceCodes": { "$ref": "#/$defs/codes" },
+        "evidenceCodes": { "$ref": "#/$defs/codes" },
+        "applicabilityCodes": { "$ref": "#/$defs/codes" },
+        "relationship": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["code", "rationale"],
+              "properties": {
+                "code": { "enum": ["equivalent", "partial-overlap", "assessment-extends-hosted", "assessment-narrows-hosted", "conflicts"] },
+                "rationale": { "$ref": "#/$defs/text" }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

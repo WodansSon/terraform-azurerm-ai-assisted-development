@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wodansson.github.io/terraform-azurerm-ai-assisted-development/hosted_copilot/copilot-rule-catalog/assessment-reconciliation/remote-rules-import-v4-result.schema.json",
+  "title": "Remote Rules Import Result",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["$schema", "schemaVersion", "kind", "status", "workbenchBundleSha256", "workbenchBundle"],
+      "properties": {
+        "$schema": { "const": "remote-rules-import-v4-result.schema.json" },
+        "schemaVersion": { "const": 4 },
+        "kind": { "const": "remote-rules-import-result" },
+        "status": { "const": "passed" },
+        "workbenchBundleSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "workbenchBundle": { "type": "object" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["$schema", "schemaVersion", "kind", "status", "error"],
+      "properties": {
+        "$schema": { "const": "remote-rules-import-v4-result.schema.json" },
+        "schemaVersion": { "const": 4 },
+        "kind": { "const": "remote-rules-import-result" },
+        "status": { "const": "failed" },
+        "error": { "type": "string", "minLength": 1 }
+      }
+    }
+  ]
+}

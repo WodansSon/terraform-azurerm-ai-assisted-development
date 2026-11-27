@@ -1,10 +1,10 @@
-# AI Toolkit Alignment Checklist
+# Interactive Toolkit Alignment Checklist
 
-This checklist is for maintainers of this repository.
+This checklist is for maintainers of the Interactive Toolkit in this repository. Hosted Toolkit architecture and validation are owned by `docs/HOSTED_COPILOT_CODE_REVIEW_ARCHITECTURE.md` and `hosted_copilot/tools/Test-Toolkit.ps1`.
 
 Use it when you want to answer questions like:
 
-- Is the AI toolkit up to date?
+- Is the Interactive Toolkit up to date?
 - Did we wire a new contract family completely?
 - Does bootstrap/install include the right runtime payload?
 - Did we update the docs that explain the current rule model?
@@ -48,7 +48,7 @@ When local AI guidance is meant to align with the upstream HashiCorp contributor
 
 That file stores tracked upstream contributor source baselines under `hashicorp/terraform-provider-azurerm/contributing/topics/` and the upstream `.github/pull_request_template.md` baseline used by PR-description maintenance.
 
-Tracked-source baselines live in that file, but local topic-to-file and topic-to-rule relationships should be derived dynamically by the drift checker from exact upstream topic references already present in repo files and rule evidence blocks.
+Tracked-source baselines live in that file. Local topic-to-file relationships are derived dynamically from exact upstream topic references already present in repo files, while topic-to-rule relationships come from source IDs in `tools/interactive-rule-catalog/rule-catalog.json`.
 
 Non-catalog sources declare a canonical `referenceUrl`. Their local file and rule relationships are also derived from exact references, without hard-coded source-to-contract mappings.
 
@@ -61,6 +61,7 @@ The current contract-driven domains are:
 - `.github/instructions/code-review-compliance-contract.instructions.md`
 - `.github/instructions/docs-compliance-contract.instructions.md`
 - `.github/instructions/implementation-compliance-contract.instructions.md`
+- `.github/instructions/pr-description-compliance-contract.instructions.md`
 - `.github/instructions/review-linter-compliance-contract.instructions.md`
 - `.github/instructions/review-architect-compliance-contract.instructions.md`
 - `.github/instructions/review-advocate-compliance-contract.instructions.md`
@@ -92,11 +93,16 @@ For each changed or new `*-contract.instructions.md` file, confirm it still has:
 - `## Evidence hierarchy`
 - A contract EOF marker comment as the last non-empty line
 
-If the contract uses provenance, only use supported labels:
+Runtime contracts remain authoritative for hand-authored rule wording and behavior. The repo-only Interactive rule catalog is authoritative for rule provenance and lifecycle history.
 
-- `Published upstream standard`
-- `Inferred maintainer convention`
-- `Local safeguard`
+Every contract rule ID must have exactly one catalog record. Use one supported provenance value:
+
+- `published-upstream-standard`
+- `inferred-maintainer-convention`
+- `local-safeguard`
+- `unclassified`
+
+Use `active` for enforced rules, `deprecated` for rules that remain enforced while scheduled for retirement, and `retired` for tombstones that must no longer appear in runtime contracts. Do not reuse retired rule IDs. When rule wording changes without changing meaning, update its content hash; when meaning changes materially, retire the old ID and add a new rule ID.
 
 Within a letter-suffixed sibling rule family such as `REVIEW-SCOPE-005A` and `REVIEW-SCOPE-005B`:
 
@@ -169,6 +175,9 @@ Typical runtime payload files:
 Typical maintenance-only files that should stay out of the installed payload:
 
 - `tools/config/upstream-contributor.json`
+- `tools/interactive-rule-catalog/rule-catalog.json`
+- `tools/interactive-rule-catalog/rule-catalog.schema.json`
+- `tools/Test-InteractiveRuleCatalog.ps1`
 - `tools/validate-ai-toolkit.ps1`
 - `tools/validate-changelog-taxonomy.ps1`
 - `tools/validate-contracts.ps1`
@@ -206,20 +215,27 @@ For new `CHANGELOG.md` entries under `## [Unreleased]`:
 
 ### 7. Validation passes
 
-Preferred one-shot maintainer validation:
+Preferred change-aware repository validation:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1
+pwsh -NoProfile -File ./tools/Validate-ChangedToolkits.ps1
 ```
 
-That command runs the current repo-level maintainer validation flow in one pass:
+Preferred complete Interactive Toolkit validation:
+
+```powershell
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1
+```
+
+The Interactive Toolkit command runs its complete maintainer validation flow in one pass:
 
 - Explicit changelog-decision validation for current branch changes
 - Changelog taxonomy validation for `Unreleased` entries
 - Contract validation
+- Interactive rule catalog schema, lifecycle, contract-hash, and installer-exclusion validation
 - Deterministic argument, help, output, and error regression tests for `Get-PRReady.ps1`
 - Branch-local regression case runnability validation for changed cases and fixtures
-- Integrity-lock validation and npm vulnerability auditing at every severity
+- Integrity-lock validation for npm dependencies
 - Markdown lint for `.github/`, `docs/`, and `CHANGELOG.md`
 - System Architecture diagram width, right-edge, and border-padding validation
 - Release dry-run output boundary validation for the source repository and persistent user-profile installer
@@ -236,42 +252,43 @@ By default this runnability gate uses the current worktree when uncommitted edit
 If the current branch intentionally does not need a changelog entry, make that explicit instead of relying on path-based inference:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -ChangelogNotRequired -ChangelogReason "Repo-only maintenance change with no release-note impact"
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -ChangelogNotRequired -ChangelogReason "Interactive Toolkit change with no release-note impact"
 ```
 
 When you need the machine-readable summary:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -OutputFormat Json
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -OutputFormat Json
 ```
 
 If you intentionally want the summary without failing on unresolved upstream drift:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowDrift
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowDrift
 ```
 
 If you want CI-style behavior that still fails on changed tracked sources or rule issues but tolerates the currently known uncovered topic catalog gaps:
 
 ```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -AllowCatalogIssues
+pwsh -NoProfile -File ./tools/Validate-InteractiveToolkit.ps1 -AllowCatalogIssues
 ```
 
 The lower-level commands remain available for debugging and targeted re-runs.
 
-Run the repository-wide npm security audit directly with:
+Validation verifies installed dependencies against each toolkit's lockfile and installs stale or missing packages with `npm ci --ignore-scripts --no-audit --no-fund`. It does not change dependency manifests, override the configured registry, perform vulnerability auditing, or apply automatic dependency fixes. A passing validation result is not a vulnerability assessment. Existing maintainer-reviewed dependency overrides remain unchanged.
 
-```powershell
-pwsh -NoProfile -File ./tools/Test-NpmSecurity.ps1
-```
+#### GitHub dependency security
 
-Normal validation is read-only and fails when any tracked npm lockfile reports a low, moderate, high, or critical vulnerability. To stage npm's safe fixes and same-major transitive dependency overrides, then apply them only after a clean re-audit, run:
+GitHub provides repository vulnerability monitoring and pull-request dependency checks separately from local toolkit validation. This replaces the repository's local npm audit gate with GitHub-native controls, not an equivalent execution of `npm audit`.
 
-```powershell
-pwsh -NoProfile -File ./tools/validate-ai-toolkit.ps1 -FixNpmAudit
-```
+- Keep the dependency graph and Dependabot alerts enabled to monitor known vulnerabilities in default-branch dependencies, including newly published advisories.
+- Keep Dependabot security updates enabled and unpaused so GitHub can attempt pull requests with vulnerability fixes. An enabled setting does not guarantee that every vulnerability has an available or successful automatic update.
+- Keep the `Dependency Security Review` job in [CodeQL Security Analysis](../.github/workflows/codeql-analysis.yml) configured to fail pull requests introducing dependency vulnerabilities rated moderate or higher.
+- Require the GitHub Actions check named `Dependency Security Review` in branch protection for `main`. A failing check blocks normal pull-request merging.
+- Preserve the current administrator bypass: administrator enforcement is disabled, so administrators can bypass the required check. The check is not an absolute merge barrier for administrators.
+- Keep local dependency installation locked and automatic npm auditing disabled. GitHub advisory detection and CI dependency review do not use the developer machine's npm audit endpoint; Dependabot update generation can still require access to the configured package feeds.
 
-Remediation refuses to modify dirty manifests. A semver-major fix remains blocked unless the maintainer explicitly adds `-AllowBreakingNpmFix`; the full validation flow then verifies the resulting dependency graph and repository behavior.
+Dependabot settings and branch-protection requirements are GitHub repository settings, not workflow-file configuration. Cloning the repository or copying its workflows does not reproduce those settings. When configuring a fork or restoring repository settings, verify dependency security under **Settings > Advanced Security** and the required check under **Settings > Branches**.
 
 #### Reviewed dependency overrides
 
@@ -300,6 +317,10 @@ pwsh -NoProfile -File ./tools/validate-changelog-taxonomy.ps1
 pwsh -NoProfile -File ./tools/validate-contracts.ps1
 ```
 
+```powershell
+pwsh -NoProfile -File ./tools/Test-InteractiveRuleCatalog.ps1
+```
+
 When local AI guidance is meant to stay aligned with upstream HashiCorp contributor docs, also run:
 
 ```powershell
@@ -316,9 +337,9 @@ pwsh -NoProfile -File ./tools/validate-contracts.ps1 -OutputFormat Json
 pwsh -NoProfile -File ./tools/check-upstream-contributor-drift.ps1 -OutputFormat Json
 ```
 
-The JSON report now groups dynamically discovered rule coverage by local file as well as by upstream source, so you can review provenance and evidence gaps contract-by-contract instead of only source-by-source.
+The JSON report groups catalog-backed rule coverage by local contract as well as by upstream source, so you can review provenance and evidence gaps contract-by-contract instead of only source-by-source.
 
-The drift checker is intentionally deterministic. It detects upstream source changes plus local provenance/evidence gaps using pure logic only, and it derives local mappings only from exact upstream topic references already present in repo files and rule evidence blocks. It does not use heuristics and it does not decide whether an upstream wording change is semantically meaningful. Exact-reference aggregation only proves links that already exist explicitly in repo content; it is not the semantic mapping step. When the report shows changed sources, uncovered upstream topics, tracked topics without explicit local references, dynamically mapped untracked topics, stale tracked topics, stale local topic references, or rule issues, follow it with an AI-assisted semantic maintainer review before changing local guidance.
+The drift checker is intentionally deterministic. It detects upstream source changes plus local provenance/evidence gaps using pure logic only. It derives local file mappings from exact upstream topic references already present in repo files and rule mappings from explicit catalog source IDs. It does not use heuristics and it does not decide whether an upstream wording change is semantically meaningful. Exact-reference aggregation only proves links that already exist explicitly in repo content; it is not the semantic mapping step. When the report shows changed sources, uncovered upstream topics, tracked topics without explicit local references, dynamically mapped untracked topics, stale tracked topics, stale local topic references, or rule issues, follow it with an AI-assisted semantic maintainer review before changing local guidance.
 
 The same applies to topic-catalog drift: if the report shows uncovered upstream topics, dynamically mapped untracked topics, stale tracked topics, or stale local topic references, treat that as a maintainer review event and decide whether the manifest or local guidance needs to change.
 
@@ -326,7 +347,7 @@ If the drift check reports upstream changes, review the mapped local consumers i
 
 When the upstream pull request template changes, review the mapped `PRDESC-*` rules plus the PR-description skill, lean schema, and regression fixtures before refreshing its baseline. The runtime drafting workflow must continue reading the current checkout template rather than fetching the remote template.
 
-When rule-level mappings exist, use the drift report to review the current provenance label and evidence bullets for each mapped rule ID before changing the rule text.
+When rule-level mappings exist, use the drift report to review the current catalog provenance and evidence for each mapped rule ID before changing the runtime rule text.
 
 If the current file contents and workspace validators are clean but the VS Code Problems tab still shows old YAML errors, treat them as potentially stale editor diagnostics before assuming the workflow is still broken.
 

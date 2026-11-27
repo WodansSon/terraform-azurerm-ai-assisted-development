@@ -81,8 +81,6 @@ When an implementation claim affects API shape, schema mapping, validation, or s
 
 If evidence is missing for a behavior-changing claim, do not guess.
 
----
-
 # Contract Rules
 
 ## Evidence and verification
@@ -100,10 +98,6 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-WF-001: Prefer typed implementations for new work
 - Rule: Prefer the typed `internal/sdk` implementation style for new resources and data sources.
 - Rule: Use untyped patterns primarily for maintenance of existing untyped implementations unless there is a strong evidence-backed reason to do otherwise.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`
-  - Upstream contributor guidance there says new Data Sources and Resources should be added as typed implementations
 
 ### IMPL-WF-001A: Identify the implementation model before suggesting code
 - Rule: Before suggesting implementation code under `internal/**`, identify whether the target is an untyped Plugin SDK resource or data source, a typed `internal/sdk` resource or data source, or a framework-specialized surface.
@@ -112,81 +106,42 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Do not suggest new untyped resource or data source implementations merely because the service package also contains older untyped resources.
 - Rule: When the task is maintenance of an existing file, match the model already used by that file unless the task is an explicit migration.
 - Rule: When the task is a migration away from `pluginsdk.Retry()`, `pluginsdk.StateChangeConf`, or `WaitForStateContext()`, consult the `custom-poller-migration` skill rather than inventing an ad hoc polling model.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Typed vs. Untyped Resources`
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` says list resources use the framework list-resource pattern rather than the ordinary managed resource pattern
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` says `pluginsdk.StateChangeConf` has been deprecated in favor of custom pollers for the relevant LRO scenarios
 
 ### IMPL-WF-002: New resources must include resource identity and list-resource planning
 - Rule: For new resources, plan and implement Resource Identity support as a prerequisite for the list resource.
 - Rule: For new resources, plan and implement a corresponding list resource by default.
 - Rule: If a new resource genuinely cannot support listing because no list API exists or the upstream provider workflow allows an exception, do not silently omit the list resource; explain the reason and use the maintainer-reviewed exception path instead.
 - Rule: Treat the upstream `allow-without-list` and `list-not-supported` labels as exception handling, not as the default workflow.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 5 and Step 6 says Resource Identity and List Resource implementations are mandatory for all new resources
-  - Upstream contributor guidance there says pull requests adding new resources without these will not pass CI checks unless a maintainer applies the `allow-without-list` or `list-not-supported` label
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` says list resource implementations are mandatory for all new resources and are verified by the `enforce-list-resources` CI check
 
 ### IMPL-WF-002A: Existing resources retrofitting list support should add the full companion set together
 - Rule: When adding list support to an existing resource, plan Resource Identity, the `*_resource_list.go` implementation, service registration, list-query acceptance coverage, and list-resource docs as one workflow.
 - Rule: Do not treat list registration, list tests, or list-resource docs as optional follow-up work when the change is explicitly adding list support to an existing resource.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` describes the full list-resource workflow: identity prerequisite, implementation, tests, and docs
-  - Upstream provider PR `hashicorp/terraform-provider-azurerm#32192` (`List and identity implementation - azurerm_web_pubsub_custom_certificate`) is a concrete example of retrofitting an existing resource with Resource Identity, list implementation, list tests, and list-resource docs together
 
 ### IMPL-WF-002B: Create-time import checks must honor the overwrite feature gate
 - Rule: When create logic probes for an existing resource and returns `tf.ImportAsExistsError(...)`, guard that branch with `!meta.(*clients.Client).Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources`.
 - Rule: Do not make the import-as-exists path unconditional when the provider feature flag is configured to allow create-time overwrite behavior.
 - Rule: Keep the normal existence-probe semantics: unexpected GET failures still return an error, `404` still permits create, and only the feature-gated existing-resource branch returns `tf.ImportAsExistsError(...)`.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` under the Create example says the existing-resource import check should only run unless the user has opted into `skip_import_check_on_create_and_allow_overwriting_existing_resources`.
-  - That same upstream example shows the exact guard `if !metadata.Client.Features.SkipImportCheckOnCreateAndAllowOverwritingExistingResources { ... return metadata.ResourceRequiresImport(r.ResourceType(), id) }`, which is the typed-resource equivalent of this rule.
 
 ### IMPL-WF-002C: Callback-based create flows must set identity when Resource Identity is supported
 - Rule: When a create flow uses a callback-based `...CreateCallbackThenPoll(...)` or equivalent helper and the resource supports Resource Identity, use `sdk.SetIDAndIdentityCallback(meta, &id, d)` or an equivalent callback that sets both the Terraform ID and resource identity during create.
 - Rule: Do not use a callback that only sets the Terraform ID, and do not defer identity population until after polling completes, when the resource implements Resource Identity.
 - Rule: Non-callback create flows should continue to set identity data immediately after `metadata.SetID(id)` or the untyped equivalent in create.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-resource-identity.md` says Resource Identity data must be set right after the `id` attribute during create to prevent `Missing Resource Identity After Create` errors.
-  - That same upstream guide explicitly says that when a resource uses a `CallbackThenPoll` method, the callback should be updated to `SetIDAndIdentityCallBack`, and the untyped example shows `sdk.SetIDAndIdentityCallback(meta, &id, d)`.
 
 ### IMPL-WF-003: New resources must include the required documentation companions
 - Rule: For new resources, plan and implement the primary resource documentation and the corresponding list-resource documentation when a list resource is required.
 - Rule: Place list-resource docs under `website/docs/list-resources/` and treat them as part of the default new-resource workflow, not as an optional follow-up.
 - Rule: If a new resource is using the maintainer-reviewed exception path that omits the list resource, explicitly document that exception in the PR rather than silently skipping the list-resource docs.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 10 says new resources must add documentation for the resource
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` Step 7 says list resources require manual documentation under `website/docs/list-resources/`
-  - The same upstream workflow now makes list resources mandatory for all new resources unless a maintainer applies the documented exception path
 
 ### IMPL-WF-004: Ephemeral resources must follow the framework ephemeral pattern
 - Rule: Implement provider ephemeral resources under the owning service package as `*_ephemeral.go` using the `sdk.EphemeralResource` pattern.
 - Rule: Ephemeral resources should use `Metadata`, `Configure`, `Schema`, and `Open` rather than CRUD lifecycle methods.
 - Rule: Register new ephemeral resources through the service `Registration.EphemeralResources()` hook.
 - Rule: Treat `website/docs/ephemeral-resources/` docs and `*_ephemeral_test.go` coverage as the required companions for a new ephemeral resource.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/sdk/ephemeral_resource.go`
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_secret_ephemeral.go`
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/registration.go`
-  - Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/ephemeral-resources/key_vault_secret.html.markdown`
 
 ### IMPL-WF-005: Provider-defined functions must follow the internal provider-function pattern
 - Rule: Implement provider-defined functions under `internal/provider/function/` using the `terraform-plugin-framework/function.Function` pattern.
 - Rule: Provider-defined functions should implement `Metadata`, `Definition`, and `Run`, and should expose their name, arguments, and return shape through `Definition`.
 - Rule: Treat `website/docs/functions/` docs and `internal/provider/function/*_test.go` coverage as the required companions for a new provider-defined function.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id.go`
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id.go`
-  - Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/functions/parse_resource_id.html.markdown`
-  - Upstream provider docs in `hashicorp/terraform-provider-azurerm/website/docs/functions/normalise_resource_id.html.markdown`
 
 ## Schema and mapping
 
@@ -197,29 +152,16 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-SCHEMA-002: Common field ordering should follow provider conventions
 - Rule: When common fields are present, prefer provider ordering patterns such as `name`, `resource_group_name`, and `location` first, with `tags` last.
 - Rule: Keep changes consistent with nearby same-service implementations.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` says schema fields should place ID fields first, then `location`, with `tags` last
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-data-source.md` applies the same ordering pattern to typed data sources
 
 ### IMPL-SCHEMA-003: Generic fallback validators are last-resort, not the target state
 - Rule: Treat generic validators such as `validation.StringIsNotEmpty` and `validation.IntAtLeast(...)` as fallback choices only when stronger evidence-backed validation cannot be determined.
 - Rule: When evidence establishes real enums, ranges, naming constraints, ID formats, URI formats, or other concrete limits, encode that real validation instead of stopping at non-empty or minimum-only checks.
 - Rule: Numeric arguments should define a real valid range when one is known, and string arguments should use pattern, enum, length, ID, or format validation when that behavior is knowable.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says string arguments must be validated, `StringNotEmpty` is only a minimum, and validation should ideally be more strict
-  - Upstream contributor guidance there also says numeric arguments should specify a valid range
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says `validation.StringIsNotEmpty` is the minimum only when a stronger validation pattern cannot be determined
 
 ### IMPL-SCHEMA-004: Prefer SDK PossibleValues helpers for enum validation unless the real accepted subset is narrower
 - Rule: When the SDK package exposes a `PossibleValuesFor...` helper that matches the real accepted enum values for the field, prefer that helper inside `validation.StringInSlice(...)` instead of hardcoding the values manually.
 - Rule: If the SDK helper returns values that are broader than what the specific resource, API path, or service behavior actually accepts, define the narrowed validation set from evidence instead of blindly using the full SDK helper output.
 - Rule: Do not mix enum values from unrelated services or discriminator types into a field's validation list simply because they appear in the same SDK or provider tree.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation` says validation should use the real constraints of the argument rather than weaker or looser checks
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-fields-to-resource.md` says appropriate validation should be added for new properties and stronger patterns should be used when they can be determined
 
 ### IMPL-SCHEMA-005: Prefer inline composition; extract only genuinely complex bespoke validation
 - Rule: Reuse and compose established validators such as `commonids.Validate...`, `validation.StringInSlice(...)`, `validation.All(...)`, `validation.Any(...)`, and other shared helpers directly in the schema when they collectively express the field constraint.
@@ -228,11 +170,6 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Name genuinely complex validator files for the validated subject where practical, for example `validate/{{VALIDATOR_SUBJECT}}.go`, and add the matching unit test file such as `validate/{{VALIDATOR_SUBJECT}}_test.go`.
 - Rule: Do not leave genuinely complex bespoke validation in a long anonymous inline `ValidateFunc` closure. Conversely, do not treat nested helper composition as bespoke logic solely because it spans several lines.
 - Rule: Existing legacy validator placement or legacy inline validation outside the changed scope is not, by itself, a migration issue that requires churn-only refactoring.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Accepted maintainer review precedent in `https://github.com/hashicorp/terraform-provider-azurerm/pull/33023#discussion_r3779746650` requested replacing a custom validator and its unit test with inline `validation.All(...)` and `validation.Any(...)` composition
-  - Merged upstream implementation in `https://github.com/hashicorp/terraform-provider-azurerm/commit/e4dbe7e66af3ea58f7919b77c3d13b9da924ea97` applies that inline composition after maintainer approval
-  - Current workspace regression fixtures retain service-local validator files with matching unit tests for genuinely complex bespoke logic while protecting readable inline helper composition
 
 ### IMPL-SCHEMA-006: Normalize resource IDs before setting them into state
 - Rule: Always parse resource IDs through their typed parser before persisting them into Terraform state when the value came from API output or other external input that may vary in static-segment casing.
@@ -241,57 +178,29 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Use the corresponding typed parser from `hashicorp/go-azure-sdk` or `commonids`, then persist the normalized `.ID()` value rather than the raw string from the API response.
 - Rule: When the provider constructs or rewrites a resource ID for state or outbound provider-managed usage, emit the parser or provider canonical `.ID()` form instead of preserving arbitrary casing from external input.
 - Rule: Do not set raw API-returned resource ID strings into state when a typed parser exists for that ID shape.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-resource-ids.md` says Azure APIs can return resource IDs with inconsistent casing on static segments and that IDs should be parsed through their typed parser before setting into state to prevent phantom diffs
-  - The same upstream guidance explicitly calls out both scoped resource IDs and IDs returned as properties in API responses as in-scope for this normalization rule
 
 ### IMPL-SCHEMA-007: Preview fields should not be surfaced until they are GA
 - Rule: Do not expose preview-only Azure fields in provider schema until they reach General Availability unless there is explicit, evidence-backed approval to do otherwise.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Preview Fields`
-  - That guidance says preview fields should not be supported until they reach GA status
 
 ### IMPL-SCHEMA-008: Represent Azure `None`-style defaults as omission/null in schema design
 - Rule: When the Azure API uses `None`, `Off`, or `Default` to express the default state, design the Terraform schema so omission/null expresses that default and convert during expand/flatten.
 - Rule: Do not require practitioners to configure `None`-style values explicitly when omission already expresses the default behavior.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `The None value or similar`
-  - That guidance says omission should map to the API default rather than exposing `None`, `Off`, or `Default` directly
 
 ### IMPL-SCHEMA-009: Array schema should use `MinItems` and `MaxItems` when API constraints are known
 - Rule: When API constraints define list cardinality, set `MinItems` and `MaxItems` in the Terraform schema instead of leaving cardinality implicit.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Array fields with MinItems and MaxItems`
-  - That guidance says array fields should use `MinItems` and `MaxItems` to provide clear validation feedback
 
 ### IMPL-SCHEMA-010: Optional `TypeList` blocks with no required nested fields need explicit non-empty validation
 - Rule: When a `pluginsdk.TypeList` block has no required nested fields, add conditional validation such as `AtLeastOneOf` or `ExactlyOneOf` so the block cannot be empty.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Validation for TypeList fields with no Required fields`
-  - That guidance shows `AtLeastOneOf`-style validation as the pattern for optional list blocks that would otherwise accept empty configuration
 
 ### IMPL-SCHEMA-011: Flatten single-property `MaxItems: 1` blocks unless there is evidence to keep the wrapper
 - Rule: When a `MaxItems: 1` nested block contains only a single user-meaningful property, prefer flattening it into the parent schema instead of preserving a wrapper block by default.
 - Rule: Keep the wrapper block only when there is evidence that additional sibling properties are imminent or that the wrapper carries meaningful user-facing semantics.
 - Rule: When deliberately preserving that single-property wrapper, add a short inline comment at the schema site explaining why the block remains unflattened.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Flattening nested properties`
-  - That guidance says single-property `MaxItems: 1` wrappers should usually be flattened unless the service team has confirmed more nested properties are imminent
 
 ### IMPL-SCHEMA-012: Portal-required fields should normally be `Required` unless API evidence says otherwise
 - Rule: When Azure Portal UX marks a field as required, treat that as a strong signal that the Terraform schema should also make it `Required`.
 - Rule: Only downgrade such a field to `Optional` when there is concrete evidence that the API accepts omission and the resource still functions correctly without it.
 - Rule: Do not treat portal-required markers as infallible API proof, but do not ignore them without evidence-backed justification.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Required fields in Azure Portal vs API documentation`
-  - That guidance says fields marked as required in the Azure Portal should be `Required` in Terraform unless the API accepts omission and still functions
 
 ### IMPL-SCHEMA-013: Use `GetRawConfig()` in `CustomizeDiff` when validation must distinguish configured values from unknown or zero values
 - Rule: In `CustomizeDiff`, prefer `GetRawConfig()` over `diff.Get(...)` or decoded zero values when validation must distinguish unset fields from known-after-apply or Go zero values.
@@ -299,38 +208,19 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: When `CustomizeDiff` or other diff-time validation traverses nested raw `cty.Value` config, call `IsKnown()` before `LengthInt()`, `AsValueSlice()`, `AsValueMap()`, `Index()`, or other shape-inspection methods. If a value is unknown, defer validation and return `nil` rather than treating the value as empty or letting shape inspection panic.
 - Rule: Prefer direct `diff.Get(...)` access for required values whose presence is guaranteed by schema and where no configured-versus-unknown distinction is needed.
 - Rule: Do not use `pointer.FromEnum(...)` or `pointer.ToEnum[...]` with `diff.Get(...)`, `GetRawConfig()`, decoded schema maps, or other Terraform values inside `CustomizeDiff`; reserve those helpers for the SDK or API enum-pointer boundary.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/best-practices.md` under `Consider the use of GetRawConfig() in CustomizeDiff to handle known-after-apply values` establishes `GetRawConfig()` as the baseline pattern when `d.Get()` or decoded values would make unknowns look unset
-  - Terraform unknown values are common during planning, especially in `GetRawConfig()`-based `CustomizeDiff` validation
-  - Raw `cty.Value` traversal without `IsKnown()` can panic when `LengthInt()`, `AsValueSlice()`, or similar shape-inspection methods are called on unknown values
 
 ### IMPL-SCHEMA-014: Prefer marketed or portal terminology over raw API names when that improves the Terraform UX
 - Rule: When the Azure Portal or other primary user-facing Azure surface uses a materially clearer name than the REST API property, prefer that marketed or portal terminology in Terraform schema naming unless there is evidence that another surface is the better user anchor.
 - Rule: Do not copy awkward REST property names into public schema purely for one-to-one fidelity when a more recognizable Azure-facing name better matches user expectations.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Prefer Azure Portal terminology when it differs significantly from the REST API`
-  - That guidance says users should be able to correlate Terraform configuration with the portal experience and should align with Azure CLI instead when the portal is not the primary experience
 
 ### IMPL-SCHEMA-015: Group semantically related arguments when a flat schema would scatter one conceptual setting family
 - Rule: When a resource has a large set of arguments and the Azure Portal or CLI groups a subset into a coherent settings area, prefer introducing a Terraform block or equivalent grouped shape when that materially reduces cognitive load.
 - Rule: Do not preserve a fully flat schema by default when grouping the related settings would make the Terraform surface clearer without hiding real API semantics.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Group semantically related arguments`
-  - That guidance says portal or CLI sectioning can justify grouping related Terraform settings to reduce cognitive load even though arguments are otherwise commonly ordered alphabetically
 
 ### IMPL-SCHEMA-016: Avoid ambiguous collection-shaped schemas and name configured blocks by their real cardinality
 - Rule: When an Azure API models repeated items as a list but multiple entries could target the same semantic slot, redesign the Terraform schema to eliminate ambiguity instead of letting configuration order imply which entry wins.
 - Rule: Use singular names for blocks that represent one configured object at a time, even when the underlying schema uses `TypeList` or another repeated container.
 - Rule: Use plural names for lists of primitive values and for computed-only collections that return multiple values rather than a single configured object.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/schema-design-considerations.md` under `Eliminate ambiguity in collection-typed arguments`
-  - That guidance says ambiguous collection-based shapes should be redesigned so the Terraform schema does not permit multiple conflicting values for the same conceptual slot
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-naming.md` under `Singular and Plural Block Property Naming Conventions`
-  - That guidance says configured blocks should generally use singular names, while primitive lists and computed multi-value collections should generally use plural names
 
 ### IMPL-SCHEMA-017: Write-only attributes must use symmetric schema relationships and a positive version trigger
 - Rule: Add a write-only attribute only for a sensitive user-supplied scalar property that is not `ForceNew`, not `Computed`, not a block, map, or unsupported nested collection, and not part of a data source or provider schema.
@@ -338,11 +228,6 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Pair `<name>_wo` with an optional integer `<name>_wo_version` trigger. Set `RequiredWith: []string{"<name>_wo_version"}` on `<name>_wo` and `RequiredWith: []string{"<name>_wo"}` on `<name>_wo_version` so either field requires the other.
 - Rule: Set `ValidateFunc: validation.IntAtLeast(1)` on `<name>_wo_version`; Plugin SDK v2 persists an omitted optional integer as `0`, so allowing users to configure `0` prevents reliable change tracking.
 - Rule: Retrieve the write-only value with `pluginsdk.GetWriteOnly(...)` during create and when the version trigger changes during update, and preserve the configured version trigger in state during read to avoid a permanent diff.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-write-only-attribute.md` under `Updating the Resource Schema`
-  - That guidance uses symmetric `ConflictsWith` relationships between the original sensitive field and its write-only counterpart, symmetric `RequiredWith` relationships between the write-only field and its version trigger, and `validation.IntAtLeast(1)` on the version trigger
-  - The same guide uses `pluginsdk.GetWriteOnly(...)` in create and trigger-gated update paths and persists the version trigger during read
 
 ## PATCH and residual state
 
@@ -357,18 +242,10 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Wrap field names and important user-visible values in backticks.
 - Rule: Use `%+v` for underlying errors when wrapping provider or SDK failures.
 - Rule: Use `errors.New(...)` for static errors that do not wrap an underlying error and do not require formatting.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-errors.md` for lowercase wrapped errors, `%+v`, and `errors.New(...)`
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` requiring argument names in error messages to be wrapped in backticks
 
 ### IMPL-ERR-002: Do not wrap comprehensive ID parser errors with redundant context
 - Rule: When a resource ID parser or validator already returns a comprehensive, user-facing error message, prefer returning that error directly instead of wrapping it with extra `parsing`, `flattening`, or field-name context.
 - Rule: Add wrapping context only when it contributes materially new information that the parser error does not already provide.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#31957` comment `discussion_r3137015087`: `since the id parser gives us a comprehensive error message, we don't need any other message with this`
-  - The suggested maintainer change there replaces a redundant wrapped parser error with `return results, err`
 
 ## Testing
 
@@ -382,10 +259,6 @@ If evidence is missing for a behavior-changing claim, do not guess.
 ### IMPL-TEST-003: Provider feature-flagged CRUD branch coverage
 - Rule: When implementation changes modify behavior behind a provider-level features block setting and that setting changes create, update, delete, import, overwrite, or destroy semantics, evaluate whether targeted coverage is needed for the changed non-default branch.
 - Rule: When that branch is testable with existing harness patterns, add the smallest focused test that proves the non-default behavior instead of relying only on the default lifecycle matrix.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Feature-gated CRUD branches can leave default-path acceptance tests green while the non-default behavior remains unproven.
-  - The provider acceptance harness already includes client callback patterns suitable for preparing pre-existing remote state when needed.
 
 ## Code clarity
 
@@ -400,10 +273,5 @@ If evidence is missing for a behavior-changing claim, do not guess.
 - Rule: Add provider-side logging only when it contributes unique diagnostic value that is not already present in the existing Terraform/provider log stream.
 - Rule: If broad, consistent lifecycle logging is desired, prefer solving that at the shared SDK or framework layer rather than adding ad hoc per-resource log lines.
 - Rule: This does not prohibit targeted not-found or removing-from-state diagnostics when they are part of established provider behavior and add distinct debugging value.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Maintainer review feedback in `hashicorp/terraform-provider-azurerm` PR `#32194` comment `discussion_r3256881651` says generic lifecycle logging is redundant with Terraform core native logging and should be removed
-  - Maintainer PR `hashicorp/terraform-provider-azurerm#32423` (`provider: remove antiquated lifecycle logging patterns`) states lifecycle logging was inconsistent, implemented only by a minority of resources, and should likely live in the SDK if desired consistently
-  - Maintainer follow-up discussion in PR `#32423` keeps the standardized not-found/removing-from-state diagnostic as the narrow acceptable exception
 
 <!-- IMPLEMENTATION-CONTRACT-EOF -->

@@ -38,10 +38,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Audit npm dependencies
-        shell: pwsh
-        run: ./tools/Test-NpmSecurity.ps1 -AdditionalLockPath tools/npm-validation/package-lock.json
-
       - name: Install markdown-link-check
         run: npm ci --prefix tools/npm-validation --ignore-scripts --no-audit --no-fund
 

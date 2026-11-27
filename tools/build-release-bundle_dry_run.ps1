@@ -226,6 +226,10 @@ New-Item -ItemType Directory -Path $payloadRoot -Force | Out-Null
 
 $manifestSections = @('MAIN_FILES', 'INSTRUCTION_FILES', 'PROMPT_FILES', 'SKILL_FILES', 'UNIVERSAL_FILES')
 $manifestEntries = Get-ManifestSectionEntries -ManifestPath $manifestPath -Sections $manifestSections
+$hostedManifestEntries = @($manifestEntries | Where-Object { $_.Replace('\', '/').StartsWith('hosted_copilot/', [StringComparison]::OrdinalIgnoreCase) })
+if ($hostedManifestEntries.Count -gt 0) {
+    throw "Interactive release manifest contains Hosted Toolkit paths: $($hostedManifestEntries -join ', ')"
+}
 foreach ($entry in $manifestEntries) {
     $sourcePath = Join-Path $repoRoot $entry
     $destinationPath = Join-Path $payloadRoot $entry

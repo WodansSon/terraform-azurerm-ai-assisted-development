@@ -1,0 +1,12 @@
+{
+  "$schema": "remote-rules-import-v4-contract.schema.json",
+  "schemaVersion": 4,
+  "contractId": "remote-rules-import-v4",
+  "method": "POST",
+  "path": "/remote-rules/import",
+  "capabilityHeader": "X-Hosted-Remote-Rules-Token",
+  "synchronous": true,
+  "maximumFileCount": 12,
+  "maximumRequestBytes": 8388608,
+  "fileSuffix": ".rules.md"
+}

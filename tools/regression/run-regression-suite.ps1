@@ -15,6 +15,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 if ($AsJson) {
     $Output = "json"
 }
@@ -242,26 +245,25 @@ if ($Output -eq "json") {
     return
 }
 
-Write-Output "Regression suite summary"
-Write-Output "  Selected Cases  : $($summary.selectedCaseCount)"
-Write-Output "  Scored Cases    : $($summary.scoredCaseCount)"
-Write-Output "  Skipped Cases   : $($summary.skippedCaseCount)"
-Write-Output "  Task Filter     : $(if ($Task.Count -gt 0) { $Task -join ', ' } else { 'all' })"
-Write-Output "  Status Filter   : $(if ($CaseStatus.Count -gt 0) { $CaseStatus -join ', ' } else { 'all' })"
-Write-Output ""
-Write-Output "Direct skill task coverage"
+Write-ValidationSectionHeader -Title 'Regression suite summary'
+Write-ValidationSummary -Fields ([ordered]@{
+    'Selected Cases' = $summary.selectedCaseCount
+    'Scored Cases' = $summary.scoredCaseCount
+    'Skipped Cases' = $summary.skippedCaseCount
+    'Task Filter' = $(if ($Task.Count -gt 0) { $Task -join ', ' } else { 'all' })
+    'Status Filter' = $(if ($CaseStatus.Count -gt 0) { $CaseStatus -join ', ' } else { 'all' })
+})
+Write-ValidationSectionHeader -Title 'Direct skill task coverage'
 foreach ($coverage in $targetSkillCoverage) {
     Write-Output "  $($coverage.task): cases=$($coverage.caseCount), adjudicated=$($coverage.adjudicatedCount), exampleResults=$($coverage.exampleResultCount), status=$($coverage.status)"
 }
 
-Write-Output ""
-Write-Output "Routed and companion skill coverage"
+Write-ValidationSectionHeader -Title 'Routed and companion skill coverage'
 foreach ($coverage in $routedSkillCoverage) {
     Write-Output "  $($coverage.skill): cases=$($coverage.caseCount), adjudicated=$($coverage.adjudicatedCount), exampleResults=$($coverage.exampleResultCount), status=$($coverage.status)"
 }
 
-Write-Output ""
-Write-Output "Case results"
+Write-ValidationSectionHeader -Title 'Case results'
 if ($caseResults.Count -eq 0) {
     Write-Output "  No cases matched the requested filters."
 }
@@ -275,3 +277,4 @@ else {
         }
     }
 }
+Complete-ValidationTextOutput

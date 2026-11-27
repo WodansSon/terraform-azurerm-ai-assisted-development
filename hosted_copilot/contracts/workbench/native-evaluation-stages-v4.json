@@ -1,0 +1,21 @@
+{
+  "$schema": "native-evaluation-stages-v4.schema.json",
+  "schemaVersion": 4,
+  "stages": [
+    {
+      "code": "assessment",
+      "prompt": "tools/prompts/workbench/NativeAssessment-v4.md",
+      "resultSchema": "contracts/workbench/native-assessment-v4.schema.json"
+    },
+    {
+      "code": "reconciliation",
+      "prompt": "tools/prompts/workbench/NativeReconciliation-v4.md",
+      "resultSchema": "contracts/workbench/native-reconciliation-v4.schema.json"
+    },
+    {
+      "code": "adjudication",
+      "prompt": "tools/prompts/workbench/NativeAdjudication-v4.md",
+      "resultSchema": "contracts/workbench/native-adjudication-v4.schema.json"
+    }
+  ]
+}

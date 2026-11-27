@@ -1,0 +1,18 @@
+{
+  "$schema": "protected-rules.schema.json",
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "id": "IMPL-WF-000",
+      "status": "protected",
+      "surfaceId": "implementation",
+      "title": "Classify AzureRM implementation resource types",
+      "text": "Classify implementation code as legacy, typed, or framework before applying resource-type-specific rules or suggesting changes. Legacy implementations use untyped Plugin SDK patterns with function-built `*pluginsdk.Resource` values and `*pluginsdk.ResourceData` callbacks. Typed implementations use receiver-based `internal/sdk` resource or data-source contracts. Framework implementations use Terraform Plugin Framework interfaces and request/response types, including list resources, ephemeral resources, and provider-defined functions. Use typed patterns for current ordinary resource and data source work, and framework patterns for framework-native or specialized surfaces. Preserve the existing resource type unless the change explicitly migrates it.",
+      "provenance": "confirmed-maintainer-convention",
+      "protectionReason": "Required first-party instruction infrastructure.",
+      "impact": 100,
+      "sourcePath": "hosted_copilot/authored-rules/protected/implementation.rules.md",
+      "contentSha256": "237716d2cf1891165f76dd16eef6e39e7b30ccb9540b35663cba53ff29f0095b"
+    }
+  ]
+}

@@ -13,6 +13,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 function Expand-ListParameter {
     param([string[]] $Value)
 
@@ -161,11 +164,14 @@ if ($Output -eq "json") {
     return
 }
 
-Write-Output "Regression history snapshot created"
-Write-Output "  Snapshot ID      : $snapshotId"
-Write-Output "  Output Path      : $OutputPath"
-Write-Output "  Selected Cases   : $($snapshot.metrics.selectedCaseCount)"
-Write-Output "  Scored Cases     : $($snapshot.metrics.scoredCaseCount)"
-Write-Output "  Pass Count       : $($snapshot.metrics.passCount)"
-Write-Output "  Fail Count       : $($snapshot.metrics.failCount)"
-Write-Output "  Average Score    : $($snapshot.metrics.averageOverallScore)"
+Write-ValidationSectionHeader -Title 'Regression history snapshot created'
+Write-ValidationSummary -Fields ([ordered]@{
+    'Snapshot ID' = $snapshotId
+    'Output Path' = $OutputPath
+    'Selected Cases' = $snapshot.metrics.selectedCaseCount
+    'Scored Cases' = $snapshot.metrics.scoredCaseCount
+    'Pass Count' = $snapshot.metrics.passCount
+    'Fail Count' = $snapshot.metrics.failCount
+    'Average Score' = $snapshot.metrics.averageOverallScore
+})
+Complete-ValidationTextOutput

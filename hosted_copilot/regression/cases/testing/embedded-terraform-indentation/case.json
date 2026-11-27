@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "testing-embedded-terraform-indentation",
+  "contentRoot": "content",
+  "expectedFindings": [
+    {
+      "ruleId": "TEST-PATTERN-010",
+      "path": "internal/services/hostedfixture/hosted_fixture_indentation_resource_test.go",
+      "match": "\tname = %q",
+      "reason": "The embedded Terraform uses a tab where repository formatting requires two spaces."
+    }
+  ],
+  "unexpectedFindingPolicy": "Record every additional comment for maintainer adjudication."
+}

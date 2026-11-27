@@ -1,0 +1,9 @@
+{
+  "$schema": "source-definition-set.schema.json",
+  "schemaVersion": 1,
+  "sourceDefinitionIds": [
+    "contributor-guidance",
+    "interactive-toolkit",
+    "maintainer-proposals"
+  ]
+}

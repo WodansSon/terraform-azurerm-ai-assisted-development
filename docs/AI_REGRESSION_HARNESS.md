@@ -298,17 +298,16 @@ Recommended states:
 - `adjudicated`: Expectations are reviewed and can be used for scoring
 - `retired`: No longer representative, but retained for history
 
-## Runner Expectations
+## Live-Execution Boundary
 
-The future runner should:
+The current harness runner:
 
 - Prepare a clean fixture workspace
-- Invoke the exact prompt or skill under test
-- Capture the output and tool behavior
+- Capture repository and execution metadata for the prompt or skill under test
 - Score the run against the adjudicated case expectations
 - Emit a machine-readable result object that matches `review-result.schema.json`
 
-The current starter scripts do not execute prompts or skills yet. They solve the next smaller problem first:
+The runner does not invoke prompts or skills automatically. A maintainer or external executor supplies the captured review artifact. The supporting scripts:
 
 - Scaffold a result document from a case definition
 - Validate case and result artifacts against the benchmark schemas before scoring
@@ -319,7 +318,7 @@ The current starter scripts do not execute prompts or skills yet. They solve the
 - Hydrate a scaffolded run from adjudicated example artifacts so the full run layout can be inspected end to end
 - Clean generated run directories as routine housekeeping
 
-That means the repository now supports repeatable scoring once a human or later automation has produced a result file.
+The repository therefore supports repeatable scoring after a human or external executor produces a result file, without conflating deterministic scoring with model invocation.
 
 ## Non-Goals
 
@@ -329,11 +328,9 @@ This foundation does not attempt to:
 - Replace human review of new benchmark cases
 - Act as a release blocker until the corpus is broad enough to be trusted
 
-## Recommended Rollout
+## Validation Role
 
-Start with the starter corpus as a reporting-only benchmark.
-
-After enough real cases are adjudicated, use the score trends to detect regressions before changes are merged. Only later should this become a CI gate.
+The adjudicated corpus is a reporting benchmark. CI validates its artifacts, scores the corpus, and publishes history without making model quality a merge gate.
 
 ## Starter Workflow
 

@@ -61,18 +61,6 @@ Areas:
 - `RUN` = safe test execution guidance
 - `PATTERN` = acceptance test patterns and assertions
 
-## Rule provenance
-
-Some rules in this contract come from published upstream standards, while others are inferred from repeated provider testing patterns or added locally to reduce drift.
-
-Use the following provenance labels when a rule needs extra source clarity:
-
-- `Published upstream standard`: explicitly documented by upstream contributor or provider testing guidance.
-- `Inferred maintainer convention`: not clearly codified upstream, but supported by repeated provider test patterns or accepted maintainer guidance.
-- `Local safeguard`: a repository-local rule added to reduce ambiguity, drift, or under-specified test coverage.
-
-Provenance rollout is incremental. New rules and touched ambiguous rules should include provenance notes first; older rules may be backfilled over time.
-
 ## Evidence hierarchy
 
 When a testing claim affects required test shape, execution safety, or assertion strategy, use this evidence order:
@@ -83,8 +71,6 @@ When a testing claim affects required test shape, execution safety, or assertion
 4. Target-provider contributor guidance when present
 
 If evidence is missing for a behavior-changing testing claim, do not guess.
-
----
 
 # Contract Rules
 
@@ -103,46 +89,26 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 ### TEST-WF-002: Resource acceptance tests should cover the core lifecycle by default
 - Rule: For resource acceptance tests, the default expected matrix is `basic`, `requiresImport`, `complete`, and `update`, plus import validation when import is supported.
 - Rule: Only omit one of those scenarios when the resource behavior or provider pattern gives a concrete reason that the scenario is not applicable.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-new-resource.md` Step 8 and Step 9 examples
 
 ### TEST-WF-002A: Use resource-specific `preCheck` helpers for optional prerequisites
 - Rule: When an acceptance test has prerequisites beyond the global Azure auth and location requirements, add a receiver method named `preCheck(t *testing.T)` on the test helper struct and call it near the start of each affected `TestAcc...`.
 - Rule: Use `t.Skip(...)` or `t.Skipf(...)` for optional or environment-specific prerequisites that are not universally available, rather than failing the test with `t.Fatalf(...)`.
 - Rule: Keep `preCheck` close to the tests that call it, commonly after the `TestAcc...` functions and before the `Exists` or `Destroy` helpers.
 - Rule: Do not duplicate the framework's global Azure-auth pre-check inside resource-specific `preCheck` helpers.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `PreCheck Helpers`
-  - That guidance recommends receiver-based `preCheck(t *testing.T)` helpers, skipping when optional prerequisites are absent, and keeping the helper close to the tests that call it
 
 ### TEST-WF-003: New resources with list resources should include list query coverage
 - Rule: When adding a new resource that includes a list resource, add list-resource acceptance coverage using Terraform 1.14 query tests.
 - Rule: The list-resource test should provision multiple resources, exercise the base list query, and cover at least one narrowed query path when the list configuration supports it.
 - Rule: Only omit list-resource acceptance coverage when the list resource itself is legitimately omitted under the maintainer-reviewed exception path.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/guide-list-resource.md` under `Add Acceptance Tests for this List Resource`
-  - Upstream contributor guidance there shows Terraform 1.14 query-based tests as the expected validation path for list resources added alongside new resources
 
 ### TEST-WF-004: Ephemeral resource tests should use the framework ephemeral test pattern
 - Rule: Acceptance tests for provider ephemeral resources should use the service-local `*_ephemeral_test.go` pattern with `acceptance.BuildTestData(t, "ephemeral.azurerm_<name>", ...)`.
 - Rule: Ephemeral-resource acceptance tests should gate on Terraform 1.10 support and use the framework provider factories required by the upstream ephemeral pattern.
 - Rule: When the test needs to assert the ephemeral result payload, prefer the `echo` provider pattern with config-state checks rather than inventing a custom assertion mechanism.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_secret_ephemeral_test.go`
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/services/keyvault/key_vault_certificate_ephemeral_test.go`
 
 ### TEST-WF-005: Provider-defined functions should use focused framework unit tests
 - Rule: Provider-defined function tests should live under `internal/provider/function/*_test.go` and use `resource.UnitTest` with framework provider factories.
 - Rule: Provider-defined function tests should gate on Terraform 1.8 support and prove outputs from `provider::azurerm::<name>(...)` calls rather than inventing a resource-style lifecycle harness.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/parse_resource_id_test.go`
-  - Upstream provider implementation in `hashicorp/terraform-provider-azurerm/internal/provider/function/normalise_resource_id_test.go`
 
 ## Execution safety
 
@@ -164,43 +130,23 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - Rule: Only omit `complete` coverage when there is concrete evidence that the resource shape does not warrant a distinct complete scenario.
 - Rule: Do not treat category-specific, subtype-specific, or otherwise narrower targeted scenarios as satisfying `complete` coverage when the resource still exposes a broader supported shape.
 - Rule: When a new managed resource exposes optional metadata, optional blocks, or multiple supported shapes beyond the narrow success path, that broader shape normally warrants a distinct `complete` scenario.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` listing `Complete Test` in the essential resource-test set
-  - Existing provider test organization guidance in `.github/instructions/testing-guidelines.instructions.md` that orders success scenarios around `basic`, `update`, and related lifecycle coverage
 
 ### TEST-PATTERN-004: RequiresImport coverage is part of the default resource test matrix
 - Rule: Include `requiresImport` coverage for resources by default, typically using `data.RequiresImportErrorStep` and a dedicated `requiresImport` config builder.
 - Rule: Only omit `requiresImport` coverage when there is concrete evidence that the resource pattern makes it not applicable.
-- **Provenance**: Published upstream standard.
-- **Evidence**:
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Which Tests are Required?`
-  - Upstream contributor guidance in `hashicorp/terraform-provider-azurerm/contributing/topics/reference-acceptance-testing.md` under `Example - Resource - Requires Import`
 
 ### TEST-PATTERN-005: Do not add acctests for simple property validation when unit tests already cover it
 - Rule: Do not add an acceptance test only to prove simple property validation behavior when that validation is already covered adequately by a unit test.
 - Rule: Prefer unit tests for property-validator coverage unless there is concrete evidence that an acceptance test is needed to prove behavior not exercised at the unit-test level.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Maintainer review guidance in `hashicorp/terraform-provider-azurerm` PR `#31957` comment `discussion_r3116940446`: `we don't normally add acctests for property validation and this is covered in the unit test already`
-  - Existing testing guidance in `.github/instructions/testing-guidelines.instructions.md` already distinguishes targeted validation/error scenarios from broader lifecycle acceptance coverage
 
 ### TEST-PATTERN-006: Add acctests for CustomizeDiff logic so validation behavior is not left untested
 - Rule: Add acceptance-test coverage for CustomizeDiff logic that enforces invalid field combinations, Azure-specific cross-field constraints, or other provider validation behavior that would otherwise be untested.
 - Rule: Use targeted `ExpectError` acceptance scenarios for invalid CustomizeDiff paths, while relying on the broader `basic`, `update`, `complete`, and import scenarios for the corresponding success paths unless extra assertions are needed.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Existing guidance in `.github/instructions/testing-guidelines.instructions.md` under `CustomizeDiff Testing` says invalid field combinations should be covered with acceptance tests and notes that success scenarios are usually covered by the broader lifecycle test set
-  - Existing local testing guidance explains that CustomizeDiff prevents invalid Azure API calls and is therefore regression-prone if left unexercised
 
 ### TEST-PATTERN-007: Inline one-use helper arguments in fmt.Sprintf-based config builders
 - Rule: In acceptance-test helper functions that return `fmt.Sprintf(...)` configuration strings, do not assign one-use helper results such as `template := r.template(data)` or `config := r.basic(data)` to a local variable only to pass them immediately into `fmt.Sprintf(...)`.
 - Rule: Pass those one-use helper calls directly as `fmt.Sprintf(...)` arguments instead, for example `r.template(data)` or `r.basic(data)` inline.
 - Rule: Only introduce a local variable for a nested helper result when it is reused, materially improves readability, or is needed for additional transformation before formatting.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Maintainer review guidance in upstream PR `#28834`: `We're pushing away from this pattern as it's unnecessary to assign the template to a var when it can be passed into the test directly.`
-  - That same review guidance explicitly asks contributors to update new tests to use the inline `fmt.Sprintf(..., r.template(data), ...)` form and avoid adding more single-use template locals
 
 ### TEST-PATTERN-008: Acctest helper struct names must stay canonical across all test variants
 - Rule: In acceptance test files under `internal/services/**`, helper struct names for a given Terraform resource or data source must use the canonical generated pattern based on the Terraform name.
@@ -217,51 +163,28 @@ If evidence is missing for a behavior-changing testing claim, do not guess.
 - Rule: Do not introduce variant-specific helper types such as `SomethingIdentityResource` or other alternate names merely because the test lives in a different file or generated identity file.
 - Rule: Do not rely on adapter methods, alias types, or wrapper structs to bridge helper-type drift to generated identity tests.
 - Rule: Keep helper-type naming stable across all acceptance tests and generated identity tests so `go generate` produces no diff and Generation Check stays green.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Added to keep all acceptance-test helper struct names aligned to one canonical type per Terraform surface, whether the surface is a resource or a data source, so different test variants and generated identity tests do not drift apart.
-  - Current upstream `internal/services/**` patterns are mixed on the exact suffix shape for older surfaces, so the durable invariant is preserving the established canonical helper type for a surface rather than forcing a suffix-only rename across existing tests.
-  - Upstream PR `#32194` showed the failure mode: canonical helper types for a Terraform surface diverged from the helper types used by generated identity tests, causing `go generate` to rewrite generated files and making Generation Check fail until the generated identity tests used the canonical helper types directly.
-  - Local failure analysis for `azurerm_cdn_frontdoor_batch_rule_set` showed the narrower casing drift problem: the generator emitted `CdnFrontdoor...` while the hand-written helper used `CdnFrontDoor...`, and the correct fix was to align the canonical helper type so hand-written and generated tests matched rather than hand-editing the generated test or broadening shared generator behavior for a one-off case.
 
 ### TEST-PATTERN-009: Data source tests should prefer the associated resource complete config by default
 - Rule: When a data source acceptance test needs managed resources as setup and the associated resource exposes a `complete(data)` helper, prefer that helper as the default setup shape.
 - Rule: Use `basic(data)` or another scenario-specific associated resource helper instead when no `complete(data)` helper exists, when the test is intentionally narrow, or when `complete(data)` would introduce unrelated setup, noise, or coupling.
 - Rule: Do not infer that every data source test must use `complete(data)`; the default preference does not remove author choice for scenario-specific setup.
 - Rule: Do not rewrite a data source test away from `complete(data)` or another broader helper when the scenario genuinely depends on the fuller associated resource shape.
-- **Provenance**: Inferred maintainer convention.
-- **Evidence**:
-  - Upstream contributor-doc PR `#32406` narrows the `fmt.Sprintf(...)` helper guidance without turning data source setup into a single mandatory helper shape, leaving room for defaulting to the fuller associated resource config while preserving scenario-based exceptions.
-  - Data sources commonly assert computed fields exposed from the managed resource state, so preferring the associated resource `complete(data)` helper when it exists gives the AI a more deterministic default while still allowing narrower setup when the test intentionally targets a smaller shape.
 
 ### TEST-PATTERN-010: Embedded Terraform in acceptance tests must use repository-valid indentation
 - Rule: In embedded Terraform configuration blocks inside `*_test.go` files, indent configuration lines with two spaces and never tabs.
 - Rule: When editing Terraform heredocs in acceptance tests, preserve the surrounding file's Terraform formatting and treat tab-indented configuration lines as invalid, since they can fail the repository's acceptance-test formatting checks.
 - Rule: Do not rely on Go linting or Go test execution to detect formatting issues inside embedded Terraform configuration strings.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Repository acceptance-test formatting checks can reject embedded Terraform heredocs in `*_test.go` files even when the Go code itself passes `golangci-lint`.
-  - Local CI failure analysis showed tab-indented Terraform configuration lines causing `make tflint` to fail on acceptance-test formatting, so the durable rule is two-space indentation and no tabs inside embedded Terraform config blocks.
 
 ### TEST-PATTERN-011: Provider feature-flagged CRUD branch coverage
 - Rule: When a provider-level `features` setting changes create, update, delete, import, overwrite, or destroy semantics, add targeted acceptance-test coverage for the non-default branch when feasible.
 - Rule: Prefer one focused acceptance test for the shared branch behavior rather than duplicating equivalent coverage across every sibling resource, unless the resources have materially different behavior.
 - Rule: When exercising that branch requires a pre-existing remote object, use existing client callback patterns such as `CheckWithClientForResource`, `CheckWithClientWithoutResource`, or `CheckWithClient`, as appropriate, to prepare the remote object outside Terraform before applying the feature-enabled configuration.
 - Rule: Do not model this scenario by introducing a second Terraform-managed resource with the same remote ID merely to trigger the branch, unless the resource pattern specifically requires that shape.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - Provider feature flags can materially alter CRUD semantics without changing the default test matrix shape, so the default `basic`, `requiresImport`, `complete`, `update`, and import scenarios do not reliably prove the feature-enabled branch.
-  - Existing acceptance harness helpers already support direct Azure setup through client callback checks, which is the provider-consistent way to prepare pre-existing remote state for these scenarios.
 
 ### TEST-PATTERN-012: Callback-based Azure pollers need explicit deadlines in acceptance setup helpers
 - Rule: When `CheckWithClientForResource(...)`, `CheckWithClientWithoutResource(...)`, or `CheckWithClient(...)` callbacks call Azure polling helpers such as `CreateOrUpdateThenPoll(...)`, `CreateOrReplaceThenPoll(...)`, `UpdateThenPoll(...)`, or `DeleteThenPoll(...)`, do not pass the provided callback `ctx` directly into the poller.
 - Rule: First wrap the callback `ctx` with `context.WithTimeout(...)` or `context.WithDeadline(...)` before calling the poller.
 - Rule: Use a timeout appropriate for the setup or mutation operation, commonly 15 to 60 minutes for Azure LRO-style acceptance-test setup.
 - Rule: Treat quota-sensitive failures separately from missing-deadline failures; if a service has hard subscription quotas or low service limits, prefer sequential acceptance execution patterns or runner-level `-parallel=1` rather than misclassifying those failures as context-deadline issues.
-- **Provenance**: Local safeguard.
-- **Evidence**:
-  - In target-provider `internal/acceptance/steps.go`, callback helpers invoke the callback with `client.StopContext`, which is not guaranteed to carry a deadline.
-  - Azure polling helpers require a deadline-bearing context, so direct use of the callback `ctx` can fail with `the context used must have a deadline attached for polling purposes, but got no deadline`.
-  - Durable Task fixes in `durable_task_scheduler_resource_test.go`, `durable_task_hub_resource_test.go`, and `durable_task_retention_policy_resource_test.go` resolved this exact failure mode by wrapping the callback `ctx` with `context.WithTimeout(ctx, 30*time.Minute)` before the poller call.
 
 <!-- TESTING-CONTRACT-EOF -->

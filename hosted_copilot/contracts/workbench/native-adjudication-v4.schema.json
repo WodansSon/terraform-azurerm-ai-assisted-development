@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "stage", "phase", "relationshipDecisions", "issues"],
+  "properties": {
+    "schemaVersion": { "const": 4 },
+    "stage": { "const": "adjudication" },
+    "phase": { "const": "components" },
+    "relationshipDecisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relationshipId", "disposition", "relationship", "title", "rationale", "leftQuote", "rightQuote"],
+        "properties": {
+          "relationshipId": { "$ref": "#/$defs/id" },
+          "disposition": { "enum": ["issue", "independent"] },
+          "relationship": { "enum": ["independent", "equivalent", "partial-overlap", "left-extends-right", "left-narrows-right", "conflicts"] },
+          "title": { "type": "string", "minLength": 1 },
+          "rationale": { "type": "string", "minLength": 1 },
+          "leftQuote": { "$ref": "#/$defs/quote" },
+          "rightQuote": { "$ref": "#/$defs/quote" }
+        },
+        "allOf": [{
+          "if": { "properties": { "disposition": { "const": "independent" } }, "required": ["disposition"] },
+          "then": { "properties": { "relationship": { "const": "independent" } } },
+          "else": { "properties": {
+            "relationship": { "enum": ["equivalent", "partial-overlap", "left-extends-right", "left-narrows-right", "conflicts"] },
+            "leftQuote": { "type": "string", "minLength": 1, "maxLength": 2000 },
+            "rightQuote": { "type": "string", "minLength": 1, "maxLength": 2000 }
+          } }
+        }]
+      }
+    },
+    "issues": { "type": "array", "items": { "$ref": "#/$defs/issue" } }
+  },
+  "$defs": {
+    "id": { "type": "integer", "minimum": 1 },
+    "text": { "type": "string", "minLength": 1 },
+    "quote": { "type": ["string", "null"], "minLength": 1, "maxLength": 2000 },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "enum": ["group", "rule"] },
+        "id": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "issue": {
+      "type": "object", "additionalProperties": false,
+      "required": ["anchor", "classification", "title", "blocking", "members", "relationshipIds", "assessmentSummary", "wording", "recommendedMaintainerAction"],
+      "properties": {
+        "anchor": { "$ref": "#/$defs/subject" },
+        "classification": { "enum": ["protected-integrity", "protected-conflict", "protected-coverage", "contradiction", "duplicate", "overlap"] },
+        "title": { "$ref": "#/$defs/text" },
+        "blocking": { "type": "boolean" },
+        "assessmentSummary": { "$ref": "#/$defs/text" },
+        "relationshipIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "members": {
+          "type": "array", "minItems": 2,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["subject", "disposition"],
+            "properties": {
+              "subject": { "$ref": "#/$defs/subject" },
+              "disposition": { "enum": ["keep", "promote", "replace", "retire", "exclude", "defer", "review"] }
+            }
+          }
+        },
+        "wording": {
+          "oneOf": [
+            {
+              "type": "object", "additionalProperties": false, "required": ["status", "source", "text", "rationale"],
+              "properties": {
+                "status": { "enum": ["canonical", "selected"] }, "source": { "$ref": "#/$defs/subject" },
+                "text": { "$ref": "#/$defs/text" }, "rationale": { "$ref": "#/$defs/text" }
+              }
+            },
+            {
+              "type": "object", "additionalProperties": false, "required": ["status", "source", "text", "rationale"],
+              "properties": {
+                "status": { "const": "unresolved" }, "source": { "type": "null" },
+                "text": { "type": "null" }, "rationale": { "$ref": "#/$defs/text" }
+              }
+            }
+          ]
+        },
+        "recommendedMaintainerAction": {
+          "type": "object", "additionalProperties": false, "required": ["summary", "operations"],
+          "properties": {
+            "summary": { "$ref": "#/$defs/text" },
+            "operations": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false, "required": ["subject", "action", "proposedText", "retireRuleVersionIds"],
+                "properties": {
+                  "subject": {
+                    "allOf": [{ "$ref": "#/$defs/subject" }, { "properties": { "kind": { "const": "group" } } }]
+                  },
+                  "action": { "enum": ["add", "update", "retire", "restore", "exclude", "defer"] },
+                  "proposedText": { "$ref": "#/$defs/text" },
+                  "retireRuleVersionIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

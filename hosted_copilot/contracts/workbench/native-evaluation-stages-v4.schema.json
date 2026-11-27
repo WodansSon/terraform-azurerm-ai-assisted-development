@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "stages"],
+  "properties": {
+    "$schema": { "const": "native-evaluation-stages-v4.schema.json" },
+    "schemaVersion": { "const": 4 },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "prompt", "resultSchema"],
+        "properties": {
+          "code": { "enum": ["assessment", "reconciliation", "adjudication"] },
+          "prompt": { "type": "string", "pattern": "^tools/prompts/workbench/[A-Za-z0-9-]+\\.md$" },
+          "resultSchema": { "type": "string", "pattern": "^contracts/workbench/native-[a-z-]+-v4\\.schema\\.json$" }
+        }
+      }
+    }
+  }
+}

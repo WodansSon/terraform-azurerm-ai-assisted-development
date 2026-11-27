@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "kind", "entries"],
+  "properties": {
+    "$schema": { "const": "hierarchical-reconciliation-cache.schema.json" },
+    "schemaVersion": { "const": 2 },
+    "kind": { "const": "hosted-hierarchical-reconciliation-cache" },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/cacheEntry" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "stage": { "enum": ["routing", "consolidation", "synthesis", "adjudication"] },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payloadSha256", "catalogContentSha256", "protectedRulesContentSha256", "contractContentSha256", "promptContentSha256", "schemaContentSha256", "evaluator", "model", "reasoningEffort"],
+      "properties": {
+        "payloadSha256": { "$ref": "#/$defs/sha256" },
+        "catalogContentSha256": { "$ref": "#/$defs/sha256" },
+        "protectedRulesContentSha256": { "$ref": "#/$defs/sha256" },
+        "contractContentSha256": { "$ref": "#/$defs/sha256" },
+        "promptContentSha256": { "$ref": "#/$defs/sha256" },
+        "schemaContentSha256": { "$ref": "#/$defs/sha256" },
+        "evaluator": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "reasoningEffort": { "enum": ["low", "medium", "high", "xhigh"] }
+      }
+    },
+    "cacheEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "shardKey", "cacheKey", "identity", "result"],
+      "properties": {
+        "stage": { "$ref": "#/$defs/stage" },
+        "shardKey": { "type": "string", "pattern": "^(routing|consolidation|synthesis|adjudication):[0-9a-f]{64}$" },
+        "cacheKey": { "$ref": "#/$defs/sha256" },
+        "identity": { "$ref": "#/$defs/identity" },
+        "result": { "type": "object", "minProperties": 1 }
+      }
+    }
+  }
+}

@@ -11,18 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Maintainer/Workflow:**
   - **[Internal]** - Added the repo-only `Get-PRReady.ps1` utility for reporting the current GitHub Project readiness value, contributor, and timestamps for one or more AzureRM pull requests, with ordered, deduplicated sequential lookups and deterministic offline regression coverage.
-  - **[Internal]** - Repository validation now pins every GitHub Action to an immutable commit, limits validation checkout credentials to read-only use, audits integrity-locked npm dependency graphs before script-free installation, and checks links across tracked Markdown on every main pull request and push, failing on vulnerabilities or broken links while reserving staged dependency and transitive override remediation for explicit maintainer runs.
+  - **[Internal]** - Repository validation now pins every GitHub Action to an immutable commit, limits validation checkout credentials to read-only use, and checks links across tracked Markdown on every main pull request and push, failing on broken links.
 
 ### Changed
 
 - **User-Priority:**
   - **[Docs]** - Documentation reviews and writing now require four-backtick outer fences when examples contain nested fenced code blocks, matching upstream reference documentation standards.
 
+- **Maintainer/Workflow:**
+  - **[Implementation]** - Implementation guidance now distinguishes legacy untyped Plugin SDK, typed `internal/sdk`, and framework-native models, preserves the current model during maintenance unless migration is explicit, and keeps typed as the current default for new ordinary resources and data sources while framework-native surfaces follow their specialized patterns.
+  - **[Internal]** - CI now reports Interactive, Hosted, and shared repository validation independently after fail-closed change discovery. Unrelated product changes no longer run the other product's validator, while shared changes still require both products; release guidance documents the separate required-check migration without changing tag publication or security thresholds.
+  - **[Internal]** - Defined the repository's two-toolkit architecture, an explicit Hosted Experiment MVP handoff, and changed-path validation dispatch so the versioned Interactive Toolkit and source-deployed Hosted experiment remain independently owned and validated across single-toolkit, mixed, shared, repository-maintenance, and unclassified changes; repo-local validation and test reports now consume one shared presentation module for standard sections, summaries, tables, statuses, streamed child progress, durations, and terminal spacing while preserving presentation-free JSON.
+  - **[Internal]** - Replaced local npm audit gating and automatic remediation options with locked, script-free dependency installation and GitHub-native vulnerability checks. Local validation verifies installed packages against each toolkit's owned lockfile and skips redundant reinstalls; Dependabot alerts and security updates monitor known vulnerabilities and attempt fix PRs, while CI Dependency Review rejects dependency changes introducing moderate-or-higher vulnerabilities. Repository branch protection now requires `Dependency Security Review` before merging to `main`, with administrator bypass retained; documented these separately configured GitHub settings without coupling the toolkits' validation or release workflows.
+  - **[Internal]** - Added a tracked repo-only Interactive rule catalog for searchable provenance and active, deprecated, and retired lifecycle history across all contract rule IDs; contract wording remains hand-authored, catalog validation detects rule drift and accidental shipping, upstream checks consume structured source mappings, and embedded provenance metadata and horizontal dividers no longer consume installed runtime context.
+
 ### Fixed
 
 - **Maintainer/Workflow:**
   - **[Internal]** - Upstream contributor drift checks now authenticate GitHub Contents API requests in CI, avoiding unauthenticated rate-limit failures.
-  - **[Internal]** - Updated repository validation dependencies and reviewed transitive overrides to resolve reported npm security findings without downgrading the link checker or weakening audit thresholds; documented compatibility exceptions and the remaining encoding-package deprecation.
+  - **[Internal]** - Updated repository validation dependencies and reviewed transitive overrides to resolve reported npm security findings without downgrading the link checker; documented compatibility exceptions and the remaining encoding-package deprecation.
 
 ## [3.9.1] - 2026-08-24
 

@@ -9,6 +9,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$validationOutputModulePath = Join-Path $PSScriptRoot '../ValidationOutput.psm1'
+Import-Module -Name $validationOutputModulePath -Force
+
 function Get-JsonFile {
     param([string] $Path)
 
@@ -178,24 +181,26 @@ if ($Output -eq "json") {
     return
 }
 
-Write-Output "Regression history summary"
-Write-Output "  Snapshot Count   : $($summary.snapshotCount)"
-Write-Output "  Invalid Snapshots: $($summary.invalidSnapshotCount)"
-Write-Output "  Window Count     : $($summary.windowCount)"
-Write-Output "  Latest Snapshot  : $($summary.latestSnapshot.snapshotId)"
-Write-Output "  Latest Avg Score : $($summary.latestSnapshot.metrics.averageOverallScore)"
-Write-Output "  Latest Pass Rate : $($summary.latestSnapshot.metrics.passRate)"
+$summaryFields = [ordered]@{
+    'Snapshot Count' = $summary.snapshotCount
+    'Invalid Snapshots' = $summary.invalidSnapshotCount
+    'Window Count' = $summary.windowCount
+    'Latest Snapshot' = $summary.latestSnapshot.snapshotId
+    'Latest Avg Score' = $summary.latestSnapshot.metrics.averageOverallScore
+    'Latest Pass Rate' = $summary.latestSnapshot.metrics.passRate
+}
 if ($summary.previousSnapshot) {
-    Write-Output "  Previous Snapshot: $($summary.previousSnapshot.snapshotId)"
-    Write-Output "  Avg Score Delta  : $($summary.deltas.averageOverallScore)"
-    Write-Output "  Pass Rate Delta  : $($summary.deltas.passRate)"
+    $summaryFields['Previous Snapshot'] = $summary.previousSnapshot.snapshotId
+    $summaryFields['Avg Score Delta'] = $summary.deltas.averageOverallScore
+    $summaryFields['Pass Rate Delta'] = $summary.deltas.passRate
 }
 else {
-    Write-Output "  Previous Snapshot: none"
+    $summaryFields['Previous Snapshot'] = 'none'
 }
 
-Write-Output ""
-Write-Output "Regressions"
+Write-ValidationSectionHeader -Title 'Regression history summary'
+Write-ValidationSummary -Fields $summaryFields
+Write-ValidationSectionHeader -Title 'Regressions'
 if ($summary.regressions.Count -eq 0) {
     Write-Output "  None"
 }
@@ -205,8 +210,7 @@ else {
     }
 }
 
-Write-Output ""
-Write-Output "Improvements"
+Write-ValidationSectionHeader -Title 'Improvements'
 if ($summary.improvements.Count -eq 0) {
     Write-Output "  None"
 }
@@ -216,8 +220,7 @@ else {
     }
 }
 
-Write-Output ""
-Write-Output "Invalid Snapshots"
+Write-ValidationSectionHeader -Title 'Invalid snapshots'
 if ($summary.invalidSnapshots.Count -eq 0) {
     Write-Output "  None"
 }
@@ -226,3 +229,4 @@ else {
         Write-Output "  $($invalidSnapshot.path): $($invalidSnapshot.reason)"
     }
 }
+Complete-ValidationTextOutput
